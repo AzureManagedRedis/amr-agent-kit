@@ -1,6 +1,6 @@
 # amr-agent-skills
 
-A collection of skills for AI coding agents working with Redis and Azure Managed Redis. Skills are packaged instructions and scripts that extend agent capabilities.
+A collection of skills for AI coding agents working with Azure Managed Redis. Skills are packaged instructions and scripts that extend agent capabilities.
 
 Skills follow the [Agent Skills](https://agentskills.io/) format.
 
@@ -8,7 +8,7 @@ Skills follow the [Agent Skills](https://agentskills.io/) format.
 
 ### redis-best-practices
 
-Redis development guidelines containing 30+ rules across 10 categories, prioritized by impact.
+Azure Managed Redis development guidelines containing 30+ rules across 10 categories, prioritized by impact.
 
 **Use when:**
 - Writing new code that interacts with Redis
