@@ -3,7 +3,7 @@ name: azure-infra
 description: Azure Managed Redis (Redis Enterprise 7.4) infrastructure patterns and best practices. Use when provisioning AMR, configuring networking/security, enabling HA or geo-replication, setting persistence, or monitoring AMR in Azure. Triggers on tasks involving Azure Managed Redis, private endpoints, Entra ID auth, TLS, active geo-replication, zone redundancy, or Azure Monitor diagnostics.
 license: MIT
 metadata:
-  author: redis
+  author: Microsoft
   version: "1.0.0"
 ---
 

@@ -13,8 +13,12 @@ Use Redis for distributed locks with proper safeguards: unique lock values, TTL 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # WRONG: No expiration - deadlock if process crashes
 r.set("lock:resource", "locked")
 
@@ -32,8 +36,12 @@ r.setnx("lock:resource", "1")
 import redis
 import uuid
 import time
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Atomic unlock script - only delete if we own the lock
 UNLOCK_SCRIPT = """
 if redis.call("get", KEYS[1]) == ARGV[1] then

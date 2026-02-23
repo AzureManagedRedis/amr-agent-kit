@@ -13,8 +13,12 @@ Redis automatically uses memory-efficient encodings for small data structures. U
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Separate keys for related data - high overhead per key
 r.set("user:1:name", "John")
 r.set("user:1:email", "john@example.com")
@@ -29,8 +33,12 @@ r.hset("user:1", "biography", "A" * 1000)  # Forces dict encoding
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Group related data in hashes (uses ziplist for small hashes)
 # Up to 512 entries with values under 64 bytes uses efficient encoding
 r.hset("user:1", mapping={

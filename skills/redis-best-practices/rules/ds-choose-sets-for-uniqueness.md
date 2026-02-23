@@ -13,8 +13,12 @@ Use sets when you need to store unique items and perform fast membership testing
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using a list to track unique visitors - O(n) lookup
 r.rpush("visitors", "user:1")
 r.rpush("visitors", "user:2")
@@ -33,8 +37,12 @@ if "user:3" not in r.lrange("visitors", 0, -1):
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using a set - duplicates automatically ignored
 r.sadd("visitors", "user:1", "user:2", "user:3")
 r.sadd("visitors", "user:1")  # No duplicate added

@@ -14,8 +14,12 @@ Use RedisJSON for storing and querying complex nested documents. It provides ato
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing as string requires full read-modify-write
 user = {"name": "John", "address": {"city": "NYC", "zip": "10001"}}
 r.set("user:1", json.dumps(user))
@@ -31,8 +35,12 @@ r.set("user:1", json.dumps(data))  # Race condition!
 ```python
 import redis
 from redis.commands.json.path import Path
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Store document as JSON type
 user = {
     "name": "John",

@@ -13,8 +13,12 @@ Use colon-separated hierarchical key names to organize your keyspace. This conve
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Flat, inconsistent naming - hard to manage
 r.set("user1name", "John")
 r.set("user_1_email", "john@example.com")
@@ -29,8 +33,12 @@ r.set("sessionabc123", "data")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Consistent hierarchical naming: object-type:id:field
 r.set("user:1000:name", "John")
 r.set("user:1000:email", "john@example.com")

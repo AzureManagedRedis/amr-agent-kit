@@ -18,6 +18,7 @@ r = redis.Redis(
     host="mycache.eastus.redis.azure.net",
     port=10000,
     ssl=True,
+    ssl_cert_reqs="required",
     password="PRIMARY_ACCESS_KEY"
 )
 ```
@@ -37,9 +38,12 @@ r = redis.Redis(
     host="mycache.eastus.redis.azure.net",
     port=10000,
     ssl=True,
+    ssl_cert_reqs="required",
     username="<object-id>",
     password=token.token
 )
 ```
 
-Reference: [Use Microsoft Entra for cache authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+References:
+- [Use Microsoft Entra for cache authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+- [Azure Managed Redis overview](https://learn.microsoft.com/en-us/azure/redis/overview)

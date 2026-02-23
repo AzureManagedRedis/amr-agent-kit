@@ -14,8 +14,12 @@ Keep individual keys and values reasonably sized. Large values can cause memory 
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing entire large datasets in single keys
 all_users = fetch_all_users()  # 100,000 users
 r.set("cache:all_users", json.dumps(all_users))  # Huge value!
@@ -34,8 +38,12 @@ r.set("report:monthly", large_report)  # Too large!
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Store individual items, not entire collections
 for user in users:
     r.hset(f"user:{user['id']}", mapping=user)

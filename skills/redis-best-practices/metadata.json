@@ -1,9 +1,12 @@
 {
   "version": "1.0.0",
-  "organization": "Redis",
+  "organization": "Microsoft",
   "date": "February 2026",
-  "abstract": "Comprehensive development patterns and best practices for building applications with Redis on Azure Managed Redis, designed for AI agents and LLMs. Contains 32 rules across 10 categories, prioritized by impact from critical (data structures, key design) to operational (resilience). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations using redis-py, and links to official Redis documentation.",
+  "abstract": "Comprehensive development patterns and best practices for building applications with Redis on Azure Managed Redis, designed for AI agents and LLMs. Contains 32 rules across 10 categories, prioritized by impact from critical (data structures, key design) to operational (resilience). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations using redis-py, and links to official Azure and Redis documentation.",
   "references": [
+    "https://learn.microsoft.com/en-us/azure/redis/overview",
+    "https://learn.microsoft.com/en-us/azure/redis/architecture",
+    "https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication",
     "https://redis.io/docs/latest/develop/",
     "https://redis.io/docs/latest/develop/data-types/",
     "https://redis.io/docs/latest/develop/data-types/hashes/",

@@ -1,7 +1,7 @@
 # Redis Best Practices
 
 **Version 1.0.0**  
-Redis  
+Microsoft  
 February 2026
 
 > **Note:**  
@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Comprehensive development patterns and best practices for building applications with Redis on Azure Managed Redis, designed for AI agents and LLMs. Contains 32 rules across 10 categories, prioritized by impact from critical (data structures, key design) to operational (resilience). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations using redis-py, and links to official Redis documentation.
+Comprehensive development patterns and best practices for building applications with Redis on Azure Managed Redis, designed for AI agents and LLMs. Contains 32 rules across 10 categories, prioritized by impact from critical (data structures, key design) to operational (resilience). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations using redis-py, and links to official Azure and Redis documentation.
 
 ---
 
@@ -83,8 +83,12 @@ Store related fields together in a hash rather than as separate string keys. Red
 
 ```python
 import redis
-r = redis.Redis()
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing user data as separate keys - inefficient
 r.set("user:1000:name", "John")
 r.set("user:1000:email", "john@example.com")
@@ -100,8 +104,12 @@ age = r.get("user:1000:age")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Store all user fields in a single hash - memory efficient
 r.hset("user:1000", mapping={
     "name": "John",
@@ -133,8 +141,12 @@ Use HyperLogLog (HLL) to count unique items when exact counts aren't required. H
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using a set - memory grows with unique visitors
 def count_unique_visitors(page_id, user_id):
     r.sadd(f"visitors:{page_id}", user_id)
@@ -148,8 +160,12 @@ def get_unique_count(page_id):
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # HyperLogLog - constant 12KB memory, 0.81% standard error
 def track_unique_visitor(page_id, user_id):
     """Track unique visitor with HLL"""
@@ -252,8 +268,12 @@ Use Redis lists to implement queues (FIFO) or stacks (LIFO). Lists provide O(1) 
 ```python
 import redis
 import time
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using sorted set with timestamp as score - overcomplicated
 r.zadd("task_queue", {f"task:{1}": time.time()})
 r.zadd("task_queue", {f"task:{2}": time.time()})
@@ -269,8 +289,12 @@ if tasks:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Queue pattern (FIFO): push left, pop right
 r.lpush("task_queue", "task:1", "task:2", "task:3")
 
@@ -311,8 +335,12 @@ Use sets when you need to store unique items and perform fast membership testing
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using a list to track unique visitors - O(n) lookup
 r.rpush("visitors", "user:1")
 r.rpush("visitors", "user:2")
@@ -331,8 +359,12 @@ if "user:3" not in r.lrange("visitors", 0, -1):
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using a set - duplicates automatically ignored
 r.sadd("visitors", "user:1", "user:2", "user:3")
 r.sadd("visitors", "user:1")  # No duplicate added
@@ -368,8 +400,12 @@ Use sorted sets when you need ordered data with scores. They maintain automatic 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing scores in a hash and sorting manually - inefficient
 r.hset("scores", "player:1", 100)
 r.hset("scores", "player:2", 250)
@@ -385,8 +421,12 @@ top_10 = sorted_scores[:10]
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Add players with scores - O(log N)
 r.zadd("leaderboard", {"player:1": 100, "player:2": 250, "player:3": 175})
 
@@ -421,8 +461,12 @@ Use INCR and INCRBY commands for counters instead of GET/SET patterns. These com
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Race condition: two clients might read same value
 current = r.get("page_views")
 if current is None:
@@ -437,8 +481,12 @@ r.set("page_views", new_value)
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Atomic increment - no race conditions
 # If key doesn't exist, it's initialized to 0 first
 views = r.incr("page_views")  # Returns new value
@@ -488,8 +536,12 @@ Set expiration times on cache keys to prevent unbounded memory growth. Keys with
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Cache without TTL - memory grows unbounded
 def get_user(user_id):
     cache_key = f"cache:user:{user_id}"
@@ -511,8 +563,12 @@ r.hset("cache:product:456", mapping=product_data)
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Set TTL when caching
 def get_user(user_id):
     cache_key = f"cache:user:{user_id}"
@@ -563,8 +619,12 @@ Keep individual keys and values reasonably sized. Large values can cause memory 
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing entire large datasets in single keys
 all_users = fetch_all_users()  # 100,000 users
 r.set("cache:all_users", json.dumps(all_users))  # Huge value!
@@ -583,8 +643,12 @@ r.set("report:monthly", large_report)  # Too large!
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Store individual items, not entire collections
 for user in users:
     r.hset(f"user:{user['id']}", mapping=user)
@@ -630,8 +694,12 @@ Use colon-separated hierarchical key names to organize your keyspace. This conve
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Flat, inconsistent naming - hard to manage
 r.set("user1name", "John")
 r.set("user_1_email", "john@example.com")
@@ -646,8 +714,12 @@ r.set("sessionabc123", "data")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Consistent hierarchical naming: object-type:id:field
 r.set("user:1000:name", "John")
 r.set("user:1000:email", "john@example.com")
@@ -714,8 +786,12 @@ Never use the KEYS command in production. It blocks Redis while scanning the ent
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # DANGER: KEYS blocks Redis until complete
 # With millions of keys, this can take seconds and block all clients
 all_user_keys = r.keys("user:*")
@@ -733,8 +809,12 @@ cache_keys = r.keys("cache:api:*")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # SCAN iterates incrementally without blocking
 def get_keys_by_pattern(pattern, count=100):
     """Non-blocking key iteration"""
@@ -804,8 +884,12 @@ Use Lua scripts when you need atomic operations with conditional logic. Scripts 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Race condition: another client might modify between GET and SET
 current = r.get("inventory:item:123")
 if current and int(current) > 0:
@@ -817,8 +901,12 @@ if current and int(current) > 0:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Atomic inventory decrement with order creation
 reserve_item_script = """
 local inventory = tonumber(redis.call('GET', KEYS[1]) or 0)
@@ -893,8 +981,12 @@ Use MGET and MSET commands instead of multiple GET/SET calls when operating on m
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Each GET is a separate round trip
 user_name = r.get("user:1:name")
 user_email = r.get("user:1:email")
@@ -910,8 +1002,12 @@ r.set("config:debug", "false")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Get multiple keys in one call
 values = r.mget("user:1:name", "user:1:email", "user:1:status")
 name, email, status = values
@@ -953,8 +1049,12 @@ Use Redis transactions with MULTI/EXEC when you need multiple commands to execut
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Another client could modify balance between these commands
 balance = int(r.get("account:1:balance") or 0)
 if balance >= 100:
@@ -966,8 +1066,12 @@ if balance >= 100:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Commands between MULTI and EXEC run atomically
 pipe = r.pipeline()  # transaction=True by default
 pipe.multi()
@@ -1026,8 +1130,12 @@ Pipeline multiple commands together to reduce network round trips. Pipelining se
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Each command waits for response - N round trips
 for i in range(1000):
     r.set(f"key:{i}", f"value:{i}")
@@ -1042,8 +1150,12 @@ for key in keys:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Pipeline batches commands - single round trip
 pipe = r.pipeline(transaction=False)
 for i in range(1000):
@@ -1087,7 +1199,7 @@ Reference: [https://redis.io/docs/latest/develop/use/pipelining/](https://redis.
 
 **Impact: HIGH**
 
-Redis is single-threaded for command execution, making connection handling critical. Connection pooling, pipelining, proper client configuration, and reconnection strategies prevent resource exhaustion and maximize throughput.
+Redis is single-threaded for command execution, making connection handling critical. On Azure Managed Redis, connection pooling, TLS-enabled client configuration, timeout/retry settings, and Entra-aware auth refresh strategies prevent resource exhaustion and maximize throughput.
 
 ---
 
@@ -1097,13 +1209,21 @@ Redis is single-threaded for command execution, making connection handling criti
 
 Always configure connection and socket timeouts to prevent your application from hanging indefinitely when Redis is unavailable or slow.
 
+- [Redis Client Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+
+- [Reliability in Azure Managed Redis](https://learn.microsoft.com/en-us/azure/reliability/reliability-managed-redis)
+
 **Incorrect: no timeouts - can hang forever**
 
 ```python
 import redis
 
 # No timeouts configured - dangerous in production
-r = redis.Redis(host='localhost', port=6379)
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True
+)
 
 # If Redis is down or slow, this hangs indefinitely
 value = r.get("key")
@@ -1118,8 +1238,9 @@ from redis.backoff import ExponentialBackoff
 
 # Configure all relevant timeouts
 pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     db=0,
     decode_responses=True,
 
@@ -1145,8 +1266,9 @@ item = r.brpop(["queue:high", "queue:low"], timeout=10)
 
 # Client with all timeout options
 r = redis.Redis(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     socket_timeout=5.0,
     socket_connect_timeout=5.0,
     socket_keepalive=True,
@@ -1167,15 +1289,17 @@ except redis.ConnectionError:
     raise
 ```
 
-Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. Configure retry logic for transient failures.
-
-Reference: [https://redis.io/docs/latest/develop/clients/error-handling/](https://redis.io/docs/latest/develop/clients/error-handling/)
+Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, use TLS and combine timeout/retry settings with your token refresh strategy.
 
 ### 4.2 Use Connection Pooling
 
 **Impact: CRITICAL (prevents connection exhaustion and improves performance)**
 
-Always use connection pooling instead of creating new connections for each operation. Creating connections is expensive and can exhaust server resources.
+Always use connection pooling instead of creating new connections for each operation. Creating connections is expensive and can exhaust server resources, especially with Azure Managed Redis TLS handshakes.
+
+- [Redis Connection Pooling](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
+
+- [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
 **Incorrect: creating connections per request**
 
@@ -1184,7 +1308,12 @@ import redis
 
 def get_user(user_id):
     # BAD: Creates new connection for every request
-    r = redis.Redis(decode_responses=True)
+    r = redis.Redis(
+        host='mycache.eastus.redis.azure.net',
+        port=10000,
+        ssl=True,
+        decode_responses=True
+    )
     return r.get(f"user:{user_id}")
 
 # Each call opens a new connection, never closes it
@@ -1199,8 +1328,9 @@ import redis
 
 # Create pool once at application startup
 pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     db=0,
     max_connections=50,  # Set based on expected concurrency
     decode_responses=True,
@@ -1225,8 +1355,9 @@ class RedisClient:
     def get_pool(cls):
         if cls._pool is None:
             cls._pool = redis.ConnectionPool(
-                host='localhost',
-                port=6379,
+                host='mycache.eastus.redis.azure.net',
+                port=10000,
+                ssl=True,
                 max_connections=50,
                 decode_responses=True
             )
@@ -1242,15 +1373,17 @@ with redis.Redis(connection_pool=pool) as r:
     value = r.get("key")
 ```
 
-Set `max_connections` based on your application's concurrency needs. For web servers, match it to your worker count. Always configure timeouts to prevent hanging connections.
-
-Reference: [https://redis.io/docs/latest/develop/clients/pools-and-muxing/](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
+Set `max_connections` based on your application's concurrency needs. For web servers, match it to your worker count. On Azure Managed Redis, keep TLS enabled and combine pooling with Entra token refresh where supported.
 
 ### 4.3 Use Microsoft Entra Authentication for Azure Managed Redis
 
 **Impact: HIGH (reduces access key exposure)**
 
 Azure Managed Redis supports Microsoft Entra authentication with managed identities and service principals. Use Entra tokens and refresh them before expiry to avoid connection drops; keep access key authentication disabled unless a client cannot use Entra.
+
+- [Use Microsoft Entra for cache authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+
+- [Azure Managed Redis overview](https://learn.microsoft.com/en-us/azure/redis/overview)
 
 **Incorrect: static access keys only**
 
@@ -1261,6 +1394,7 @@ r = redis.Redis(
     host="mycache.eastus.redis.azure.net",
     port=10000,
     ssl=True,
+    ssl_cert_reqs="required",
     password="PRIMARY_ACCESS_KEY"
 )
 ```
@@ -1280,12 +1414,11 @@ r = redis.Redis(
     host="mycache.eastus.redis.azure.net",
     port=10000,
     ssl=True,
+    ssl_cert_reqs="required",
     username="<object-id>",
     password=token.token
 )
 ```
-
-Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
 
 ---
 
@@ -1308,8 +1441,12 @@ Prevent cache stampede (thundering herd) when a popular cache key expires and ma
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_popular_data():
     cached = r.get("cache:popular")
     if cached:
@@ -1328,8 +1465,12 @@ import redis
 import json
 import time
 import random
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_with_lock(cache_key, ttl, fetch_func):
     """Cache-aside with lock to prevent stampede"""
     cached = r.get(cache_key)
@@ -1413,8 +1554,12 @@ Implement the cache-aside (lazy-loading) pattern where your application checks t
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_user(user_id):
     # Always queries database, ignores cache
     return db.query("SELECT * FROM users WHERE id = ?", user_id)
@@ -1425,8 +1570,12 @@ def get_user(user_id):
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_user(user_id):
     """Cache-aside pattern with expiration"""
     cache_key = f"cache:user:{user_id}"
@@ -1524,8 +1673,12 @@ Use Redis for distributed locks with proper safeguards: unique lock values, TTL 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # WRONG: No expiration - deadlock if process crashes
 r.set("lock:resource", "locked")
 
@@ -1543,8 +1696,12 @@ r.setnx("lock:resource", "1")
 import redis
 import uuid
 import time
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Atomic unlock script - only delete if we own the lock
 UNLOCK_SCRIPT = """
 if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -1637,8 +1794,12 @@ Use Redis for session storage with automatic TTL expiration. Sessions are ideal 
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # No expiration - sessions never cleaned up
 def create_session(session_id, user_data):
     r.set(f"session:{session_id}", json.dumps(user_data))
@@ -1656,8 +1817,12 @@ import redis
 import json
 import uuid
 import hashlib
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 SESSION_TTL = 1800  # 30 minutes
 SESSION_REFRESH_THRESHOLD = 300  # Refresh if less than 5 min left
 
@@ -1759,8 +1924,12 @@ Use Redis atomic operations for rate limiting. The fixed window, sliding window,
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Race condition - concurrent requests can exceed limit
 def check_rate_limit(user_id, limit):
     key = f"ratelimit:{user_id}"
@@ -1776,8 +1945,12 @@ def check_rate_limit(user_id, limit):
 ```python
 import redis
 import time
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Fixed Window Rate Limiter
 def fixed_window_limit(key, limit, window_seconds):
     """Simple fixed window - resets at window boundary"""
@@ -1885,8 +2058,12 @@ Use Redis Pub/Sub for fire-and-forget broadcasting to multiple subscribers. Pub/
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # DON'T use Pub/Sub for messages that must not be lost
 r.publish("payment:completed", "order:123")  # Lost if no subscribers
 ```
@@ -1897,8 +2074,12 @@ r.publish("payment:completed", "order:123")  # Lost if no subscribers
 import redis
 import json
 import threading
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Publisher: Broadcast cache invalidation
 def invalidate_cache(entity_type, entity_id):
     """Notify all app instances to invalidate local cache"""
@@ -1986,8 +2167,12 @@ Use Redis Streams instead of Pub/Sub when you need message persistence, replay c
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Pub/Sub messages are lost if no subscribers are listening
 r.publish("orders", "order:123")
 
@@ -2000,8 +2185,12 @@ r.publish("orders", "order:123")
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Add message to stream with auto-generated ID
 message_id = r.xadd("orders:stream", {
     "order_id": "123",
@@ -2111,8 +2300,12 @@ Use Redis Search (RediSearch) for full-text search, filtering, and aggregations 
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Scanning all keys to find matches - very slow
 def find_users_by_city(city):
     results = []
@@ -2132,8 +2325,12 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.commands.search.aggregation import AggregateRequest, Asc
 
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Create index on hash keys (run once during setup)
 def create_user_index():
     try:
@@ -2246,8 +2443,12 @@ Use RedisJSON for storing and querying complex nested documents. It provides ato
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing as string requires full read-modify-write
 user = {"name": "John", "address": {"city": "NYC", "zip": "10001"}}
 r.set("user:1", json.dumps(user))
@@ -2263,8 +2464,12 @@ r.set("user:1", json.dumps(data))  # Race condition!
 ```python
 import redis
 from redis.commands.json.path import Path
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Store document as JSON type
 user = {
     "name": "John",
@@ -2350,8 +2555,12 @@ Always configure maxmemory and an eviction policy in production. Monitor memory 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Check current memory configuration
 info = r.info("memory")
 print(f"Used memory: {info['used_memory_human']}")
@@ -2468,8 +2677,12 @@ Redis automatically uses memory-efficient encodings for small data structures. U
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Separate keys for related data - high overhead per key
 r.set("user:1:name", "John")
 r.set("user:1:email", "john@example.com")
@@ -2484,8 +2697,12 @@ r.hset("user:1", "biography", "A" * 1000)  # Forces dict encoding
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Group related data in hashes (uses ziplist for small hashes)
 # Up to 512 entries with values under 64 bytes uses efficient encoding
 r.hset("user:1", mapping={
@@ -2600,12 +2817,20 @@ Reference: [https://redis.io/docs/latest/develop/notify/keyspace-events/](https:
 
 Implement proper error handling and retry logic for Redis operations. Applications should degrade gracefully when Redis is unavailable.
 
+- [Redis Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+
+- [Reliability in Azure Managed Redis](https://learn.microsoft.com/en-us/azure/reliability/reliability-managed-redis)
+
 **Incorrect: unhandled errors crash application**
 
 ```python
 import redis
-r = redis.Redis()
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_user(user_id):
     # No error handling - application crashes if Redis is down
     return r.get(f"user:{user_id}")
@@ -2624,8 +2849,9 @@ log = logging.getLogger(__name__)
 
 # Configure client with retry logic
 pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     socket_timeout=5.0,
     socket_connect_timeout=5.0,
     retry_on_timeout=True,
@@ -2715,9 +2941,7 @@ def write_with_fallback(key, value, ttl=3600):
         log.warning(f"Queued write for {key} due to Redis error")
 ```
 
-Use exponential backoff for retries. Implement circuit breakers to prevent cascade failures. Always have a fallback strategy for cache operations. Log errors for monitoring.
-
-Reference: [https://redis.io/docs/latest/develop/clients/error-handling/](https://redis.io/docs/latest/develop/clients/error-handling/)
+Use exponential backoff for retries. Implement circuit breakers to prevent cascade failures. Always have a fallback strategy for cache operations. On Azure Managed Redis, combine retries with token refresh and TLS-enabled pooled connections.
 
 ### 10.3 Implement Redis Health Checks
 
@@ -2729,8 +2953,12 @@ Implement health checks to detect Redis issues before they impact users. Use PIN
 
 ```python
 import redis
-r = redis.Redis()
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # No health checks - issues discovered only when operations fail
 def get_data(key):
     return r.get(key)
@@ -2744,8 +2972,12 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 @dataclass
 class HealthStatus:
     healthy: bool
@@ -2882,14 +3114,17 @@ Reference: [https://redis.io/docs/latest/commands/ping/](https://redis.io/docs/l
 
 ## References
 
-1. [https://redis.io/docs/latest/develop/](https://redis.io/docs/latest/develop/)
-2. [https://redis.io/docs/latest/develop/data-types/](https://redis.io/docs/latest/develop/data-types/)
-3. [https://redis.io/docs/latest/develop/data-types/hashes/](https://redis.io/docs/latest/develop/data-types/hashes/)
-4. [https://redis.io/docs/latest/develop/data-types/sorted-sets/](https://redis.io/docs/latest/develop/data-types/sorted-sets/)
-5. [https://redis.io/docs/latest/develop/data-types/streams/](https://redis.io/docs/latest/develop/data-types/streams/)
-6. [https://redis.io/docs/latest/develop/use/pipelining/](https://redis.io/docs/latest/develop/use/pipelining/)
-7. [https://redis.io/docs/latest/develop/use/patterns/distributed-locks/](https://redis.io/docs/latest/develop/use/patterns/distributed-locks/)
-8. [https://redis.io/docs/latest/develop/clients/](https://redis.io/docs/latest/develop/clients/)
-9. [https://redis.io/docs/latest/develop/clients/pools-and-muxing/](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
-10. [https://redis.io/docs/latest/develop/interact/search-and-query/](https://redis.io/docs/latest/develop/interact/search-and-query/)
-11. [https://redis.io/docs/latest/develop/data-types/json/](https://redis.io/docs/latest/develop/data-types/json/)
+1. [https://learn.microsoft.com/en-us/azure/redis/overview](https://learn.microsoft.com/en-us/azure/redis/overview)
+2. [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
+3. [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+4. [https://redis.io/docs/latest/develop/](https://redis.io/docs/latest/develop/)
+5. [https://redis.io/docs/latest/develop/data-types/](https://redis.io/docs/latest/develop/data-types/)
+6. [https://redis.io/docs/latest/develop/data-types/hashes/](https://redis.io/docs/latest/develop/data-types/hashes/)
+7. [https://redis.io/docs/latest/develop/data-types/sorted-sets/](https://redis.io/docs/latest/develop/data-types/sorted-sets/)
+8. [https://redis.io/docs/latest/develop/data-types/streams/](https://redis.io/docs/latest/develop/data-types/streams/)
+9. [https://redis.io/docs/latest/develop/use/pipelining/](https://redis.io/docs/latest/develop/use/pipelining/)
+10. [https://redis.io/docs/latest/develop/use/patterns/distributed-locks/](https://redis.io/docs/latest/develop/use/patterns/distributed-locks/)
+11. [https://redis.io/docs/latest/develop/clients/](https://redis.io/docs/latest/develop/clients/)
+12. [https://redis.io/docs/latest/develop/clients/pools-and-muxing/](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
+13. [https://redis.io/docs/latest/develop/interact/search-and-query/](https://redis.io/docs/latest/develop/interact/search-and-query/)
+14. [https://redis.io/docs/latest/develop/data-types/json/](https://redis.io/docs/latest/develop/data-types/json/)

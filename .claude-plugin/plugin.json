@@ -1,13 +1,13 @@
 {
-  "name": "redis",
-  "description": "Redis and Azure Managed Redis best practices for AI coding agents. Covers Redis app patterns, AI/vector workloads, and Azure Managed Redis infrastructure guidance.",
+  "name": "amr-agent-kit",
+  "description": "AMR Agent Kit: Redis and Azure Managed Redis best practices for AI coding agents. Covers Redis app patterns, AI/vector workloads, and Azure Managed Redis infrastructure guidance.",
   "version": "1.0.0",
   "author": {
-    "name": "Redis",
-    "url": "https://redis.io/"
+    "name": "Microsoft",
+    "url": "https://learn.microsoft.com/azure/redis/"
   },
-  "homepage": "https://github.com/redis/redis-agent-skills",
-  "repository": "https://github.com/redis/redis-agent-skills.git",
+  "homepage": "https://github.com/AzureManagedRedis/amr-agent-kit",
+  "repository": "https://github.com/AzureManagedRedis/amr-agent-kit.git",
   "license": "MIT",
   "keywords": [
     "redis",

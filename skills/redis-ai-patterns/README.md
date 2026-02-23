@@ -34,7 +34,7 @@ Patterns and best practices for building AI applications with Redis on Azure Man
 From the build package directory:
 
 ```bash
-cd packages/redis-best-practices-build
+cd packages/amr-agent-skills-build
 npm install
 npm run build
 ```

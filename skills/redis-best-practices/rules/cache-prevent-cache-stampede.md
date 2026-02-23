@@ -14,8 +14,12 @@ Prevent cache stampede (thundering herd) when a popular cache key expires and ma
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_popular_data():
     cached = r.get("cache:popular")
     if cached:
@@ -34,8 +38,12 @@ import redis
 import json
 import time
 import random
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_with_lock(cache_key, ttl, fetch_func):
     """Cache-aside with lock to prevent stampede"""
     cached = r.get(cache_key)

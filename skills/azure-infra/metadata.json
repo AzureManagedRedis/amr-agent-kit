@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "organization": "Redis",
+  "organization": "Microsoft",
   "date": "February 2026",
   "abstract": "Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure. Covers provisioning and sizing, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.",
   "references": [

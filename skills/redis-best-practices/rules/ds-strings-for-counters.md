@@ -13,8 +13,12 @@ Use INCR and INCRBY commands for counters instead of GET/SET patterns. These com
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Race condition: two clients might read same value
 current = r.get("page_views")
 if current is None:
@@ -29,8 +33,12 @@ r.set("page_views", new_value)
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Atomic increment - no race conditions
 # If key doesn't exist, it's initialized to 0 first
 views = r.incr("page_views")  # Returns new value

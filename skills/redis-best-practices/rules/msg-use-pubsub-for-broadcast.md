@@ -18,8 +18,12 @@ Use Redis Pub/Sub for fire-and-forget broadcasting to multiple subscribers. Pub/
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # DON'T use Pub/Sub for messages that must not be lost
 r.publish("payment:completed", "order:123")  # Lost if no subscribers
 ```
@@ -30,8 +34,12 @@ r.publish("payment:completed", "order:123")  # Lost if no subscribers
 import redis
 import json
 import threading
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Publisher: Broadcast cache invalidation
 def invalidate_cache(entity_type, entity_id):
     """Notify all app instances to invalidate local cache"""

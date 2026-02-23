@@ -1,7 +1,7 @@
 # Azure Managed Redis Infrastructure
 
 **Version 1.0.0**  
-Redis  
+Microsoft  
 February 2026
 
 > **Note:**  

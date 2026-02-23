@@ -13,8 +13,12 @@ Store related fields together in a hash rather than as separate string keys. Red
 
 ```python
 import redis
-r = redis.Redis()
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing user data as separate keys - inefficient
 r.set("user:1000:name", "John")
 r.set("user:1000:email", "john@example.com")
@@ -30,8 +34,12 @@ age = r.get("user:1000:age")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Store all user fields in a single hash - memory efficient
 r.hset("user:1000", mapping={
     "name": "John",

@@ -33,7 +33,7 @@ The section ID (in parentheses) is the filename prefix used to group rules.
 
 **Impact:** HIGH
 
-**Description:** Redis is single-threaded for command execution, making connection handling critical. Connection pooling, pipelining, proper client configuration, and reconnection strategies prevent resource exhaustion and maximize throughput.
+**Description:** Redis is single-threaded for command execution, making connection handling critical. On Azure Managed Redis, connection pooling, TLS-enabled client configuration, timeout/retry settings, and Entra-aware auth refresh strategies prevent resource exhaustion and maximize throughput.
 
 ---
 

@@ -13,8 +13,12 @@ Never use the KEYS command in production. It blocks Redis while scanning the ent
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # DANGER: KEYS blocks Redis until complete
 # With millions of keys, this can take seconds and block all clients
 all_user_keys = r.keys("user:*")
@@ -32,8 +36,12 @@ cache_keys = r.keys("cache:api:*")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # SCAN iterates incrementally without blocking
 def get_keys_by_pattern(pattern, count=100):
     """Non-blocking key iteration"""

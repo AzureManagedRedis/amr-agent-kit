@@ -3,7 +3,7 @@ name: redis-best-practices
 description: Redis development patterns and best practices, optimized for Azure Managed Redis. Use when writing, reviewing, or refactoring application code that interacts with Redis on AMR. Triggers on tasks involving Redis, caching, session storage, pub/sub, queues, leaderboards, rate limiting, key-value operations, or data structure selection.
 license: MIT
 metadata:
-  author: redis
+  author: Microsoft
   version: "1.0.0"
 ---
 
@@ -65,8 +65,8 @@ Reference these guidelines when:
 
 ### 4. Connection Management (HIGH)
 
-- `conn-use-connection-pooling` - Use connection pools to avoid exhaustion
-- `conn-configure-timeouts` - Set socket, connect, and command timeouts
+- `conn-use-connection-pooling` - Use TLS-enabled AMR connection pools to avoid exhaustion
+- `conn-configure-timeouts` - Set socket, connect, and command timeouts for AMR network conditions
 - `conn-use-entra-authentication` - Use Microsoft Entra authentication on Azure Managed Redis
 
 ### 5. Caching Strategies (HIGH)

@@ -1,4 +1,4 @@
-# redis-agent-skills
+# amr-agent-skills
 
 A collection of skills for AI coding agents working with Redis and Azure Managed Redis. Skills are packaged instructions and scripts that extend agent capabilities.
 
@@ -39,7 +39,7 @@ Azure Managed Redis infrastructure patterns for provisioning, security, reliabil
 ## Installation
 
 ```bash
-npx skills add redis/redis-agent-skills
+npx skills add AzureManagedRedis/amr-agent-kit
 ```
 
 ## Usage
@@ -68,7 +68,7 @@ Each skill contains:
 ## Building
 
 ```bash
-cd packages/redis-best-practices-build
+cd packages/amr-agent-skills-build
 npm install
 npm run build
 npm run build-best-practices

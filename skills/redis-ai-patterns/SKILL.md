@@ -3,13 +3,13 @@ name: redis-ai-patterns
 description: Patterns for building AI applications with Redis, optimized for Azure Managed Redis (Redis Enterprise 7.4). Use when implementing vector search, RAG, semantic caching, LLM memory, or AI agents on AMR. Triggers on tasks involving embeddings, similarity search, retrieval augmented generation, LangChain, LlamaIndex, or vector databases on Azure.
 license: MIT
 metadata:
-  author: redis
+  author: Microsoft
   version: "1.0.0"
 ---
 
 # Redis AI Patterns
 
-Patterns and best practices for building AI and ML applications with Redis on Azure Managed Redis. Covers vector search, RAG implementation, semantic caching, and LLM integration.
+Patterns and best practices for building AI and ML applications with Redis on Azure Managed Redis. Covers vector search, RAG implementation, semantic caching, LLM integration, and agent state patterns tuned for AMR and Redis Enterprise 7.4 capabilities.
 
 ## When to Apply
 
@@ -19,7 +19,7 @@ Reference these guidelines when:
 - Implementing semantic caching for LLM responses
 - Managing conversation history and LLM memory
 - Building AI agents with Redis as the memory layer
-- Integrating with LangChain, LlamaIndex, or similar frameworks
+- Integrating with LangChain, LlamaIndex, Semantic Kernel, RedisVL, or Microsoft Agent Framework
 
 ## Rule Categories by Priority
 
@@ -38,56 +38,45 @@ Reference these guidelines when:
 ## Quick Reference
 
 ### 1. Vector Storage & Indexing (CRITICAL)
-
-Storing embeddings and configuring vector indexes (HNSW vs FLAT).
+- `vec-store-vectors-with-metadata` - Store embeddings with filterable metadata fields.
+- `vec-align-dimensions-and-distance-metric` - Keep embedding dimensions and distance metric aligned.
 
 ### 2. Similarity Search (CRITICAL)
-
-KNN queries, range queries, hybrid search combining vectors with filters.
+- `search-use-enterprise-policy-for-modules` - Use Enterprise policy for RediSearch and RedisJSON on AMR.
+- `search-limit-k-and-returned-fields` - Keep result count and returned fields minimal.
 
 ### 3. RAG Implementation (HIGH)
-
-Document chunking, retrieval strategies, and context construction.
+- `rag-chunk-content-with-stable-windowing` - Chunk documents consistently with overlap.
+- `rag-store-source-citations-in-index` - Store source metadata for grounding and citations.
 
 ### 4. Semantic Caching (HIGH)
-
-Caching LLM responses by semantic similarity to reduce costs and latency.
+- `semcache-set-threshold-and-ttl-by-use-case` - Tune semantic threshold and TTL by workload.
+- `semcache-version-keys-by-model-and-prompt` - Version cache keys by model and prompt template.
 
 ### 5. LLM Memory & Sessions (HIGH)
-
-Managing conversation history and context windows.
+- `llm-set-session-ttl-and-window` - Enforce TTL and sliding windows for conversation memory.
+- `llm-summarize-long-conversations` - Summarize old turns to control context growth.
 
 ### 6. AI Agent Patterns (MEDIUM-HIGH)
-
-Agent memory, tool routing, and multi-step reasoning with Redis.
+- `agent-persist-agent-state-and-checkpoints` - Persist agent state and step checkpoints.
+- `agent-use-streams-for-multi-step-workflows` - Use Redis Streams for tool/task orchestration.
 
 ### 7. Embeddings & Models (MEDIUM)
-
-Model selection, dimensionality, and embedding generation patterns.
+- `embed-standardize-model-per-index` - Keep one embedding model per index.
+- `embed-batch-embedding-and-upsert` - Batch embedding generation and upserts.
 
 ### 8. Framework Integration (MEDIUM)
-
-Patterns for LangChain, LlamaIndex, Spring AI, and Semantic Kernel.
+- `integrate-use-redisvl-for-schema-and-queries` - Use RedisVL for index schema and query lifecycle.
+- `integrate-use-microsoft-agent-framework` - Use Microsoft Agent Framework with Redis for durable memory and retrieval state.
 
 ### 9. Performance Tuning (LOW-MEDIUM)
-
-Index optimization, batch ingestion, and scaling vector workloads.
+- `perf-size-for-vector-workloads` - Size AMR memory/CPU for vectors and indexing overhead.
+- `perf-pipeline-bulk-ingestion` - Pipeline writes for faster indexing throughput.
+- `perf-tune-hnsw-runtime-params` - Tune HNSW runtime parameters for latency/recall targets.
 
 ## How to Use
 
-Read individual rule files for detailed explanations and code examples:
-
-```
-rules/vec-choose-index-type.md
-rules/rag-chunk-documents.md
-rules/semcache-similarity-threshold.md
-```
-
-Each rule file contains:
-- Brief explanation of why it matters
-- Incorrect code example with explanation
-- Correct code example with explanation
-- Additional context and references
+Read individual rule files for detailed explanations and code examples in `rules/`, then use `AGENTS.md` for the fully compiled guide.
 
 ## Full Compiled Document
 

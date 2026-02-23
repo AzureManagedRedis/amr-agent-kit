@@ -20,8 +20,12 @@ Always configure maxmemory and an eviction policy in production. Monitor memory 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Check current memory configuration
 info = r.info("memory")
 print(f"Used memory: {info['used_memory_human']}")

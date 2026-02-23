@@ -35,7 +35,7 @@ Development patterns and best practices for building applications with Redis on 
 From the build package directory:
 
 ```bash
-cd packages/redis-best-practices-build
+cd packages/amr-agent-skills-build
 npm install
 npm run build-best-practices
 ```

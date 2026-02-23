@@ -49,7 +49,7 @@ name: {skill-name}
 description: {One sentence describing when to use this skill. Include trigger phrases.}
 license: MIT
 metadata:
-  author: redis
+  author: Microsoft
   version: "1.0.0"
 ---
 
@@ -83,7 +83,7 @@ Skills are loaded on-demand. To minimize context usage:
 Build compiles individual rules into `AGENTS.md`.
 
 ```bash
-cd packages/redis-best-practices-build
+cd packages/amr-agent-skills-build
 npm run build
 ```
 
@@ -118,5 +118,5 @@ cp -r skills/redis-best-practices ~/.copilot/skills/
 
 **Using skills CLI:**
 ```bash
-npx skills add redis/redis-agent-skills
+npx skills add AzureManagedRedis/amr-agent-kit
 ```

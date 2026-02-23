@@ -17,7 +17,7 @@ The section ID (in parentheses) is the filename prefix used to group rules.
 
 **Impact:** CRITICAL
 
-**Description:** Effective similarity search is core to vector database usage. Covers KNN queries, range queries, hybrid search combining vector similarity with attribute filters, distance metrics (cosine, L2, IP), and result scoring.
+**Description:** Effective similarity search is core to vector database usage. Covers KNN queries, range queries, distance metrics (cosine, L2, IP), and result scoring.
 
 ---
 
@@ -65,7 +65,7 @@ The section ID (in parentheses) is the filename prefix used to group rules.
 
 **Impact:** MEDIUM
 
-**Description:** Patterns for integrating Redis with popular AI frameworks. Covers LangChain vector stores and memory, LlamaIndex integration, Spring AI, Semantic Kernel, and RedisVL library usage.
+**Description:** Patterns for integrating Redis with popular AI frameworks. Covers LangChain vector stores and memory, LlamaIndex integration, Spring AI, Semantic Kernel, Microsoft Agent Framework, and RedisVL library usage.
 
 ---
 

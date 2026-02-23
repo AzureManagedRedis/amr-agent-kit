@@ -13,8 +13,12 @@ Use Redis atomic operations for rate limiting. The fixed window, sliding window,
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Race condition - concurrent requests can exceed limit
 def check_rate_limit(user_id, limit):
     key = f"ratelimit:{user_id}"
@@ -30,8 +34,12 @@ def check_rate_limit(user_id, limit):
 ```python
 import redis
 import time
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Fixed Window Rate Limiter
 def fixed_window_limit(key, limit, window_seconds):
     """Simple fixed window - resets at window boundary"""

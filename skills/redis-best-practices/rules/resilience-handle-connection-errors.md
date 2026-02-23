@@ -13,8 +13,12 @@ Implement proper error handling and retry logic for Redis operations. Applicatio
 
 ```python
 import redis
-r = redis.Redis()
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_user(user_id):
     # No error handling - application crashes if Redis is down
     return r.get(f"user:{user_id}")
@@ -33,8 +37,9 @@ log = logging.getLogger(__name__)
 
 # Configure client with retry logic
 pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     socket_timeout=5.0,
     socket_connect_timeout=5.0,
     retry_on_timeout=True,
@@ -124,6 +129,8 @@ def write_with_fallback(key, value, ttl=3600):
         log.warning(f"Queued write for {key} due to Redis error")
 ```
 
-Use exponential backoff for retries. Implement circuit breakers to prevent cascade failures. Always have a fallback strategy for cache operations. Log errors for monitoring.
+Use exponential backoff for retries. Implement circuit breakers to prevent cascade failures. Always have a fallback strategy for cache operations. On Azure Managed Redis, combine retries with token refresh and TLS-enabled pooled connections.
 
-Reference: [Redis Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+References:
+- [Redis Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+- [Reliability in Azure Managed Redis](https://learn.microsoft.com/en-us/azure/reliability/reliability-managed-redis)

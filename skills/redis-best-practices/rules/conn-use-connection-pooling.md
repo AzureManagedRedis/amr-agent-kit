@@ -7,7 +7,7 @@ tags: connection, pooling, performance, resources
 
 ## Use Connection Pooling
 
-Always use connection pooling instead of creating new connections for each operation. Creating connections is expensive and can exhaust server resources.
+Always use connection pooling instead of creating new connections for each operation. Creating connections is expensive and can exhaust server resources, especially with Azure Managed Redis TLS handshakes.
 
 **Incorrect (creating connections per request):**
 
@@ -16,7 +16,12 @@ import redis
 
 def get_user(user_id):
     # BAD: Creates new connection for every request
-    r = redis.Redis(decode_responses=True)
+    r = redis.Redis(
+        host='mycache.eastus.redis.azure.net',
+        port=10000,
+        ssl=True,
+        decode_responses=True
+    )
     return r.get(f"user:{user_id}")
 
 # Each call opens a new connection, never closes it
@@ -31,8 +36,9 @@ import redis
 
 # Create pool once at application startup
 pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     db=0,
     max_connections=50,  # Set based on expected concurrency
     decode_responses=True,
@@ -57,8 +63,9 @@ class RedisClient:
     def get_pool(cls):
         if cls._pool is None:
             cls._pool = redis.ConnectionPool(
-                host='localhost',
-                port=6379,
+                host='mycache.eastus.redis.azure.net',
+                port=10000,
+                ssl=True,
                 max_connections=50,
                 decode_responses=True
             )
@@ -74,6 +81,8 @@ with redis.Redis(connection_pool=pool) as r:
     value = r.get("key")
 ```
 
-Set `max_connections` based on your application's concurrency needs. For web servers, match it to your worker count. Always configure timeouts to prevent hanging connections.
+Set `max_connections` based on your application's concurrency needs. For web servers, match it to your worker count. On Azure Managed Redis, keep TLS enabled and combine pooling with Entra token refresh where supported.
 
-Reference: [Redis Connection Pooling](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
+References:
+- [Redis Connection Pooling](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
+- [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)

@@ -14,8 +14,12 @@ Use Redis lists to implement queues (FIFO) or stacks (LIFO). Lists provide O(1) 
 ```python
 import redis
 import time
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using sorted set with timestamp as score - overcomplicated
 r.zadd("task_queue", {f"task:{1}": time.time()})
 r.zadd("task_queue", {f"task:{2}": time.time()})
@@ -31,8 +35,12 @@ if tasks:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Queue pattern (FIFO): push left, pop right
 r.lpush("task_queue", "task:1", "task:2", "task:3")
 

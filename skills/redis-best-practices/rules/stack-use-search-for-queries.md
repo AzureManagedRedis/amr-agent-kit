@@ -14,8 +14,12 @@ Use Redis Search (RediSearch) for full-text search, filtering, and aggregations 
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Scanning all keys to find matches - very slow
 def find_users_by_city(city):
     results = []
@@ -35,8 +39,12 @@ from redis.commands.search.indexDefinition import IndexDefinition, IndexType
 from redis.commands.search.query import Query
 from redis.commands.search.aggregation import AggregateRequest, Asc
 
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Create index on hash keys (run once during setup)
 def create_user_index():
     try:

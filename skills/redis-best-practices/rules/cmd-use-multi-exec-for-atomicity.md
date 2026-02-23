@@ -13,8 +13,12 @@ Use Redis transactions with MULTI/EXEC when you need multiple commands to execut
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Another client could modify balance between these commands
 balance = int(r.get("account:1:balance") or 0)
 if balance >= 100:
@@ -26,8 +30,12 @@ if balance >= 100:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Commands between MULTI and EXEC run atomically
 pipe = r.pipeline()  # transaction=True by default
 pipe.multi()

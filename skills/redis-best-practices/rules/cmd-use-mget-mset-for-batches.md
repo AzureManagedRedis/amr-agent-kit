@@ -13,8 +13,12 @@ Use MGET and MSET commands instead of multiple GET/SET calls when operating on m
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Each GET is a separate round trip
 user_name = r.get("user:1:name")
 user_email = r.get("user:1:email")
@@ -30,8 +34,12 @@ r.set("config:debug", "false")
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Get multiple keys in one call
 values = r.mget("user:1:name", "user:1:email", "user:1:status")
 name, email, status = values

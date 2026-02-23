@@ -151,7 +151,7 @@ async function buildSkill(skillConfig: SkillConfig) {
     } catch {
       metadata = {
         version: '1.0.0',
-        organization: 'Redis',
+        organization: 'Microsoft',
         date: new Date().toLocaleDateString('en-US', {
           month: 'long',
           year: 'numeric',
@@ -179,7 +179,7 @@ async function buildSkill(skillConfig: SkillConfig) {
     } catch {
       metadata = {
         version: '1.0.0',
-        organization: 'Redis',
+        organization: 'Microsoft',
         date: new Date().toLocaleDateString('en-US', {
           month: 'long',
           year: 'numeric',
@@ -286,7 +286,7 @@ async function buildSkill(skillConfig: SkillConfig) {
   } catch {
     metadata = {
       version: '1.0.0',
-      organization: 'Redis',
+      organization: 'Microsoft',
       date: new Date().toLocaleDateString('en-US', {
         month: 'long',
         year: 'numeric',

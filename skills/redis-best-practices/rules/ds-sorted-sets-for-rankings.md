@@ -13,8 +13,12 @@ Use sorted sets when you need ordered data with scores. They maintain automatic 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Storing scores in a hash and sorting manually - inefficient
 r.hset("scores", "player:1", 100)
 r.hset("scores", "player:2", 250)
@@ -30,8 +34,12 @@ top_10 = sorted_scores[:10]
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Add players with scores - O(log N)
 r.zadd("leaderboard", {"player:1": 100, "player:2": 250, "player:3": 175})
 

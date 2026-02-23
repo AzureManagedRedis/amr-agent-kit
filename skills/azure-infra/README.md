@@ -38,7 +38,7 @@ Patterns and best practices for provisioning and operating Azure Managed Redis (
 From the build package directory:
 
 ```bash
-cd packages/redis-best-practices-build
+cd packages/amr-agent-skills-build
 npm install
 npm run build
 ```

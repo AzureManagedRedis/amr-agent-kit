@@ -13,8 +13,12 @@ Implement health checks to detect Redis issues before they impact users. Use PIN
 
 ```python
 import redis
-r = redis.Redis()
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # No health checks - issues discovered only when operations fail
 def get_data(key):
     return r.get(key)
@@ -28,8 +32,12 @@ import time
 from dataclasses import dataclass
 from typing import Optional, Dict, Any
 
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 @dataclass
 class HealthStatus:
     healthy: bool

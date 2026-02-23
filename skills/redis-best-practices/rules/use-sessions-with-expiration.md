@@ -14,8 +14,12 @@ Use Redis for session storage with automatic TTL expiration. Sessions are ideal 
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # No expiration - sessions never cleaned up
 def create_session(session_id, user_data):
     r.set(f"session:{session_id}", json.dumps(user_data))
@@ -33,8 +37,12 @@ import redis
 import json
 import uuid
 import hashlib
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 SESSION_TTL = 1800  # 30 minutes
 SESSION_REFRESH_THRESHOLD = 300  # Refresh if less than 5 min left
 

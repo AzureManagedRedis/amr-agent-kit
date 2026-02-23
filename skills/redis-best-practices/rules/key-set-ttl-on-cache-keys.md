@@ -14,8 +14,12 @@ Set expiration times on cache keys to prevent unbounded memory growth. Keys with
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Cache without TTL - memory grows unbounded
 def get_user(user_id):
     cache_key = f"cache:user:{user_id}"
@@ -37,8 +41,12 @@ r.hset("cache:product:456", mapping=product_data)
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Set TTL when caching
 def get_user(user_id):
     cache_key = f"cache:user:{user_id}"

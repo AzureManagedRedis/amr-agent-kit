@@ -13,8 +13,12 @@ Pipeline multiple commands together to reduce network round trips. Pipelining se
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Each command waits for response - N round trips
 for i in range(1000):
     r.set(f"key:{i}", f"value:{i}")
@@ -29,8 +33,12 @@ for key in keys:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Pipeline batches commands - single round trip
 pipe = r.pipeline(transaction=False)
 for i in range(1000):

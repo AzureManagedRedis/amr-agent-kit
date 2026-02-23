@@ -13,8 +13,12 @@ Use Lua scripts when you need atomic operations with conditional logic. Scripts 
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Race condition: another client might modify between GET and SET
 current = r.get("inventory:item:123")
 if current and int(current) > 0:
@@ -26,8 +30,12 @@ if current and int(current) > 0:
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Atomic inventory decrement with order creation
 reserve_item_script = """
 local inventory = tonumber(redis.call('GET', KEYS[1]) or 0)

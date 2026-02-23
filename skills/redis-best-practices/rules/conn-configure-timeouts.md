@@ -15,7 +15,11 @@ Always configure connection and socket timeouts to prevent your application from
 import redis
 
 # No timeouts configured - dangerous in production
-r = redis.Redis(host='localhost', port=6379)
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True
+)
 
 # If Redis is down or slow, this hangs indefinitely
 value = r.get("key")
@@ -30,8 +34,9 @@ from redis.backoff import ExponentialBackoff
 
 # Configure all relevant timeouts
 pool = redis.ConnectionPool(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     db=0,
     decode_responses=True,
 
@@ -57,8 +62,9 @@ item = r.brpop(["queue:high", "queue:low"], timeout=10)
 
 # Client with all timeout options
 r = redis.Redis(
-    host='localhost',
-    port=6379,
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
     socket_timeout=5.0,
     socket_connect_timeout=5.0,
     socket_keepalive=True,
@@ -79,6 +85,8 @@ except redis.ConnectionError:
     raise
 ```
 
-Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. Configure retry logic for transient failures.
+Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, use TLS and combine timeout/retry settings with your token refresh strategy.
 
-Reference: [Redis Client Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+References:
+- [Redis Client Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+- [Reliability in Azure Managed Redis](https://learn.microsoft.com/en-us/azure/reliability/reliability-managed-redis)

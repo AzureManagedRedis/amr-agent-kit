@@ -13,8 +13,12 @@ Use HyperLogLog (HLL) to count unique items when exact counts aren't required. H
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Using a set - memory grows with unique visitors
 def count_unique_visitors(page_id, user_id):
     r.sadd(f"visitors:{page_id}", user_id)
@@ -28,8 +32,12 @@ def get_unique_count(page_id):
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # HyperLogLog - constant 12KB memory, 0.81% standard error
 def track_unique_visitor(page_id, user_id):
     """Track unique visitor with HLL"""

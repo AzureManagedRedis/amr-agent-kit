@@ -13,8 +13,12 @@ Use Redis Streams instead of Pub/Sub when you need message persistence, replay c
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Pub/Sub messages are lost if no subscribers are listening
 r.publish("orders", "order:123")
 
@@ -27,8 +31,12 @@ r.publish("orders", "order:123")
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 # Add message to stream with auto-generated ID
 message_id = r.xadd("orders:stream", {
     "order_id": "123",

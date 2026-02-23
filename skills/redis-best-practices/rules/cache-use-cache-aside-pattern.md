@@ -13,8 +13,12 @@ Implement the cache-aside (lazy-loading) pattern where your application checks t
 
 ```python
 import redis
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_user(user_id):
     # Always queries database, ignores cache
     return db.query("SELECT * FROM users WHERE id = ?", user_id)
@@ -25,8 +29,12 @@ def get_user(user_id):
 ```python
 import redis
 import json
-r = redis.Redis(decode_responses=True)
-
+r = redis.Redis(
+    host='mycache.eastus.redis.azure.net',
+    port=10000,
+    ssl=True,
+    decode_responses=True
+)
 def get_user(user_id):
     """Cache-aside pattern with expiration"""
     cache_key = f"cache:user:{user_id}"
