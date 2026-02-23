@@ -1,0 +1,25 @@
+{
+  "name": "redis-agent-skills",
+  "displayName": "Redis Agent Skills",
+  "version": "1.0.0",
+  "description": "Redis and Azure Managed Redis best practices for AI coding agents, including application patterns, AI/vector workflows, and Azure infrastructure guidance.",
+  "author": {
+    "name": "Redis"
+  },
+  "homepage": "https://github.com/redis/redis-agent-skills",
+  "repository": "https://github.com/redis/redis-agent-skills",
+  "license": "MIT",
+  "keywords": [
+    "redis",
+    "azure-managed-redis",
+    "agent-skills",
+    "best-practices"
+  ],
+  "category": "developer-tools",
+  "tags": [
+    "redis",
+    "azure",
+    "ai"
+  ],
+  "skills": "./skills/"
+}
