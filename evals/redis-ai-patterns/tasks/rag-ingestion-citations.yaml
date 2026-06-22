@@ -1,0 +1,18 @@
+id: redis-ai-rag-ingestion-citations-002
+name: RAG ingestion with citations
+description: |
+  Tests that the skill recommends stable chunking, overlap, source metadata,
+  and citation fields for grounded RAG retrieval.
+tags:
+  - redis-ai
+  - rag
+  - chunking
+  - citations
+inputs:
+  prompt: |
+    Design a Redis-backed RAG ingestion pipeline for product manuals. The assistant
+    must quote sources with page and section references, and document updates should
+    not create duplicate stale chunks. What data should be stored with each vector?
+expected:
+  outcomes:
+    - type: task_completed

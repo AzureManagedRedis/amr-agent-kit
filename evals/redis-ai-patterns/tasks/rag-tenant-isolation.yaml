@@ -1,0 +1,19 @@
+id: redis-ai-rag-tenant-isolation-006
+name: RAG tenant isolation
+description: |
+  Tests that the skill treats tenant and ACL boundaries as retrieval-time
+  filters and not as prompt-only instructions.
+tags:
+  - redis-ai
+  - rag
+  - tenant-isolation
+  - acl
+inputs:
+  prompt: |
+    I am building a multi-tenant RAG assistant on Azure Managed Redis. Each
+    customer has private documents and users have different ACL groups. What
+    should the index records and retrieval query do so one tenant never sees
+    another tenant's context?
+expected:
+  outcomes:
+    - type: task_completed

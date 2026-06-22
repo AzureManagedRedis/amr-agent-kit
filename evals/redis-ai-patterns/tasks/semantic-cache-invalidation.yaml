@@ -1,0 +1,18 @@
+id: redis-ai-semantic-cache-invalidation-008
+name: Semantic cache invalidation
+description: |
+  Tests that the skill covers invalidating or versioning semantic cache entries
+  when knowledge, policy, prompt, or model contracts change.
+tags:
+  - redis-ai
+  - semantic-cache
+  - invalidation
+  - versioning
+inputs:
+  prompt: |
+    We use Redis semantic caching for LLM support answers, but source articles,
+    safety policy, and customer entitlement rules can change. How should cache
+    keys or invalidation work so old answers are not reused incorrectly?
+expected:
+  outcomes:
+    - type: task_completed

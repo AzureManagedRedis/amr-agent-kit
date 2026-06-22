@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "organization": "Microsoft",
   "date": "February 2026",
-  "abstract": "Patterns and best practices for building AI and ML applications with Redis on Azure Managed Redis (Redis Enterprise 7.4). Covers vector storage and indexing, similarity search, RAG implementation, semantic caching, LLM memory management, AI agent state orchestration, framework integration, and performance tuning. Contains 19 rules across 9 categories with incorrect vs. correct examples and references to official Azure and Redis documentation.",
+  "abstract": "Patterns and best practices for building AI and ML applications with Redis on Azure Managed Redis (Redis Enterprise 7.4). Covers vector storage and indexing, similarity search, RAG implementation, semantic caching, LLM memory management, AI agent state orchestration, framework integration, and performance tuning. Contains 24 rules across 9 categories with incorrect vs. correct examples and references to official Azure and Redis documentation.",
   "references": [
     "https://learn.microsoft.com/en-us/azure/redis/overview",
     "https://learn.microsoft.com/en-us/azure/redis/architecture",

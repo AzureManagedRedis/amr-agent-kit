@@ -21,13 +21,17 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 ## Table of Contents
 
 1. [Provisioning & Sizing](#1-provisioning--sizing) — **CRITICAL**
-   - 1.1 [Select Redis Modules at Provisioning Time](#11-select-redis-modules-at-provisioning-time)
-   - 1.2 [Select the Right Tier and SKU Before Provisioning](#12-select-the-right-tier-and-sku-before-provisioning)
+   - 1.1 [Codify Creation-Time Settings in Infrastructure as Code](#11-codify-creation-time-settings-in-infrastructure-as-code)
+   - 1.2 [Select Redis Modules at Provisioning Time](#12-select-redis-modules-at-provisioning-time)
+   - 1.3 [Select the Right Tier and SKU Before Provisioning](#13-select-the-right-tier-and-sku-before-provisioning)
 2. [Networking & Access](#2-networking--access) — **CRITICAL**
-   - 2.1 [Use Private Link and Disable Public Network Access](#21-use-private-link-and-disable-public-network-access)
+   - 2.1 [Configure Private DNS for Private Endpoints](#21-configure-private-dns-for-private-endpoints)
+   - 2.2 [Use Private Link and Disable Public Network Access](#22-use-private-link-and-disable-public-network-access)
 3. [Security & Identity](#3-security--identity) — **CRITICAL**
    - 3.1 [Enforce TLS 1.2+ for All Client Connections](#31-enforce-tls-12-for-all-client-connections)
    - 3.2 [Prefer Microsoft Entra Authentication Over Access Keys](#32-prefer-microsoft-entra-authentication-over-access-keys)
+   - 3.3 [Rotate Access Keys and Keep Secrets Out of Code](#33-rotate-access-keys-and-keep-secrets-out-of-code)
+   - 3.4 [Scope Data Access Policies to Identities and Key Patterns](#34-scope-data-access-policies-to-identities-and-key-patterns)
 4. [Availability & Zone Redundancy](#4-availability--zone-redundancy) — **HIGH**
    - 4.1 [Enable High Availability and Zone Redundancy](#41-enable-high-availability-and-zone-redundancy)
 5. [Geo-Replication & DR](#5-geo-replication--dr) — **HIGH**
@@ -38,6 +42,7 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
    - 7.1 [Choose Cluster Policy Based on Client and Module Needs](#71-choose-cluster-policy-based-on-client-and-module-needs)
 8. [Observability & Diagnostics](#8-observability--diagnostics) — **MEDIUM**
    - 8.1 [Enable Azure Monitor Metrics and Connection Logs](#81-enable-azure-monitor-metrics-and-connection-logs)
+   - 8.2 [Set Azure Monitor Alert Baselines Before Launch](#82-set-azure-monitor-alert-baselines-before-launch)
 
 ---
 
@@ -49,7 +54,37 @@ Choose the right Azure Managed Redis tier/SKU, region, and capacity to meet late
 
 ---
 
-### 1.1 Select Redis Modules at Provisioning Time
+### 1.1 Codify Creation-Time Settings in Infrastructure as Code
+
+**Impact: CRITICAL (prevents drift and disruptive reprovisioning)**
+
+Azure Managed Redis choices such as tier/SKU, region, modules, cluster policy, high availability, active geo-replication, private connectivity, diagnostics, and access policies should be modeled before deployment. Use Bicep, Azure Verified Modules, or Terraform modules with parameters per environment, and review changes with `what-if`, `terraform validate`, and `terraform plan` before applying. Portal-only deployments hide creation-time decisions and increase drift.
+
+**Incorrect: manual deployment with deferred decisions**
+
+```text
+Provisioning: portal click-through
+Tier/SKU: smallest available
+Modules: decide after go-live
+Cluster policy: decide after clients are built
+Networking/Security/Diagnostics: manual follow-up tasks
+Preflight: no what-if or plan review
+```
+
+**Correct: repeatable IaC baseline**
+
+```text
+IaC: Bicep/AVM or Terraform module checked into source control
+Parameters: tier, SKU, region, modules, cluster policy, HA, zones
+Networking: private endpoint, publicNetworkAccess, DNS links
+Security: Entra users, access policies, TLS, key posture
+Preflight: az deployment what-if or terraform validate && terraform plan
+Operations: diagnostic settings and alerts deployed with the cache
+```
+
+Reference: [https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise), [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis)
+
+### 1.2 Select Redis Modules at Provisioning Time
 
 **Impact: CRITICAL (avoids reprovisioning when modules are required)**
 
@@ -73,7 +108,7 @@ Result: vector search and JSON features available
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis)
 
-### 1.2 Select the Right Tier and SKU Before Provisioning
+### 1.3 Select the Right Tier and SKU Before Provisioning
 
 **Impact: CRITICAL (avoids under-provisioning and rework)**
 
@@ -111,7 +146,36 @@ Secure connectivity with Private Link, disable public network access, and config
 
 ---
 
-### 2.1 Use Private Link and Disable Public Network Access
+### 2.1 Configure Private DNS for Private Endpoints
+
+**Impact: CRITICAL (avoids private endpoint connectivity and TLS failures)**
+
+Private Link is only reliable when every client network resolves the Azure Managed Redis host name to the private endpoint IP. Keep applications configured to connect to `<cache-name>.<region>.redis.azure.net` on port `10000`, link the Private DNS zone to every spoke, AKS, management, and shared-services VNet that needs access, and add DNS forwarding for on-premises or custom DNS resolvers. Do not configure clients to use the `privatelink` host name directly.
+
+**Incorrect: private endpoint without end-to-end DNS**
+
+```text
+Private endpoint: Created
+Application host: <cache-name>.privatelink.redis.azure.net
+Linked VNets: only the endpoint VNet
+On-prem/custom DNS: no conditional forwarding
+Validation: no nslookup from workload subnets
+```
+
+**Correct: private DNS integrated with every client network**
+
+```text
+Application host: <cache-name>.<region>.redis.azure.net
+Port: 10000
+Private DNS zone: *.privatelink.redis.azure.net
+VNet links: AKS spoke, app spoke, management VNet, shared resolver VNet
+Custom DNS: conditional forwarding to Azure DNS/private resolver
+Validation: nslookup from each client subnet returns the private endpoint IP
+```
+
+Reference: [https://learn.microsoft.com/en-us/azure/redis/private-link](https://learn.microsoft.com/en-us/azure/redis/private-link), [https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns)
+
+### 2.2 Use Private Link and Disable Public Network Access
 
 **Impact: CRITICAL (reduces exposure to the public internet)**
 
@@ -190,6 +254,62 @@ Client: refreshes token before expiry and re-AUTHs
 ```
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+
+### 3.3 Rotate Access Keys and Keep Secrets Out of Code
+
+**Impact: CRITICAL (reduces credential exposure and recovery time)**
+
+Prefer Microsoft Entra authentication for Azure Managed Redis. If a legacy client still requires access keys, treat the keys as break-glass credentials: store them in Key Vault or an approved secret store, reference them from managed runtime configuration, and maintain a rotation runbook that validates clients can reconnect after key changes. Never commit Redis keys, connection strings, or tokens to source control, images, IaC parameter files, or eval prompts.
+
+**Incorrect: static key embedded in deployment artifacts**
+
+```text
+Authentication: access key
+Storage: appsettings.json committed to repo
+Rotation: none
+Client rollout: all instances use the same static value
+Incident response: no owner or rollback plan
+```
+
+**Correct: controlled exception with rotation hygiene**
+
+```text
+Authentication: Entra for supported clients; access key exception documented
+Storage: Key Vault secret referenced by managed identity
+Rotation: scheduled and tested with primary/secondary key rollover
+Client rollout: staged restart or hot reload from secret reference
+Incident response: owner, validation query, rollback, and audit trail
+```
+
+Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication), [https://learn.microsoft.com/en-us/azure/key-vault/secrets/about-secrets](https://learn.microsoft.com/en-us/azure/key-vault/secrets/about-secrets)
+
+### 3.4 Scope Data Access Policies to Identities and Key Patterns
+
+**Impact: CRITICAL (limits blast radius for compromised identities)**
+
+Azure Managed Redis uses Microsoft Entra identities for password-free access, but newly assigned users or service principals can receive broad command and key permissions unless you scope them. Assign managed identities or service principals per workload, use custom data access policies where available, and express least privilege with Redis ACL syntax such as command categories and key patterns. Track each access policy assignment as infrastructure so reviews and removals are auditable.
+
+**Incorrect: shared identity with full data-plane access**
+
+```text
+Identity: shared application service principal
+Access policy: +@all ~*
+Key patterns: unrestricted
+Commands: all commands not otherwise blocked by AMR
+Review process: manual portal assignment
+```
+
+**Correct: least-privilege identity and key scope**
+
+```text
+Identity: workload-specific managed identity object ID
+Access policy assignment: managed in IaC
+Access string: +@read +@write ~checkout:* ~session:*
+Admin/destructive commands: not granted unless explicitly required
+Review process: quarterly identity and ACL review
+```
+
+Reference: [https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions](https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions), [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
 
 ---
 
@@ -358,6 +478,36 @@ Destination: Log Analytics workspace
 ```
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-settings](https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-settings)
+
+### 8.2 Set Azure Monitor Alert Baselines Before Launch
+
+**Impact: HIGH (shortens detection and response time)**
+
+Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, and geo-replication health where used. Route diagnostic settings to Log Analytics so alerts can be investigated with connection logs and historical metrics.
+
+**Incorrect: dashboards only, no actionable alerts**
+
+```text
+Metrics: viewed manually in portal
+Diagnostic settings: disabled
+Alerts: none
+Action group: none
+Runbook: tribal knowledge
+Thresholds: not tied to load test or SLO
+```
+
+**Correct: launch baseline with alert routing**
+
+```text
+Diagnostic settings: AllMetrics and Connection logs to Log Analytics
+Metric alerts: usedmemorypercentage, serverLoad, percentProcessorTime
+Metric alerts: connectedclients, cacheLatency, evictedkeys
+Geo alerts: geoReplicationHealthy when active geo-replication is enabled
+Actions: on-call action group with severity, owner, and runbook URL
+Review: tune thresholds after load test and first production week
+```
+
+Reference: [https://learn.microsoft.com/en-us/azure/redis/monitor-cache](https://learn.microsoft.com/en-us/azure/redis/monitor-cache), [https://learn.microsoft.com/en-us/azure/redis/monitor-cache-reference](https://learn.microsoft.com/en-us/azure/redis/monitor-cache-reference)
 
 ---
 

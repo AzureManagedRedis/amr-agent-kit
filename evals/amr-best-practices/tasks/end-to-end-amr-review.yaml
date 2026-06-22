@@ -1,0 +1,21 @@
+id: amr-rollup-end-to-end-001
+name: End-to-end AMR architecture review
+description: |
+  Tests that the rollup skill gives consolidated guidance across Redis data
+  modeling, AI retrieval, secure AMR deployment, and operations.
+tags:
+  - amr-rollup
+  - redis-app
+  - redis-ai
+  - azure-managed-redis
+inputs:
+  prompt: |
+    Review an architecture that uses Azure Managed Redis for product cache,
+    session storage, vector search over support articles, and agent checkpoints.
+    The deployment needs private network access, identity-based auth, high
+    availability, persistence, and monitoring. What best-practice checklist
+    should the team apply across application code, AI retrieval, and Azure
+    operations?
+expected:
+  outcomes:
+    - type: task_completed

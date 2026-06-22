@@ -1,0 +1,18 @@
+id: redis-ai-idempotent-embedding-ingestion-007
+name: Idempotent embedding ingestion
+description: |
+  Tests that the skill recommends deterministic chunk IDs, content hashes,
+  manifests, and stale-vector cleanup for repeatable embedding ingestion.
+tags:
+  - redis-ai
+  - embeddings
+  - ingestion
+  - idempotency
+inputs:
+  prompt: |
+    Our document indexing job reruns nightly and sometimes reprocesses the same
+    files after small edits. How should Redis keys and metadata be designed so
+    embedding upserts are idempotent and stale chunks are removed?
+expected:
+  outcomes:
+    - type: task_completed

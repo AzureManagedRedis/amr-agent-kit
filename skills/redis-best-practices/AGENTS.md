@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Comprehensive development patterns and best practices for building applications with Redis on Azure Managed Redis, designed for AI agents and LLMs. Contains 32 rules across 10 categories, prioritized by impact from critical (data structures, key design) to operational (resilience). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations using redis-py, and links to official Azure and Redis documentation.
+Comprehensive development patterns and best practices for building applications with Redis on Azure Managed Redis, designed for AI agents and LLMs. Contains 37 rules across 10 categories, prioritized by impact from critical (data structures, key design) to operational (resilience). Each rule includes detailed explanations, real-world examples comparing incorrect vs. correct implementations using redis-py, and links to official Azure and Redis documentation.
 
 ---
 
@@ -40,8 +40,11 @@ Comprehensive development patterns and best practices for building applications 
    - 3.4 [Use Pipelining for Bulk Operations](#34-use-pipelining-for-bulk-operations)
 4. [Connection Management](#4-connection-management) — **HIGH**
    - 4.1 [Configure Connection Timeouts](#41-configure-connection-timeouts)
-   - 4.2 [Use Connection Pooling](#42-use-connection-pooling)
-   - 4.3 [Use Microsoft Entra Authentication for Azure Managed Redis](#43-use-microsoft-entra-authentication-for-azure-managed-redis)
+   - 4.2 [Refresh Entra Tokens Before Expiry](#42-refresh-entra-tokens-before-expiry)
+   - 4.3 [Reuse SDK Clients and Pools](#43-reuse-sdk-clients-and-pools)
+   - 4.4 [Use Connection Pooling](#44-use-connection-pooling)
+   - 4.5 [Use Microsoft Entra Authentication for Azure Managed Redis](#45-use-microsoft-entra-authentication-for-azure-managed-redis)
+   - 4.6 [Use TLS and Azure Managed Redis Ports](#46-use-tls-and-azure-managed-redis-ports)
 5. [Caching Strategies](#5-caching-strategies) — **HIGH**
    - 5.1 [Prevent Cache Stampede](#51-prevent-cache-stampede)
    - 5.2 [Use Cache-Aside Pattern for Reading](#52-use-cache-aside-pattern-for-reading)
@@ -62,6 +65,8 @@ Comprehensive development patterns and best practices for building applications 
    - 10.1 [Avoid Keyspace Notifications for Critical Workflows](#101-avoid-keyspace-notifications-for-critical-workflows)
    - 10.2 [Handle Connection Errors Gracefully](#102-handle-connection-errors-gracefully)
    - 10.3 [Implement Redis Health Checks](#103-implement-redis-health-checks)
+   - 10.4 [Isolate Local and Test Redis Configuration](#104-isolate-local-and-test-redis-configuration)
+   - 10.5 [Use Bounded Retries with Jitter](#105-use-bounded-retries-with-jitter)
 
 ---
 
@@ -1291,7 +1296,152 @@ except redis.ConnectionError:
 
 Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, use TLS and combine timeout/retry settings with your token refresh strategy.
 
-### 4.2 Use Connection Pooling
+### 4.2 Refresh Entra Tokens Before Expiry
+
+**Impact: HIGH (prevents authentication failures on long-lived Redis connections)**
+
+When using Microsoft Entra authentication with Azure Managed Redis, access tokens expire. Long-lived application processes must refresh tokens before expiry and ensure pooled connections authenticate with the fresh token. Prefer SDK-specific token credential providers where available; otherwise centralize client creation behind a refresh-aware factory.
+
+- [Use Microsoft Entra for Redis authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+
+- [Azure Identity client library for Python](https://learn.microsoft.com/en-us/python/api/overview/azure/identity-readme)
+
+**Incorrect: token captured once at startup**
+
+```python
+import redis
+from azure.identity import DefaultAzureCredential
+
+credential = DefaultAzureCredential()
+token = credential.get_token("https://redis.azure.com/.default")
+
+# This process may run for days, but the token will expire.
+r = redis.Redis(
+    host="mycache.eastus.redis.azure.net",
+    port=10000,
+    ssl=True,
+    ssl_cert_reqs="required",
+    username="managed-identity-object-id",
+    password=token.token
+)
+```
+
+**Correct: refresh-aware client factory**
+
+```python
+import os
+import time
+import redis
+from azure.identity import DefaultAzureCredential
+
+class RedisClientFactory:
+    def __init__(self):
+        self.credential = DefaultAzureCredential()
+        self.client = None
+        self.refresh_at = 0
+
+    def get_client(self):
+        if self.client is None or time.time() >= self.refresh_at:
+            if self.client is not None:
+                self.client.close()
+                self.client.connection_pool.disconnect()
+
+            token = self.credential.get_token("https://redis.azure.com/.default")
+            self.refresh_at = token.expires_on - 300
+            self.client = redis.Redis(
+                host=os.environ["REDIS_HOST"],
+                port=10000,
+                ssl=True,
+                ssl_cert_reqs="required",
+                username=os.environ["REDIS_ENTRA_OBJECT_ID"],
+                password=token.token,
+                socket_connect_timeout=5.0,
+                socket_timeout=5.0,
+                decode_responses=True
+            )
+
+        return self.client
+
+redis_factory = RedisClientFactory()
+```
+
+Do not scatter token acquisition across request handlers. Keep the token refresh path coordinated with connection pooling, retry policy, and process shutdown so reconnects do not reuse expired credentials.
+
+### 4.3 Reuse SDK Clients and Pools
+
+**Impact: CRITICAL (prevents TLS handshake overhead and connection exhaustion)**
+
+Create Redis SDK clients, connection multiplexers, or connection pools once at application startup and reuse them for the lifetime of the process. Per-request clients are especially expensive on Azure Managed Redis because each new connection repeats TLS setup, authentication, and server-side connection allocation.
+
+- [Redis client pools and multiplexing](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
+
+- [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
+
+**Incorrect: connect and disconnect on every request**
+
+```javascript
+import { createClient } from "redis";
+
+export async function getUser(req, res) {
+  const client = createClient({
+    socket: {
+      host: process.env.REDIS_HOST,
+      port: 10000,
+      tls: true
+    },
+    username: process.env.REDIS_USERNAME,
+    password: process.env.REDIS_PASSWORD
+  });
+
+  await client.connect();
+  const user = await client.get(`cache:user:${req.params.id}`);
+  await client.quit();
+
+  res.json({ user });
+}
+```
+
+**Correct: singleton client initialized once**
+
+```javascript
+import { createClient } from "redis";
+
+let redisPromise;
+
+export function getRedis() {
+  if (!redisPromise) {
+    const client = createClient({
+      socket: {
+        host: process.env.REDIS_HOST,
+        port: 10000,
+        tls: true,
+        connectTimeout: 5000,
+        keepAlive: 5000
+      },
+      username: process.env.REDIS_USERNAME,
+      password: process.env.REDIS_PASSWORD
+    });
+
+    client.on("error", (err) => {
+      console.error("Redis client error", err);
+    });
+
+    redisPromise = client.connect().then(() => client);
+  }
+
+  return redisPromise;
+}
+
+export async function getUser(req, res) {
+  const client = await getRedis();
+  const user = await client.get(`cache:user:${req.params.id}`);
+  res.json({ user });
+}
+```
+
+Use the idiom for your SDK: a singleton `ConnectionMultiplexer` for StackExchange.Redis, a shared `RedisClient` and reused stateful connections for Lettuce, a process-wide pool for redis-py, and a connected singleton for node-redis or ioredis. Create separate clients only for distinct roles that require it, such as blocking commands, Pub/Sub subscriptions, or isolated credentials.
+
+### 4.4 Use Connection Pooling
 
 **Impact: CRITICAL (prevents connection exhaustion and improves performance)**
 
@@ -1375,7 +1525,7 @@ with redis.Redis(connection_pool=pool) as r:
 
 Set `max_connections` based on your application's concurrency needs. For web servers, match it to your worker count. On Azure Managed Redis, keep TLS enabled and combine pooling with Entra token refresh where supported.
 
-### 4.3 Use Microsoft Entra Authentication for Azure Managed Redis
+### 4.5 Use Microsoft Entra Authentication for Azure Managed Redis
 
 **Impact: HIGH (reduces access key exposure)**
 
@@ -1419,6 +1569,55 @@ r = redis.Redis(
     password=token.token
 )
 ```
+
+### 4.6 Use TLS and Azure Managed Redis Ports
+
+**Impact: CRITICAL (prevents plaintext traffic and endpoint misconfiguration)**
+
+Production clients for Azure Managed Redis must connect to the managed endpoint with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, or disabled certificate checks into production configuration.
+
+- [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
+
+- [Redis TLS documentation](https://redis.io/docs/latest/operate/oss_and_stack/management/security/encryption/)
+
+**Incorrect: local/non-TLS defaults used for AMR**
+
+```python
+import redis
+
+r = redis.Redis(
+    host="mycache.eastus.redis.azure.net",
+    port=6379,
+    ssl=False,
+    password="access-key",
+    ssl_cert_reqs=None
+)
+
+r.set("cache:ready", "true")
+```
+
+**Correct: AMR endpoint with TLS and validation**
+
+```python
+import os
+import redis
+
+r = redis.Redis(
+    host=os.environ["REDIS_HOST"],
+    port=int(os.environ.get("REDIS_PORT", "10000")),
+    ssl=True,
+    ssl_cert_reqs="required",
+    username=os.environ["REDIS_USERNAME"],
+    password=os.environ["REDIS_PASSWORD"],
+    socket_connect_timeout=5.0,
+    socket_timeout=5.0,
+    decode_responses=True
+)
+
+r.set("cache:ready", "true", ex=60)
+```
+
+Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing.
 
 ---
 
@@ -3109,6 +3308,126 @@ class RedisHealthMonitor:
 Use health check results for load balancer configuration. Set appropriate timeout thresholds. Monitor trends in latency and memory usage. Alert on consecutive failures, not single events.
 
 Reference: [https://redis.io/docs/latest/commands/ping/](https://redis.io/docs/latest/commands/ping/)
+
+### 10.4 Isolate Local and Test Redis Configuration
+
+**Impact: MEDIUM-HIGH (prevents tests and local tools from mutating production Redis data)**
+
+Keep local development and automated tests isolated from Azure Managed Redis production instances. Tests should require explicit test configuration, use disposable namespaces, and clean only their own keys. Never let missing local settings fall back to production endpoints or credentials.
+
+- [Redis SCAN command](https://redis.io/docs/latest/commands/scan/)
+
+- [Azure Managed Redis overview](https://learn.microsoft.com/en-us/azure/redis/overview)
+
+**Incorrect: tests can hit production and flush data**
+
+```javascript
+import { createClient } from "redis";
+
+const client = createClient({
+  url: process.env.REDIS_URL || "rediss://prod-cache.eastus.redis.azure.net:10000"
+});
+
+beforeEach(async () => {
+  await client.connect();
+  await client.flushAll();
+});
+```
+
+**Correct: explicit test endpoint and namespaced cleanup**
+
+```javascript
+import { randomUUID } from "node:crypto";
+import { createClient } from "redis";
+
+if (process.env.NODE_ENV === "test" && !process.env.TEST_REDIS_URL) {
+  throw new Error("TEST_REDIS_URL is required for Redis integration tests");
+}
+
+const keyPrefix = `test:${randomUUID()}:`;
+const client = createClient({ url: process.env.TEST_REDIS_URL });
+
+export function testKey(name) {
+  return `${keyPrefix}${name}`;
+}
+
+beforeAll(async () => {
+  await client.connect();
+});
+
+afterEach(async () => {
+  for await (const key of client.scanIterator({ MATCH: `${keyPrefix}*`, COUNT: 100 })) {
+    await client.del(key);
+  }
+});
+
+afterAll(async () => {
+  await client.quit();
+});
+```
+
+Use separate resource groups, databases, credentials, or local containers for test workloads when possible. Block destructive commands such as `FLUSHALL` and `FLUSHDB` against shared Azure Managed Redis environments, and require production configuration to be explicit at startup.
+
+### 10.5 Use Bounded Retries with Jitter
+
+**Impact: HIGH (reduces cascading failures during transient Redis outages)**
+
+Retry transient Redis connection and timeout failures with a small maximum attempt count, exponential backoff, jitter, and an overall operation deadline. Never use infinite retry loops or immediate retry storms; they amplify Azure Managed Redis failovers, network blips, and throttling.
+
+- [Redis client error handling](https://redis.io/docs/latest/develop/clients/error-handling/)
+
+- [Azure Well-Architected reliability recommendations](https://learn.microsoft.com/en-us/azure/well-architected/reliability/)
+
+**Incorrect: unbounded immediate retries**
+
+```python
+import redis
+
+r = redis.Redis(host="mycache.eastus.redis.azure.net", port=10000, ssl=True)
+
+def get_cached_user(user_id):
+    while True:
+        try:
+            return r.get(f"cache:user:{user_id}")
+        except redis.RedisError:
+            # Busy loop hammers Redis and can block the request forever.
+            continue
+```
+
+**Correct: bounded retries with jitter and fallback**
+
+```python
+import random
+import time
+import redis
+
+r = redis.Redis(
+    host="mycache.eastus.redis.azure.net",
+    port=10000,
+    ssl=True,
+    socket_connect_timeout=5.0,
+    socket_timeout=5.0,
+    decode_responses=True
+)
+
+TRANSIENT_ERRORS = (redis.ConnectionError, redis.TimeoutError)
+
+def get_cached_user(user_id):
+    delay = 0.1
+
+    for attempt in range(3):
+        try:
+            return r.get(f"cache:user:{user_id}")
+        except TRANSIENT_ERRORS:
+            if attempt == 2:
+                return None
+
+            sleep_for = min(delay + random.uniform(0, delay), 2.0)
+            time.sleep(sleep_for)
+            delay *= 2
+```
+
+Use SDK retry mechanisms when they provide equivalent controls, but still set socket and command timeouts. Only retry operations that are safe to replay; for Lua scripts, transactions, counters, and queue acknowledgements, design idempotency keys or use application-level reconciliation before retrying blindly.
 
 ---
 

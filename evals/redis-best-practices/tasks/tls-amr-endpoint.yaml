@@ -1,0 +1,19 @@
+id: redis-tls-amr-endpoint-006
+name: Azure Managed Redis TLS endpoint configuration
+description: |
+  Tests that the skill catches non-TLS or local Redis port defaults and recommends
+  Azure Managed Redis TLS endpoint settings with certificate validation.
+tags:
+  - redis-app
+  - tls
+  - configuration
+  - azure-managed-redis
+inputs:
+  prompt: |
+    A service is moving from local Redis to Azure Managed Redis. The current config
+    uses redis://, port 6379, ssl=false, and disables certificate checks so tests
+    pass locally. What should production client configuration look like?
+expected:
+  outcomes:
+    - type: task_completed
+

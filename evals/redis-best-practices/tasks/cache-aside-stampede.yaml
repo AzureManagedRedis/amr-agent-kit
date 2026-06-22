@@ -1,0 +1,19 @@
+id: redis-cache-aside-stampede-001
+name: Cache-aside with stampede protection
+description: |
+  Tests that the skill gives Redis cache-aside guidance with TTLs and
+  stampede mitigation for a hot product catalog read path.
+tags:
+  - redis-app
+  - caching
+  - ttl
+  - stampede
+inputs:
+  prompt: |
+    I'm adding Redis in front of a SQL-backed product catalog on Azure Managed Redis.
+    The product detail endpoint has a few extremely hot SKUs, and when cache entries
+    expire all app instances stampede the database. Review the approach and suggest
+    a safer cache-aside pattern with key naming and expiration guidance.
+expected:
+  outcomes:
+    - type: task_completed

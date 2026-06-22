@@ -1,0 +1,97 @@
+name: Eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Waza eval suite to run
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - amr-best-practices
+          - redis-best-practices
+          - redis-ai-patterns
+          - azure-infra
+      install_waza:
+        description: Install the Waza CLI with the official Microsoft install script before running evals
+        type: boolean
+        required: true
+        default: true
+      continue_on_error:
+        description: Keep this optional manual workflow non-blocking if Waza or eval execution fails
+        type: boolean
+        required: true
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    name: Optional Waza content evals
+    runs-on: windows-latest
+    env:
+      WAZA_NO_UPDATE_CHECK: '1'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install root dependencies
+        run: npm install --package-lock=false
+
+      - name: Install build tool dependencies
+        working-directory: packages/amr-agent-skills-build
+        run: npm ci
+
+      - name: Build generated skill artifacts
+        run: npm run build
+
+      - name: Validate skill package structure
+        run: npm run validate
+
+      - name: Install Waza CLI
+        if: inputs.install_waza
+        continue-on-error: ${{ inputs.continue_on_error }}
+        shell: pwsh
+        run: |
+          irm https://raw.githubusercontent.com/microsoft/waza/main/install.ps1 | iex
+          $wazaInstallPath = Join-Path $env:LOCALAPPDATA 'Microsoft\Waza'
+          $wazaInstallPath | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $env:PATH = "$wazaInstallPath;$env:PATH"
+          waza --version
+      - name: Run selected Waza evals with mock executor
+        continue-on-error: ${{ inputs.continue_on_error }}
+        shell: pwsh
+        run: |
+          $suite = '${{ inputs.suite }}'
+          $evals = @()
+          if ($suite -eq 'all') {
+            $evals = @(
+              'evals/amr-best-practices/eval.yaml',
+              'evals/redis-best-practices/eval.yaml',
+              'evals/redis-ai-patterns/eval.yaml',
+              'evals/azure-infra/eval.yaml'
+            )
+          } else {
+            $evals = @("evals/$suite/eval.yaml")
+          }
+
+          foreach ($eval in $evals) {
+            Write-Host "Running $eval"
+            waza run $eval --executor mock
+          }
+      - name: Upload eval results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: waza-eval-results
+          path: routing-eval/results/**
+          if-no-files-found: ignore

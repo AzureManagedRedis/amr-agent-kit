@@ -1,0 +1,21 @@
+id: redis-entra-token-refresh-007
+name: Entra token refresh for Redis clients
+description: |
+  Tests that the skill recommends refreshing Microsoft Entra tokens before expiry
+  and coordinating token refresh with pooled Redis client connections.
+tags:
+  - redis-app
+  - entra
+  - authentication
+  - connection-management
+  - azure-managed-redis
+inputs:
+  prompt: |
+    We're using Microsoft Entra authentication for Azure Managed Redis from a
+    long-running worker. It gets a token during startup and passes it as the Redis
+    password, but after several hours reconnects start failing. How should the
+    client manage tokens and pooled connections?
+expected:
+  outcomes:
+    - type: task_completed
+

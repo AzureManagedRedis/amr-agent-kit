@@ -1,0 +1,514 @@
+{
+  "generatedBy": "packages/amr-agent-skills-build/src/build.ts",
+  "description": "Deterministic rollup manifest. Rule content is sourced from focused skill rule files and is not copied into this skill.",
+  "skill": "amr-best-practices",
+  "totalRules": 76,
+  "sources": [
+    {
+      "skill": "redis-best-practices",
+      "rulesDir": "../redis-best-practices/rules",
+      "ruleCount": 37,
+      "sections": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "skill": "redis-ai-patterns",
+      "rulesDir": "../redis-ai-patterns/rules",
+      "ruleCount": 24,
+      "sections": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19
+      ]
+    },
+    {
+      "skill": "azure-infra",
+      "rulesDir": "../azure-infra/rules",
+      "ruleCount": 15,
+      "sections": [
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/ds-choose-sets-for-uniqueness.md",
+      "section": 1,
+      "title": "Use Sets for Unique Collections"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/ds-lists-for-queues.md",
+      "section": 1,
+      "title": "Use Lists for Queues and Stacks"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/ds-sorted-sets-for-rankings.md",
+      "section": 1,
+      "title": "Use Sorted Sets for Rankings and Leaderboards"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/ds-strings-for-counters.md",
+      "section": 1,
+      "title": "Use Strings with INCR for Atomic Counters"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/ds-use-hashes-for-objects.md",
+      "section": 1,
+      "title": "Use Hashes for Object Storage"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/ds-use-hyperloglog-for-cardinality.md",
+      "section": 1,
+      "title": "Use HyperLogLog for Cardinality Estimation"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/resilience-avoid-keyspace-notifications.md",
+      "section": 10,
+      "title": "Avoid Keyspace Notifications for Critical Workflows"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/resilience-handle-connection-errors.md",
+      "section": 10,
+      "title": "Handle Connection Errors Gracefully"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/resilience-isolate-local-test-configuration.md",
+      "section": 10,
+      "title": "Isolate Local and Test Redis Configuration"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/resilience-use-bounded-retries.md",
+      "section": 10,
+      "title": "Use Bounded Retries with Jitter"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/resilience-use-health-checks.md",
+      "section": 10,
+      "title": "Implement Redis Health Checks"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/vec-align-dimensions-and-distance-metric.md",
+      "section": 11,
+      "title": "Keep Embedding Dimensions and Distance Metric Aligned"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/vec-store-vectors-with-metadata.md",
+      "section": 11,
+      "title": "Store Vectors with Filterable Metadata"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/search-limit-k-and-returned-fields.md",
+      "section": 12,
+      "title": "Limit K and Returned Fields for AI Retrieval"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/search-use-enterprise-policy-for-modules.md",
+      "section": 12,
+      "title": "Use Enterprise Cluster Policy for RediSearch and RedisJSON"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/search-use-hybrid-vector-and-metadata-filters.md",
+      "section": 12,
+      "title": "Use Hybrid Vector Search with Metadata Filters"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/rag-chunk-content-with-stable-windowing.md",
+      "section": 13,
+      "title": "Chunk Documents with Stable Size and Overlap"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/rag-enforce-tenant-and-acl-boundaries.md",
+      "section": 13,
+      "title": "Enforce Tenant and ACL Boundaries in RAG"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/rag-store-source-citations-in-index.md",
+      "section": 13,
+      "title": "Store Source and Citation Metadata for RAG"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/semcache-invalidate-on-knowledge-and-policy-changes.md",
+      "section": 14,
+      "title": "Invalidate Semantic Cache on Knowledge and Policy Changes"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/semcache-set-threshold-and-ttl-by-use-case.md",
+      "section": 14,
+      "title": "Tune Semantic Cache Threshold and TTL by Use Case"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/semcache-version-keys-by-model-and-prompt.md",
+      "section": 14,
+      "title": "Version Semantic Cache Keys by Model and Prompt"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/llm-set-session-ttl-and-window.md",
+      "section": 15,
+      "title": "Set TTL and Sliding Windows for LLM Session Memory"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/llm-summarize-long-conversations.md",
+      "section": 15,
+      "title": "Summarize Older Turns to Preserve Context Budget"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/agent-persist-agent-state-and-checkpoints.md",
+      "section": 16,
+      "title": "Persist Agent State and Checkpoints in Redis"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/agent-resume-from-idempotent-checkpoints.md",
+      "section": 16,
+      "title": "Resume Agents from Idempotent Checkpoints"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/agent-use-streams-for-multi-step-workflows.md",
+      "section": 16,
+      "title": "Use Redis Streams for Multi-Step Agent Workflows"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/embed-batch-embedding-and-upsert.md",
+      "section": 17,
+      "title": "Batch Embedding Generation and Redis Upserts"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/embed-make-ingestion-idempotent.md",
+      "section": 17,
+      "title": "Make Embedding Ingestion Idempotent"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/embed-standardize-model-per-index.md",
+      "section": 17,
+      "title": "Standardize One Embedding Model per Index"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/integrate-use-microsoft-agent-framework.md",
+      "section": 18,
+      "title": "Use Microsoft Agent Framework with Redis for Durable Agent State"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/integrate-use-redisvl-for-schema-and-queries.md",
+      "section": 18,
+      "title": "Use RedisVL for Index Schema and Query Lifecycle"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/perf-pipeline-bulk-ingestion.md",
+      "section": 19,
+      "title": "Pipeline Bulk Vector Ingestion"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/perf-size-for-vector-workloads.md",
+      "section": 19,
+      "title": "Size for Vector Workloads and Memory Footprint"
+    },
+    {
+      "sourceSkill": "redis-ai-patterns",
+      "sourceFile": "../redis-ai-patterns/rules/perf-tune-hnsw-runtime-params.md",
+      "section": 19,
+      "title": "Tune HNSW Runtime Parameters for SLA Targets"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/key-avoid-large-keys.md",
+      "section": 2,
+      "title": "Avoid Very Large Keys and Values"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/key-set-ttl-on-cache-keys.md",
+      "section": 2,
+      "title": "Always Set TTL on Cache Keys"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/key-use-colons-for-namespacing.md",
+      "section": 2,
+      "title": "Use Colons for Key Namespacing"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/key-use-hash-tags-for-cluster.md",
+      "section": 2,
+      "title": "Use Hash Tags for Multi-Key Operations in Clustered Redis"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/key-use-scan-not-keys.md",
+      "section": 2,
+      "title": "Use SCAN Instead of KEYS in Production"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/provision-codify-creation-time-settings.md",
+      "section": 20,
+      "title": "Codify Creation-Time Settings in Infrastructure as Code"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/provision-select-modules-at-create.md",
+      "section": 20,
+      "title": "Select Redis Modules at Provisioning Time"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/provision-select-tier.md",
+      "section": 20,
+      "title": "Select the Right Tier and SKU Before Provisioning"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/network-configure-private-dns.md",
+      "section": 21,
+      "title": "Configure Private DNS for Private Endpoints"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/network-use-private-link.md",
+      "section": 21,
+      "title": "Use Private Link and Disable Public Network Access"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/security-enforce-tls.md",
+      "section": 22,
+      "title": "Enforce TLS 1.2+ for All Client Connections"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/security-rotate-keys-and-protect-secrets.md",
+      "section": 22,
+      "title": "Rotate Access Keys and Keep Secrets Out of Code"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/security-scope-data-access-policies.md",
+      "section": 22,
+      "title": "Scope Data Access Policies to Identities and Key Patterns"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/security-use-entra-authentication.md",
+      "section": 22,
+      "title": "Prefer Microsoft Entra Authentication Over Access Keys"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/availability-enable-ha-zone-redundancy.md",
+      "section": 23,
+      "title": "Enable High Availability and Zone Redundancy"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/geo-plan-active-geo-replication.md",
+      "section": 24,
+      "title": "Plan Active Geo-Replication for Multi-Region DR"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/durability-configure-persistence.md",
+      "section": 25,
+      "title": "Configure Persistence for Node Recovery, Use Export for Backups"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/performance-choose-cluster-policy.md",
+      "section": 26,
+      "title": "Choose Cluster Policy Based on Client and Module Needs"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/observability-enable-diagnostics.md",
+      "section": 27,
+      "title": "Enable Azure Monitor Metrics and Connection Logs"
+    },
+    {
+      "sourceSkill": "azure-infra",
+      "sourceFile": "../azure-infra/rules/observability-set-alert-baselines.md",
+      "section": 27,
+      "title": "Set Azure Monitor Alert Baselines Before Launch"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/cmd-use-lua-for-complex-atomicity.md",
+      "section": 3,
+      "title": "Use Lua Scripts for Complex Atomic Operations"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/cmd-use-mget-mset-for-batches.md",
+      "section": 3,
+      "title": "Use MGET/MSET for Batch Key Operations"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/cmd-use-multi-exec-for-atomicity.md",
+      "section": 3,
+      "title": "Use MULTI/EXEC for Atomic Operations"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/cmd-use-pipelining-for-bulk.md",
+      "section": 3,
+      "title": "Use Pipelining for Bulk Operations"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/conn-configure-timeouts.md",
+      "section": 4,
+      "title": "Configure Connection Timeouts"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/conn-refresh-entra-tokens.md",
+      "section": 4,
+      "title": "Refresh Entra Tokens Before Expiry"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/conn-require-tls-amr-endpoints.md",
+      "section": 4,
+      "title": "Use TLS and Azure Managed Redis Ports"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/conn-reuse-sdk-clients.md",
+      "section": 4,
+      "title": "Reuse SDK Clients and Pools"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/conn-use-connection-pooling.md",
+      "section": 4,
+      "title": "Use Connection Pooling"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/conn-use-entra-authentication.md",
+      "section": 4,
+      "title": "Use Microsoft Entra Authentication for Azure Managed Redis"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/cache-prevent-cache-stampede.md",
+      "section": 5,
+      "title": "Prevent Cache Stampede"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/cache-use-cache-aside-pattern.md",
+      "section": 5,
+      "title": "Use Cache-Aside Pattern for Reading"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/use-distributed-locks-safely.md",
+      "section": 6,
+      "title": "Implement Distributed Locks Safely"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/use-rate-limiting-patterns.md",
+      "section": 6,
+      "title": "Use Redis for Rate Limiting"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/use-sessions-with-expiration.md",
+      "section": 6,
+      "title": "Store Sessions with Automatic Expiration"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/msg-use-pubsub-for-broadcast.md",
+      "section": 7,
+      "title": "Use Pub/Sub for Real-Time Broadcasting"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/msg-use-streams-for-reliable-messaging.md",
+      "section": 7,
+      "title": "Use Streams for Reliable Messaging"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/stack-use-json-for-documents.md",
+      "section": 8,
+      "title": "Use RedisJSON for Complex Documents"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/stack-use-search-for-queries.md",
+      "section": 8,
+      "title": "Use Redis Search for Complex Queries"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/memory-monitor-and-set-limits.md",
+      "section": 9,
+      "title": "Monitor Memory and Set Limits"
+    },
+    {
+      "sourceSkill": "redis-best-practices",
+      "sourceFile": "../redis-best-practices/rules/memory-use-efficient-encodings.md",
+      "section": 9,
+      "title": "Use Memory-Efficient Data Structures"
+    }
+  ]
+}

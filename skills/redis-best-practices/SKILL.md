@@ -1,6 +1,14 @@
 ---
 name: redis-best-practices
-description: Redis development patterns and best practices, optimized for Azure Managed Redis. Use when writing, reviewing, or refactoring application code that interacts with Redis on AMR. Triggers on tasks involving Redis, caching, session storage, pub/sub, queues, leaderboards, rate limiting, key-value operations, or data structure selection.
+description: |
+  Redis development patterns and best practices, optimized for Azure Managed Redis.
+  Use when writing, reviewing, or refactoring application code that interacts with
+  Redis on AMR. Triggers on tasks involving Redis, caching, session storage,
+  pub/sub, queues, leaderboards, rate limiting, key-value operations, data
+  structure selection, key design, connection handling, memory optimization, or
+  Redis resilience.
+  Do NOT use for: Azure Managed Redis infrastructure provisioning, AI-specific
+  vector search or RAG patterns, or general application design unrelated to Redis.
 license: MIT
 metadata:
   author: Microsoft
@@ -9,11 +17,10 @@ metadata:
 
 # Redis Best Practices (Azure Managed Redis)
 
-Development patterns and best practices for building applications with Redis on Azure Managed Redis. Contains rules across multiple categories, prioritized by impact to guide code generation and review.
+Development patterns and best practices for building applications with Redis on Azure Managed Redis. This skill contains 37 rules across 10 categories, prioritized by impact to guide code generation, refactoring, and review.
 
-## When to Apply
+## Scope
 
-Reference these guidelines when:
 - Writing new code that interacts with Redis
 - Choosing data structures for your use case
 - Designing key naming conventions
@@ -21,6 +28,44 @@ Reference these guidelines when:
 - Building queues, leaderboards, or rate limiters
 - Optimizing connection handling
 - Working with pub/sub or streams
+
+## Agent Guidance
+
+### Apply Critical Rules First
+
+Start with Data Structures and Key Design. Incorrect data structures, missing TTLs, large keys, unsafe cluster key placement, or production use of `KEYS` usually require design changes before smaller command-level optimizations matter.
+
+### Prefer AMR-Safe Defaults
+
+When generating Redis client code for Azure Managed Redis, default to TLS-enabled connections, explicit timeouts, bounded retries, connection pooling or multiplexing, and Microsoft Entra authentication where appropriate.
+
+### Separate Redis Use Cases
+
+Identify the user's Redis workload before recommending code:
+
+| User Intent | Signal Phrases | Primary Categories |
+|---|---|---|
+| Model application data | "data structure", "schema", "hash", "set", "leaderboard", "counter" | Data Structures, Key Design |
+| Improve Redis performance | "slow", "latency", "round trips", "bulk", "batch" | Commands & Patterns, Connection Management |
+| Implement caching | "cache", "TTL", "stale", "stampede" | Caching Strategies, Key Design |
+| Build app primitives | "sessions", "rate limit", "lock", "queue" | Common Use Cases, Pub/Sub & Streams |
+| Harden production behavior | "retry", "timeout", "health", "memory", "resilience" | Connection Management, Memory Optimization, Error Handling & Resilience |
+
+## Available Resources
+
+- `AGENTS.md` - Full compiled guidance with expanded rules, examples, and references.
+- `rules/` - Individual rule files for targeted guidance.
+- `rules/_sections.md` - Category ordering, impact, and descriptions.
+- `metadata.json` - Version, abstract, and reference links.
+
+## Redis Best Practices Workflow
+
+1. Identify the Redis use case and data access pattern.
+2. Select the smallest correct Redis data structure for the operation.
+3. Design namespaced keys with TTLs, size limits, and cluster hash tags where needed.
+4. Choose efficient commands and batch round trips with pipelining or MGET/MSET.
+5. Configure AMR-safe connection handling, authentication, timeouts, and retries.
+6. Add resilience, memory, and health-check safeguards for production workloads.
 
 ## Rule Categories by Priority
 
@@ -65,9 +110,12 @@ Reference these guidelines when:
 
 ### 4. Connection Management (HIGH)
 
+- `conn-reuse-sdk-clients` - Reuse SDK clients and pools for the process lifetime
+- `conn-require-tls-amr-endpoints` - Use TLS-enabled Azure Managed Redis endpoints and ports
 - `conn-use-connection-pooling` - Use TLS-enabled AMR connection pools to avoid exhaustion
 - `conn-configure-timeouts` - Set socket, connect, and command timeouts for AMR network conditions
 - `conn-use-entra-authentication` - Use Microsoft Entra authentication on Azure Managed Redis
+- `conn-refresh-entra-tokens` - Refresh Entra tokens before long-lived connections expire
 
 ### 5. Caching Strategies (HIGH)
 
@@ -98,10 +146,12 @@ Reference these guidelines when:
 ### 10. Error Handling & Resilience (LOW-MEDIUM)
 
 - `resilience-handle-connection-errors` - Implement retries with exponential backoff
+- `resilience-use-bounded-retries` - Use bounded retries with jitter for transient failures
 - `resilience-use-health-checks` - Monitor Redis health with PING and INFO
 - `resilience-avoid-keyspace-notifications` - Avoid keyspace notifications for critical workflows
+- `resilience-isolate-local-test-configuration` - Keep local and test Redis configuration isolated from production
 
-## How to Use
+## How to Use the Rule Files
 
 Read individual rule files for detailed explanations and code examples:
 
@@ -117,6 +167,13 @@ Each rule file contains:
 - Correct code example with explanation
 - Additional context and references
 
+## Tips for Effective Redis Guidance
+
+- Recommend the simplest Redis structure that satisfies the access pattern.
+- Avoid unbounded scans, unbounded lists, missing TTLs on cache keys, and large values.
+- Prefer explicit code examples showing incorrect and correct usage when reviewing or refactoring.
+- Use `AGENTS.md` when the user needs full expanded examples or references.
+
 ## Full Compiled Document
 
-For the complete guide with all rules expanded: `AGENTS.md`
+For the complete guide with all rules expanded, use `AGENTS.md`.

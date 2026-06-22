@@ -1,0 +1,19 @@
+id: amr-iac-creation-time-settings-005
+name: IaC creation-time settings
+description: |
+  Tests that the skill recommends repeatable AMR infrastructure-as-code and
+  calls out creation-time decisions that should be reviewed before deployment.
+tags:
+  - azure-managed-redis
+  - iac
+  - bicep
+  - terraform
+  - provisioning
+inputs:
+  prompt: |
+    We are building a reusable deployment pattern for Azure Managed Redis across
+    dev, test, and prod. What should be captured in Bicep or Terraform before
+    provisioning so we avoid drift and don't miss creation-time settings?
+expected:
+  outcomes:
+    - type: task_completed

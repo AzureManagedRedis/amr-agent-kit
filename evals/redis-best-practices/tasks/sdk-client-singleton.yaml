@@ -1,0 +1,20 @@
+id: redis-sdk-client-singleton-005
+name: SDK client singleton reuse
+description: |
+  Tests that the skill recommends long-lived Redis SDK clients, connection pools,
+  or multiplexers instead of per-request connect/disconnect patterns.
+tags:
+  - redis-app
+  - connection-management
+  - sdk-clients
+  - azure-managed-redis
+inputs:
+  prompt: |
+    Review this Express API code for Azure Managed Redis: each handler calls
+    createClient(), connect(), GET, and quit(). Under load the app spends a lot
+    of time connecting and occasionally exhausts sockets. What SDK/client pattern
+    should we use instead across Node.js and .NET services?
+expected:
+  outcomes:
+    - type: task_completed
+

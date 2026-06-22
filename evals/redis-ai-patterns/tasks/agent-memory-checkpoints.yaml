@@ -1,0 +1,19 @@
+id: redis-ai-agent-memory-checkpoints-004
+name: Agent memory and checkpoints
+description: |
+  Tests that the skill recommends Redis-backed agent state, session TTLs,
+  checkpoints, and Streams for multi-step durable workflows.
+tags:
+  - redis-ai
+  - agents
+  - memory
+  - streams
+inputs:
+  prompt: |
+    I'm building an AI triage agent that calls tools over several steps. If the
+    process restarts, it should resume the ticket workflow without repeating
+    completed tool calls, and old conversation memory should expire. How can Redis
+    help model this state?
+expected:
+  outcomes:
+    - type: task_completed

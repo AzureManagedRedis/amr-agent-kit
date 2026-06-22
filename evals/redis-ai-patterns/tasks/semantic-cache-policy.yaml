@@ -1,0 +1,18 @@
+id: redis-ai-semantic-cache-policy-003
+name: Semantic cache policy
+description: |
+  Tests that the skill covers semantic cache threshold, TTL, prompt/model
+  versioning, and safety boundaries for LLM response reuse.
+tags:
+  - redis-ai
+  - semantic-cache
+  - llm
+  - ttl
+inputs:
+  prompt: |
+    We want to cache LLM answers for repeated customer support questions with Redis.
+    How should we choose the semantic similarity threshold, TTL, and cache key
+    versioning so answers do not leak across model or prompt-template changes?
+expected:
+  outcomes:
+    - type: task_completed

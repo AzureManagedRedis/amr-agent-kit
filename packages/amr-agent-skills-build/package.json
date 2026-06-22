@@ -5,10 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "npx tsx src/build.ts --all",
+    "build:skill": "npx tsx src/build.ts",
+    "build-amr-best-practices": "npx tsx src/build.ts --skill=amr-best-practices",
     "build-best-practices": "npx tsx src/build.ts --skill=redis-best-practices",
     "build-ai": "npx tsx src/build.ts --skill=redis-ai-patterns",
     "build-azure-infra": "npx tsx src/build.ts --skill=azure-infra",
     "validate": "npx tsx src/validate.ts",
+    "validate:skill": "npx tsx src/validate.ts",
     "dev": "npm run build && npm run validate"
   },
   "keywords": [

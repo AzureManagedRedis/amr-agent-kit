@@ -1,0 +1,19 @@
+id: amr-ha-zone-redundancy-003
+name: High availability and zone redundancy
+description: |
+  Tests that the skill covers tier/SKU selection, zone redundancy, failover,
+  and client resilience considerations for production AMR.
+tags:
+  - azure-managed-redis
+  - high-availability
+  - zone-redundancy
+  - failover
+inputs:
+  prompt: |
+    We are sizing Azure Managed Redis for a revenue-critical checkout service.
+    The app must tolerate a zone outage in-region, and clients should handle
+    planned failovers without a long outage. What AMR availability features and
+    application behaviors should we design for?
+expected:
+  outcomes:
+    - type: task_completed

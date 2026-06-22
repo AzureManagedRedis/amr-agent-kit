@@ -1,0 +1,43 @@
+{
+  "name": "amr-agent-kit",
+  "version": "1.0.0",
+  "description": "Official Codex plugin for AMR Agent Kit. Provides Redis application best practices, Redis AI/vector/RAG patterns, and Azure Managed Redis infrastructure guidance.",
+  "author": {
+    "name": "Microsoft",
+    "url": "https://learn.microsoft.com/azure/redis/"
+  },
+  "homepage": "https://github.com/AzureManagedRedis/amr-agent-kit",
+  "repository": "https://github.com/AzureManagedRedis/amr-agent-kit",
+  "license": "MIT",
+  "keywords": [
+    "redis",
+    "azure",
+    "azure-managed-redis",
+    "managed-redis",
+    "best-practices",
+    "vector-search",
+    "rag",
+    "agent-skills"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "AMR Agent Kit",
+    "shortDescription": "Redis and Azure Managed Redis skills for application, AI, and infrastructure workflows.",
+    "longDescription": "The AMR Agent Kit bundles curated agent skills for Redis and Azure Managed Redis. It covers Redis data structure selection, key design, efficient commands, caching, sessions, rate limiting, queues, Streams, RedisJSON and Redis Search, AMR-safe connection handling, TLS, Microsoft Entra authentication, resilience, vector search, RAG, semantic caching, LLM memory, AI agent state, Azure Managed Redis provisioning, SKU and tier selection, private networking, high availability, geo-replication, persistence, and Azure Monitor observability. Use it to help agents generate, review, and harden Redis applications and Azure Managed Redis deployments.",
+    "developerName": "Microsoft",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ],
+    "websiteURL": "https://learn.microsoft.com/azure/redis/",
+    "privacyPolicyURL": "https://privacy.microsoft.com/privacystatement",
+    "defaultPrompt": [
+      "Review my Redis usage for Azure Managed Redis best practices.",
+      "Help me choose Redis data structures and key names for this feature.",
+      "Design a Redis vector search index for my RAG pipeline.",
+      "Add semantic caching or LLM memory with Redis on Azure Managed Redis.",
+      "Plan a secure Azure Managed Redis deployment with Private Link, Entra ID, and monitoring."
+    ],
+    "brandColor": "#DC382D"
+  }
+}

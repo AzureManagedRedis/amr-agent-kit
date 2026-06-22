@@ -1,0 +1,19 @@
+id: redis-ai-agent-checkpoint-recovery-009
+name: Agent checkpoint recovery
+description: |
+  Tests that the skill recommends idempotent checkpoints so agent workflows can
+  resume after restarts without repeating completed tool calls.
+tags:
+  - redis-ai
+  - agents
+  - checkpoints
+  - recovery
+inputs:
+  prompt: |
+    My AI workflow agent creates tickets, enriches them with retrieval results,
+    and sends notifications. If the worker restarts mid-run, how should Redis
+    checkpoints be modeled so completed steps are skipped and side effects are
+    not repeated?
+expected:
+  outcomes:
+    - type: task_completed

@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Patterns and best practices for building AI and ML applications with Redis on Azure Managed Redis (Redis Enterprise 7.4). Covers vector storage and indexing, similarity search, RAG implementation, semantic caching, LLM memory management, AI agent state orchestration, framework integration, and performance tuning. Contains 19 rules across 9 categories with incorrect vs. correct examples and references to official Azure and Redis documentation.
+Patterns and best practices for building AI and ML applications with Redis on Azure Managed Redis (Redis Enterprise 7.4). Covers vector storage and indexing, similarity search, RAG implementation, semantic caching, LLM memory management, AI agent state orchestration, framework integration, and performance tuning. Contains 24 rules across 9 categories with incorrect vs. correct examples and references to official Azure and Redis documentation.
 
 ---
 
@@ -26,21 +26,26 @@ Patterns and best practices for building AI and ML applications with Redis on Az
 2. [Similarity Search](#2-similarity-search) — **CRITICAL**
    - 2.1 [Limit K and Returned Fields for AI Retrieval](#21-limit-k-and-returned-fields-for-ai-retrieval)
    - 2.2 [Use Enterprise Cluster Policy for RediSearch and RedisJSON](#22-use-enterprise-cluster-policy-for-redisearch-and-redisjson)
+   - 2.3 [Use Hybrid Vector Search with Metadata Filters](#23-use-hybrid-vector-search-with-metadata-filters)
 3. [RAG Implementation](#3-rag-implementation) — **HIGH**
    - 3.1 [Chunk Documents with Stable Size and Overlap](#31-chunk-documents-with-stable-size-and-overlap)
-   - 3.2 [Store Source and Citation Metadata for RAG](#32-store-source-and-citation-metadata-for-rag)
+   - 3.2 [Enforce Tenant and ACL Boundaries in RAG](#32-enforce-tenant-and-acl-boundaries-in-rag)
+   - 3.3 [Store Source and Citation Metadata for RAG](#33-store-source-and-citation-metadata-for-rag)
 4. [Semantic Caching](#4-semantic-caching) — **HIGH**
-   - 4.1 [Tune Semantic Cache Threshold and TTL by Use Case](#41-tune-semantic-cache-threshold-and-ttl-by-use-case)
-   - 4.2 [Version Semantic Cache Keys by Model and Prompt](#42-version-semantic-cache-keys-by-model-and-prompt)
+   - 4.1 [Invalidate Semantic Cache on Knowledge and Policy Changes](#41-invalidate-semantic-cache-on-knowledge-and-policy-changes)
+   - 4.2 [Tune Semantic Cache Threshold and TTL by Use Case](#42-tune-semantic-cache-threshold-and-ttl-by-use-case)
+   - 4.3 [Version Semantic Cache Keys by Model and Prompt](#43-version-semantic-cache-keys-by-model-and-prompt)
 5. [LLM Memory & Sessions](#5-llm-memory--sessions) — **HIGH**
    - 5.1 [Set TTL and Sliding Windows for LLM Session Memory](#51-set-ttl-and-sliding-windows-for-llm-session-memory)
    - 5.2 [Summarize Older Turns to Preserve Context Budget](#52-summarize-older-turns-to-preserve-context-budget)
 6. [AI Agent Patterns](#6-ai-agent-patterns) — **MEDIUM-HIGH**
    - 6.1 [Persist Agent State and Checkpoints in Redis](#61-persist-agent-state-and-checkpoints-in-redis)
-   - 6.2 [Use Redis Streams for Multi-Step Agent Workflows](#62-use-redis-streams-for-multi-step-agent-workflows)
+   - 6.2 [Resume Agents from Idempotent Checkpoints](#62-resume-agents-from-idempotent-checkpoints)
+   - 6.3 [Use Redis Streams for Multi-Step Agent Workflows](#63-use-redis-streams-for-multi-step-agent-workflows)
 7. [Embeddings & Models](#7-embeddings--models) — **MEDIUM**
    - 7.1 [Batch Embedding Generation and Redis Upserts](#71-batch-embedding-generation-and-redis-upserts)
-   - 7.2 [Standardize One Embedding Model per Index](#72-standardize-one-embedding-model-per-index)
+   - 7.2 [Make Embedding Ingestion Idempotent](#72-make-embedding-ingestion-idempotent)
+   - 7.3 [Standardize One Embedding Model per Index](#73-standardize-one-embedding-model-per-index)
 8. [Framework Integration](#8-framework-integration) — **MEDIUM**
    - 8.1 [Use Microsoft Agent Framework with Redis for Durable Agent State](#81-use-microsoft-agent-framework-with-redis-for-durable-agent-state)
    - 8.2 [Use RedisVL for Index Schema and Query Lifecycle](#82-use-redisvl-for-index-schema-and-query-lifecycle)
@@ -171,6 +176,48 @@ Result: vector search and JSON features available
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
+### 2.3 Use Hybrid Vector Search with Metadata Filters
+
+**Impact: CRITICAL (improves retrieval precision and prevents unsafe post-filtering)**
+
+Combine vector similarity with metadata filters in the Redis query itself. Pulling broad top-K results and filtering in application code can drop relevant results, increase latency, and expose records from the wrong tenant, locale, status, or entitlement boundary.
+
+**Incorrect: filtering after broad vector retrieval**
+
+```python
+query = Query("*=>[KNN 50 @embedding $vec AS score]").sort_by("score")
+results = redis_client.ft("idx:kb").search(query, {"vec": query_vector})
+
+allowed = [
+    doc for doc in results.docs
+    if doc.tenant_id == tenant_id
+    and doc.locale == locale
+    and doc.access_tier in user_access_tiers
+]
+```
+
+**Correct: hybrid filter and vector search in one query**
+
+```python
+tenant = escape_tag(tenant_id)
+locale_tag = escape_tag(locale)
+access = "|".join(escape_tag(tier) for tier in user_access_tiers)
+
+filter_expr = (
+    f"(@tenant_id:{{{tenant}}} @locale:{{{locale_tag}}} "
+    f"@access_tier:{{{access}}} @status:{{active}})"
+)
+query = (
+    Query(f"{filter_expr}=>[KNN 8 @embedding $vec AS score]")
+    .sort_by("score")
+    .return_fields("chunk_id", "title", "source_url", "score")
+)
+
+results = redis_client.ft("idx:kb").search(query, {"vec": query_vector})
+```
+
+Reference: [https://redis.io/docs/latest/develop/ai/search-and-query/vectors/](https://redis.io/docs/latest/develop/ai/search-and-query/vectors/)
+
 ---
 
 ## 3. RAG Implementation
@@ -205,7 +252,47 @@ Chunk metadata: docId, chunkId, section, sourceUrl
 
 Reference: [https://redis.io/docs/latest/develop/get-started/rag/](https://redis.io/docs/latest/develop/get-started/rag/)
 
-### 3.2 Store Source and Citation Metadata for RAG
+### 3.2 Enforce Tenant and ACL Boundaries in RAG
+
+**Impact: CRITICAL (prevents cross-tenant data leakage in retrieval-grounded responses)**
+
+Treat tenant and access-control filters as part of the retrieval contract, not prompt instructions. Every indexed chunk should carry the fields needed to enforce tenant, user group, classification, and lifecycle status before context reaches the LLM.
+
+**Incorrect: relying on the prompt for isolation**
+
+```python
+contexts = vector_search(user_question)
+prompt = f"""
+Only answer using documents for tenant {tenant_id}.
+
+Context:
+{format_context(contexts)}
+"""
+```
+
+**Correct: fail closed and filter retrieval by tenant and ACL**
+
+```python
+if not tenant_id or not user_acl_tags:
+    raise ValueError("tenant and ACL context are required for RAG retrieval")
+
+tenant = escape_tag(tenant_id)
+acl_filter = "|".join(escape_tag(tag) for tag in user_acl_tags)
+query_text = (
+    f"(@tenant_id:{{{tenant}}} @acl:{{{acl_filter}}} "
+    f"@classification:{{public|internal}} @status:{{active}})"
+    f"=>[KNN 6 @embedding $vec AS score]"
+)
+
+contexts = redis_client.ft("idx:rag:shared").search(
+    Query(query_text).sort_by("score"),
+    {"vec": question_vector},
+)
+```
+
+Reference: [https://redis.io/docs/latest/develop/get-started/rag/](https://redis.io/docs/latest/develop/get-started/rag/)
+
+### 3.3 Store Source and Citation Metadata for RAG
 
 **Impact: HIGH (supports traceability and hallucination reduction)**
 
@@ -246,7 +333,42 @@ Semantic caching reduces LLM costs and latency by returning cached responses for
 
 ---
 
-### 4.1 Tune Semantic Cache Threshold and TTL by Use Case
+### 4.1 Invalidate Semantic Cache on Knowledge and Policy Changes
+
+**Impact: HIGH (avoids serving stale or unauthorized generated answers)**
+
+Semantic cache entries depend on more than the query embedding. Invalidate or version the cache when source knowledge, entitlement rules, safety policy, prompt templates, or model versions change. TTL alone is not enough for urgent corrections or access-policy updates.
+
+**Incorrect: cache namespace ignores knowledge and policy versions**
+
+```python
+cache_key = f"semcache:{tenant_id}:{model_id}:{prompt_version}:{query_hash}"
+redis_client.hset(cache_key, mapping={"answer": answer, "embedding": query_embedding})
+redis_client.expire(cache_key, 86400)
+```
+
+**Correct: include corpus and policy versions in the reuse contract**
+
+```python
+corpus_version = redis_client.get(f"rag:corpus_version:{tenant_id}:support_kb")
+policy_version = redis_client.get(f"ai:policy_version:{tenant_id}")
+
+cache_key = (
+    f"semcache:{tenant_id}:{model_id}:{prompt_version}:"
+    f"{corpus_version}:{policy_version}:{query_hash}"
+)
+redis_client.hset(cache_key, mapping={
+    "answer": answer,
+    "embedding": query_embedding,
+    "corpus_version": corpus_version,
+    "policy_version": policy_version,
+})
+redis_client.expire(cache_key, ttl_seconds)
+```
+
+Reference: [https://redis.io/docs/latest/develop/ai/redisvl/](https://redis.io/docs/latest/develop/ai/redisvl/)
+
+### 4.2 Tune Semantic Cache Threshold and TTL by Use Case
 
 **Impact: HIGH (balances reuse rate with response correctness)**
 
@@ -269,7 +391,7 @@ Trading insights: threshold=0.95, ttl=5m
 
 Reference: [https://redis.io/docs/latest/develop/ai/](https://redis.io/docs/latest/develop/ai/)
 
-### 4.2 Version Semantic Cache Keys by Model and Prompt
+### 4.3 Version Semantic Cache Keys by Model and Prompt
 
 **Impact: HIGH (avoids stale or incompatible cached generations)**
 
@@ -384,7 +506,45 @@ redis_client.expire(f"agent:run:{run_id}", 86400)
 
 Reference: [https://redis.io/docs/latest/develop/ai/](https://redis.io/docs/latest/develop/ai/)
 
-### 6.2 Use Redis Streams for Multi-Step Agent Workflows
+### 6.2 Resume Agents from Idempotent Checkpoints
+
+**Impact: MEDIUM-HIGH (prevents repeated side effects after worker restarts)**
+
+Persist each agent step as an idempotent checkpoint with its output location and status. On restart, load the latest checkpoint and skip completed tool calls instead of replaying the whole plan and repeating side effects.
+
+**Incorrect: restart repeats completed tool calls**
+
+```python
+for step in plan.steps:
+    output = call_tool(step.name, step.input)
+    memory.append({"step": step.name, "output": output})
+```
+
+**Correct: resume from recorded step completion**
+
+```python
+checkpoint_key = f"agent:run:{run_id}:checkpoint"
+to_text = lambda value: value.decode() if isinstance(value, bytes) else value
+state = {to_text(key): to_text(value) for key, value in redis_client.hgetall(checkpoint_key).items()}
+
+for step in plan.steps:
+    if state.get(step.name) == "done":
+        output = redis_client.get(f"agent:run:{run_id}:output:{step.name}")
+        continue
+
+    idempotency_key = f"{run_id}:{step.name}"
+    output = call_tool(step.name, step.input, idempotency_key=idempotency_key)
+
+    pipe = redis_client.pipeline()
+    pipe.set(f"agent:run:{run_id}:output:{step.name}", output, ex=86400)
+    pipe.hset(checkpoint_key, mapping={step.name: "done", "last_step": step.name})
+    pipe.expire(checkpoint_key, 86400)
+    pipe.execute()
+```
+
+Reference: [https://redis.io/docs/latest/develop/ai/](https://redis.io/docs/latest/develop/ai/)
+
+### 6.3 Use Redis Streams for Multi-Step Agent Workflows
 
 **Impact: MEDIUM-HIGH (provides durable sequencing and consumer coordination)**
 
@@ -446,7 +606,54 @@ for batch in batched(docs, 128):
 
 Reference: [https://redis.io/docs/latest/develop/use/pipelining/](https://redis.io/docs/latest/develop/use/pipelining/)
 
-### 7.2 Standardize One Embedding Model per Index
+### 7.2 Make Embedding Ingestion Idempotent
+
+**Impact: HIGH (prevents duplicate chunks and stale vectors during re-indexing)**
+
+Use deterministic chunk IDs and content fingerprints when writing embeddings. Random IDs or append-only ingestion create duplicate vectors, stale search results, and inconsistent citations when documents are reprocessed.
+
+**Incorrect: new random vector IDs on every run**
+
+```python
+for chunk in chunk_document(document):
+    redis_client.hset(
+        f"rag:chunk:{uuid4()}",
+        mapping={"doc_id": document.id, "text": chunk.text, "embedding": embed(chunk.text)},
+    )
+```
+
+**Correct: stable IDs, manifest, and stale chunk cleanup**
+
+```python
+manifest_key = f"rag:doc:{tenant_id}:{document.id}:chunks"
+to_text = lambda value: value.decode() if isinstance(value, bytes) else value
+existing = {to_text(key) for key in redis_client.smembers(manifest_key)}
+seen = set()
+pipe = redis_client.pipeline()
+
+for chunk in chunk_document(document):
+    fingerprint = sha256(f"{embedding_model}:{chunk.text}".encode()).hexdigest()
+    chunk_key = f"rag:chunk:{tenant_id}:{document.id}:{fingerprint[:16]}"
+    seen.add(chunk_key)
+    pipe.hset(chunk_key, mapping={
+        "doc_id": document.id,
+        "content_hash": fingerprint,
+        "embedding_model": embedding_model,
+        "text": chunk.text,
+        "embedding": embed(chunk.text),
+    })
+    pipe.sadd(manifest_key, chunk_key)
+
+stale = existing - seen
+if stale:
+    pipe.delete(*stale)
+    pipe.srem(manifest_key, *stale)
+pipe.execute()
+```
+
+Reference: [https://redis.io/docs/latest/develop/ai/search-and-query/vectors/](https://redis.io/docs/latest/develop/ai/search-and-query/vectors/)
+
+### 7.3 Standardize One Embedding Model per Index
 
 **Impact: MEDIUM (maintains score consistency and ranking quality)**
 
