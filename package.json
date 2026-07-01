@@ -3,7 +3,7 @@
   "displayName": "AMR Agent Kit",
   "private": true,
   "version": "1.0.0",
-  "description": "Redis and Azure Managed Redis agent skills for application, AI, and infrastructure guidance.",
+  "description": "Redis code and Azure Managed Redis infrastructure agent skills.",
   "keywords": [
     "redis",
     "azure",
@@ -41,6 +41,7 @@
     "build:skill": "cd packages\\amr-agent-skills-build && npx tsx src\\build.ts",
     "validate": "cd packages\\amr-agent-skills-build && npm run validate",
     "validate:skill": "cd packages\\amr-agent-skills-build && npx tsx src\\validate.ts",
-    "dev": "cd packages\\amr-agent-skills-build && npm run dev"
+    "dev": "cd packages\\amr-agent-skills-build && npm run dev",
+    "efficacy:prepare": "node scripts\\prepare-efficacy-workspace.mjs"
   }
 }
