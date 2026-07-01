@@ -1,6 +1,6 @@
 # AMR Agent Kit Gemini Extension
 
-This extension provides agent skills for Redis and Azure Managed Redis. It covers Redis application patterns, Redis AI/vector/RAG workflows, and Azure Managed Redis infrastructure guidance.
+This extension provides agent skills for Redis and Azure Managed Redis. It covers Redis application and AI coding patterns plus Azure Managed Redis infrastructure guidance.
 
 ## Installation
 
@@ -26,6 +26,5 @@ Once installed, the skills are available when Gemini detects Redis or Azure Mana
 
 | Skill | Focus |
 |---|---|
-| `redis-best-practices` | Redis application patterns, data structures, key design, commands, caching, sessions, messaging, memory, and resilience |
-| `redis-ai-patterns` | Vector search, RAG, semantic caching, LLM memory, AI agent state, embeddings, framework integration, and performance tuning |
-| `azure-infra` | Azure Managed Redis provisioning, networking, security, availability, geo-replication, durability, performance, and observability |
+| `redis-code` | Redis application and AI coding patterns, including data structures, key design, commands, caching, sessions, messaging, memory, resilience, vector search, RAG, semantic caching, LLM memory, agent state, embeddings, and framework integration |
+| `azure-redis-infra` | Azure Managed Redis provisioning, networking, security, availability, geo-replication, durability, performance, and observability |

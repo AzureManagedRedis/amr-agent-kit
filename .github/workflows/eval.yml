@@ -10,10 +10,8 @@ on:
         default: all
         options:
           - all
-          - amr-best-practices
-          - redis-best-practices
-          - redis-ai-patterns
-          - azure-infra
+          - redis-code
+          - azure-redis-infra
       install_waza:
         description: Install the Waza CLI with the official Microsoft install script before running evals
         type: boolean
@@ -75,10 +73,8 @@ jobs:
           $evals = @()
           if ($suite -eq 'all') {
             $evals = @(
-              'evals/amr-best-practices/eval.yaml',
-              'evals/redis-best-practices/eval.yaml',
-              'evals/redis-ai-patterns/eval.yaml',
-              'evals/azure-infra/eval.yaml'
+              'evals/redis-code/eval.yaml',
+              'evals/azure-redis-infra/eval.yaml'
             )
           } else {
             $evals = @("evals/$suite/eval.yaml")

@@ -15,5 +15,5 @@ Use dated entries for future pull requests. Keep entries short, specific, and gr
 
 ### Changed
 
-- Documented the repository restructuring effort around Redis best practices, Redis AI patterns, and Azure Managed Redis infrastructure skills.
+- Consolidated the repository around two focused skills: Redis application/AI coding and Azure Managed Redis infrastructure.
 - Expanded the root package metadata for the stable `amr-agent-kit` 1.0.0 identity.

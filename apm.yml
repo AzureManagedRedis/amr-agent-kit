@@ -2,7 +2,7 @@ name: amr-agent-kit
 version: 1.0.0
 description: >-
   Redis and Azure Managed Redis skills for AI coding agents. Covers Redis application
-  patterns, Redis AI/vector/RAG workflows, and Azure Managed Redis infrastructure guidance.
+  and AI coding patterns plus Azure Managed Redis infrastructure guidance.
 
 marketplace:
   owner:
@@ -11,7 +11,7 @@ marketplace:
   packages:
     - name: amr-agent-kit
       description: >-
-        Redis and Azure Managed Redis skills for application patterns, vector search,
-        RAG, semantic caching, LLM memory, and secure Azure Managed Redis infrastructure.
+        Redis and Azure Managed Redis skills for code patterns, vector search, RAG,
+        semantic caching, LLM memory, and secure Azure Managed Redis infrastructure.
       source: .
       homepage: https://github.com/AzureManagedRedis/amr-agent-kit

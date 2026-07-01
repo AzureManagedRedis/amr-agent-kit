@@ -4,12 +4,10 @@ A collection of [Open Agent Skills](https://agentskills.io/) for AI coding agent
 
 ## Overview
 
-This repository helps AI agents provide Azure Managed Redis guidance through one monolithic rollup skill plus three focused skills:
+This repository helps AI agents provide Azure Managed Redis guidance through two focused skills:
 
-- Use `amr-best-practices` for comprehensive or cross-domain AMR/Redis guidance.
-- Apply Redis development best practices for data structures, key design, caching, messaging, memory, and resilience.
-- Build AI applications on Redis with vector search, RAG, semantic caching, LLM memory, and agent state patterns.
-- Provision and operate Azure Managed Redis with Azure-native networking, security, availability, durability, and observability guidance.
+- Use `redis-code` for Redis application and AI coding patterns: data structures, key design, caching, messaging, vector search, RAG, semantic caching, LLM memory, and agent state.
+- Use `azure-redis-infra` for Azure Managed Redis infrastructure: provisioning, Private Link, security, availability, geo-replication, durability, performance, and observability.
 
 ## Usage
 
@@ -71,25 +69,13 @@ cp -r ./amr-agent-kit/skills/* ~/.claude/skills/
 
 ## Available Skills
 
-### amr-best-practices
+### redis-code
 
-Monolithic AMR rollup skill combining all Redis application, Redis AI, and Azure Managed Redis infrastructure rules.
+Redis application and AI coding best practices optimized for Azure Managed Redis.
 
-Use when a task spans multiple AMR/Redis domains or when a user asks for comprehensive best-practices guidance across app code, AI/vector/RAG workloads, and Azure deployment or operations.
+Use when writing, reviewing, or refactoring Redis code on AMR, including caching, session storage, pub/sub, queues, leaderboards, rate limiting, data structures, key design, vector search, RAG, semantic caching, LLM memory, embeddings, and AI agent state.
 
-### redis-best-practices
-
-Redis development patterns and best practices optimized for Azure Managed Redis.
-
-Use when writing, reviewing, or refactoring application code that interacts with Redis on AMR, including caching, session storage, pub/sub, queues, leaderboards, rate limiting, key-value operations, and data structure selection.
-
-### redis-ai-patterns
-
-Patterns for building AI applications with Redis on Azure Managed Redis.
-
-Use when implementing vector search, RAG, semantic caching, LLM memory, AI agents, embeddings, similarity search, LangChain, LlamaIndex, RedisVL, Microsoft Agent Framework, or vector databases on Azure.
-
-### azure-infra
+### azure-redis-infra
 
 Azure Managed Redis infrastructure patterns and best practices.
 
@@ -121,30 +107,17 @@ Use when provisioning AMR, configuring private endpoints, enforcing Entra ID aut
 amr-agent-kit/
 +-- README.md
 +-- skills/
-|   +-- redis-best-practices/
+|   +-- redis-code/
 |   |   +-- SKILL.md
 |   |   +-- README.md
 |   |   +-- metadata.json
 |   |   +-- AGENTS.md
 |   |   +-- rules/
-|   +-- redis-ai-patterns/
+|   +-- azure-redis-infra/
 |   |   +-- SKILL.md
 |   |   +-- README.md
 |   |   +-- metadata.json
 |   |   +-- AGENTS.md
-|   |   +-- rules/
-|   +-- azure-infra/
-|   |   +-- SKILL.md
-|   |   +-- README.md
-|   |   +-- metadata.json
-|   |   +-- AGENTS.md
-|   |   +-- rules/
-|   +-- amr-best-practices/
-|   |   +-- SKILL.md
-|   |   +-- README.md
-|   |   +-- metadata.json
-|   |   +-- AGENTS.md
-|   |   +-- rules.manifest.json
 |   |   +-- rules/
 +-- packages/
     +-- amr-agent-skills-build/
@@ -158,18 +131,14 @@ Each skill contains:
 - `rules/` - Individual rule files with examples, impact, and references.
 - `metadata.json` - Version, publication metadata, abstract, and reference links.
 
-The `amr-best-practices` rollup generates `AGENTS.md` and `rules.manifest.json` from the focused skill rule directories instead of copying rule files.
-
 ## Building and Validation
 
 ```bash
 cd packages/amr-agent-skills-build
 npm install
 npm run build
-npm run build-amr-best-practices
-npm run build-best-practices
-npm run build-ai
-npm run build-azure-infra
+npm run build-redis-code
+npm run build-azure-redis-infra
 npm run validate
 ```
 

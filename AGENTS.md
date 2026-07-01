@@ -32,13 +32,10 @@ skills/
 
 ### Prefixes by Skill
 
-**redis-best-practices:**
-`ds-`, `key-`, `cmd-`, `conn-`, `cache-`, `use-`, `msg-`, `stack-`, `memory-`, `resilience-`
+**redis-code:**
+`ds-`, `key-`, `cmd-`, `conn-`, `cache-`, `use-`, `msg-`, `stack-`, `memory-`, `resilience-`, `vec-`, `search-`, `rag-`, `semcache-`, `llm-`, `agent-`, `embed-`, `integrate-`, `perf-`
 
-**redis-ai-patterns:**
-`vec-`, `search-`, `rag-`, `semcache-`, `llm-`, `agent-`, `embed-`, `integrate-`, `perf-`
-
-**azure-infra:**
+**azure-redis-infra:**
 `provision-`, `network-`, `security-`, `availability-`, `geo-`, `durability-`, `performance-`, `observability-`
 
 ### SKILL.md Format
@@ -99,21 +96,20 @@ npm run build
 
 ```bash
 cd skills
-zip -r redis-best-practices.zip redis-best-practices/
-zip -r redis-ai-patterns.zip redis-ai-patterns/
-zip -r azure-infra.zip azure-infra/
+zip -r redis-code.zip redis-code/
+zip -r azure-redis-infra.zip azure-redis-infra/
 ```
 
 ### End-User Installation
 
 **Claude Code:**
 ```bash
-cp -r skills/redis-best-practices ~/.claude/skills/
+cp -r skills/redis-code ~/.claude/skills/
 ```
 
 **GitHub Copilot / VS Code:**
 ```bash
-cp -r skills/redis-best-practices ~/.copilot/skills/
+cp -r skills/redis-code ~/.copilot/skills/
 ```
 
 **Using skills CLI:**

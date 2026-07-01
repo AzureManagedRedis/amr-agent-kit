@@ -1,14 +1,13 @@
 # Contributing to AMR Agent Kit
 
-Thank you for improving AMR Agent Kit. This repository contains agent skills for Redis best practices, Redis AI patterns, and Azure Managed Redis infrastructure. Keep contributions focused on Azure Managed Redis and Redis application guidance.
+Thank you for improving AMR Agent Kit. This repository contains agent skills for Redis application and AI coding best practices plus Azure Managed Redis infrastructure. Keep contributions focused on Azure Managed Redis and Redis application guidance.
 
 ## Repository layout
 
 ```text
 skills/
-  redis-best-practices/
-  redis-ai-patterns/
-  azure-infra/
+  redis-code/
+  azure-redis-infra/
 packages/
   amr-agent-skills-build/
 docs/
@@ -34,13 +33,11 @@ Each skill contains:
 ## Adding a rule
 
 1. Pick the right skill:
-   - `redis-best-practices`: Redis application patterns, data structures, commands, caching, messaging, resilience, and connection handling.
-   - `redis-ai-patterns`: vector search, RAG, semantic caching, LLM memory, embeddings, AI agents, and AI framework integration on Redis.
-   - `azure-infra`: Azure Managed Redis provisioning, networking, security, availability, geo-replication, durability, performance, and observability.
+   - `redis-code`: Redis application and AI coding patterns, including data structures, commands, caching, messaging, resilience, connection handling, vector search, RAG, semantic caching, LLM memory, embeddings, AI agents, and AI framework integration on Redis.
+   - `azure-redis-infra`: Azure Managed Redis provisioning, networking, security, availability, geo-replication, durability, performance, and observability.
 2. Choose the correct filename prefix from the skill section map:
-   - `redis-best-practices`: `ds-`, `key-`, `cmd-`, `conn-`, `cache-`, `use-`, `msg-`, `stack-`, `memory-`, `resilience-`
-   - `redis-ai-patterns`: `vec-`, `search-`, `rag-`, `semcache-`, `llm-`, `agent-`, `embed-`, `integrate-`, `perf-`
-   - `azure-infra`: `provision-`, `network-`, `security-`, `availability-`, `geo-`, `durability-`, `performance-`, `observability-`
+   - `redis-code`: `ds-`, `key-`, `cmd-`, `conn-`, `cache-`, `use-`, `msg-`, `stack-`, `memory-`, `resilience-`, `vec-`, `search-`, `rag-`, `semcache-`, `llm-`, `agent-`, `embed-`, `integrate-`, `perf-`
+   - `azure-redis-infra`: `provision-`, `network-`, `security-`, `availability-`, `geo-`, `durability-`, `performance-`, `observability-`
 3. Copy `rules/_template.md` in the target skill.
 4. Name the file in kebab case, for example `cache-prevent-cache-stampede.md`.
 5. Add frontmatter with `title`, `impact`, optional `impactDescription`, and `tags`.
@@ -86,9 +83,8 @@ npm run validate
 Useful targeted commands:
 
 ```bash
-npm run build-best-practices
-npm run build-ai
-npm run build-azure-infra
+npm run build-redis-code
+npm run build-azure-redis-infra
 ```
 
 Before opening a pull request:

@@ -7,10 +7,10 @@ with local credentials if a real model-based classifier is added later.
 
 ## What is covered
 
-- Redis application prompts should route to `redis-best-practices`.
-- Redis AI prompts should route to `redis-ai-patterns`.
-- Azure Managed Redis infrastructure prompts should route to `azure-infra`.
-- Broad cross-domain AMR prompts should route to `amr-best-practices`.
+- Redis application and AI coding prompts should route to `redis-code`.
+- Azure Managed Redis infrastructure prompts should route to `azure-redis-infra`.
+- Broad cross-domain prompts should choose one of those two skills based on whether
+  the requested action is primarily code or infrastructure.
 - Unrelated prompts should route to `none` so skills do not over-trigger.
 
 The labeled corpus lives in
@@ -23,17 +23,18 @@ than keyword echo.
 The content evals force-load a named skill and use the mock executor by default:
 
 ```powershell
-waza run evals/amr-best-practices/eval.yaml --executor mock
-waza run evals/redis-best-practices/eval.yaml --executor mock
-waza run evals/redis-ai-patterns/eval.yaml --executor mock
-waza run evals/azure-infra/eval.yaml --executor mock
+waza run evals/redis-code/eval.yaml --executor mock
+waza run evals/azure-redis-infra/eval.yaml --executor mock
 ```
 
 These runs should not require Azure credentials, Redis credentials, or cloud
 deployment access.
 
-## Rollup skill
+## Skill efficacy checks
 
-The `amr-best-practices` eval suite covers broad prompts that intentionally span
-Redis application, Redis AI, and Azure Managed Redis infrastructure concerns.
-Focused prompts should continue to route to the focused skills.
+The routing fixtures should be paired with with-skill and without-skill content
+evals so rule value is measured separately from routing accuracy. Keep the corpus
+focused on the two-skill boundary: Redis code and AI application prompts should
+not require infrastructure routing, while SKU, Private Link, HA, geo-replication,
+persistence, diagnostics, and Azure resource configuration prompts should route
+to infrastructure guidance.

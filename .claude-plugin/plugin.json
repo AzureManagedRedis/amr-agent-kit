@@ -1,7 +1,7 @@
 {
   "name": "amr-agent-kit",
   "displayName": "AMR Agent Kit",
-  "description": "AMR Agent Kit: Redis and Azure Managed Redis best practices for AI coding agents. Covers Redis app patterns, AI/vector/RAG workloads, and Azure Managed Redis infrastructure guidance.",
+  "description": "AMR Agent Kit: Redis and Azure Managed Redis best practices for AI coding agents. Covers Redis application and AI coding patterns plus Azure Managed Redis infrastructure guidance.",
   "version": "1.0.0",
   "author": {
     "name": "Microsoft",

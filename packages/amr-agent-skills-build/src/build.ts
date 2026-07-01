@@ -274,7 +274,7 @@ async function writeRuleManifestIfConfigured(
   const manifest = {
     generatedBy: 'packages/amr-agent-skills-build/src/build.ts',
     description:
-      'Deterministic rollup manifest. Rule content is sourced from focused skill rule files and is not copied into this skill.',
+      'Deterministic rule manifest. Rule content is sourced from configured rule files and is not copied into this manifest.',
     skill: skillConfig.name,
     totalRules: parsedRuleInputs.length,
     sources,
