@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
+Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
 
 ---
 
@@ -727,7 +727,7 @@ Reference: [https://redis.io/docs/latest/operate/oss_and_stack/management/optimi
 
 **Impact: CRITICAL (enables organized keyspace and efficient scanning)**
 
-Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management.
+Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management. Azure Managed Redis uses the `default` database, so model logical databases, tenants, environments, and workloads with explicit key prefixes rather than Redis DB indexes.
 
 **Incorrect: inconsistent or flat naming**
 
@@ -775,6 +775,10 @@ r.set("cache:db:v2:query:hash123", cached_result, ex=900)
 # Rate limiting keys
 r.set("ratelimit:api:user:1000", "5")
 
+# Logical database or tenant separation through prefixes
+r.set("tenant:contoso:session:abc123", session_payload, ex=3600)
+r.set("tenant:fabrikam:session:def456", other_session_payload, ex=3600)
+
 # Scan for all user keys efficiently
 cursor = 0
 while True:
@@ -789,7 +793,7 @@ for key in r.scan_iter(match="session:*"):
     print(key)
 ```
 
-The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
+The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For Azure Managed Redis, keep application data in database 0 and use prefixes such as `tenant:{tenantId}:`, `env:prod:`, or `cache:catalog:v2:` for logical separation. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
 
 Reference: [https://redis.io/docs/latest/develop/use/keyspace/](https://redis.io/docs/latest/develop/use/keyspace/)
 
@@ -797,7 +801,7 @@ Reference: [https://redis.io/docs/latest/develop/use/keyspace/](https://redis.io
 
 **Impact: MEDIUM-HIGH (avoids CROSSSLOT errors in clustered caches)**
 
-In clustered Redis (including Azure Managed Redis with OSS cluster policy), multi-key commands require all keys to map to the same hash slot. Use hash tags (`{...}`) in keys so related keys co-locate, enabling commands like MGET, MSET, and transactions without CROSSSLOT errors.
+In clustered Redis (including Azure Managed Redis with OSSCluster policy), multi-key commands require all keys to map to the same hash slot. Use hash tags (`{...}`) in keys so related keys co-locate, enabling commands like MGET, MSET, transactions, and Lua scripts without CROSSSLOT errors.
 
 **Incorrect: keys map to different slots**
 
@@ -812,6 +816,8 @@ user:1001:settings
 user:{1001}:profile
 user:{1001}:settings
 ```
+
+For Azure Managed Redis, coordinate key design with the selected `clusteringPolicy`. `NoCluster` avoids cluster hash-slot constraints when supported by the target size. `OSSCluster` requires Redis Cluster-aware clients and hash tags for any related multi-key operation. `EnterpriseCluster` can improve compatibility for some clients and modules, but application code should still avoid accidental multi-key or Lua operations across unrelated hash slots.
 
 Reference: [https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/)
 

@@ -65,7 +65,7 @@ For production application code, surface the AMR client checklist near the clien
 ## Redis Code Workflow
 
 1. Identify the Redis workload: application data, cache, messaging, search, RAG, memory, or agent state.
-2. Select the smallest correct Redis structure and define key names, TTLs, size bounds, and cluster hash tags.
+2. Select the smallest correct Redis structure and define key names, TTLs, size bounds, logical key-prefix boundaries, and cluster hash tags.
 3. Configure AMR-safe client behavior: TLS, authentication, pooling, timeouts, retries, and health checks.
 4. For AI workloads, define embedding model, dimensions, distance metric, index schema, metadata filters, and source/tenant boundaries.
 5. Batch or pipeline hot paths and ingestion flows while preserving idempotency and replay safety.

@@ -25,8 +25,9 @@ Private endpoint target: Microsoft.Cache/redisEnterprise
 Group id: redisEnterprise
 PublicNetworkAccess: Disabled
 DNS: Private zone linked to VNet
+NSG/UDR controls: applied around the private endpoint subnet and workload subnets
 ```
 
-Keep application clients on `<cache-name>.<region>.redis.azure.net:10000` with TLS. Private DNS should make that normal hostname resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name.
+Keep application clients on `<cache-name>.<region>.redis.azure.net:10000` with TLS. Private DNS should make that normal hostname resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name. In IaC, include the private endpoint DNS zone group or private DNS zone links so `privatelink.redis.azure.net` is associated with every client network that must resolve AMR privately.
 
 Reference: [Azure Managed Redis Private Link](https://learn.microsoft.com/en-us/azure/redis/private-link)

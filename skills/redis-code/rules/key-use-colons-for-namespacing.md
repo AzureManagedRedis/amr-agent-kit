@@ -7,7 +7,7 @@ tags: keys, naming, namespacing, conventions
 
 ## Use Colons for Key Namespacing
 
-Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management.
+Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management. Azure Managed Redis uses the `default` database, so model logical databases, tenants, environments, and workloads with explicit key prefixes rather than Redis DB indexes.
 
 **Incorrect (inconsistent or flat naming):**
 
@@ -55,6 +55,10 @@ r.set("cache:db:v2:query:hash123", cached_result, ex=900)
 # Rate limiting keys
 r.set("ratelimit:api:user:1000", "5")
 
+# Logical database or tenant separation through prefixes
+r.set("tenant:contoso:session:abc123", session_payload, ex=3600)
+r.set("tenant:fabrikam:session:def456", other_session_payload, ex=3600)
+
 # Scan for all user keys efficiently
 cursor = 0
 while True:
@@ -69,6 +73,6 @@ for key in r.scan_iter(match="session:*"):
     print(key)
 ```
 
-The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
+The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For Azure Managed Redis, keep application data in database 0 and use prefixes such as `tenant:{tenantId}:`, `env:prod:`, or `cache:catalog:v2:` for logical separation. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
 
 Reference: [Redis Keys](https://redis.io/docs/latest/develop/use/keyspace/)

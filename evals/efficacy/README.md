@@ -24,6 +24,9 @@ The corpus also includes scenarios that test whether AMR guidance composes clean
 - **Azure Monitor + Application Insights + Log Analytics** - verifies AMR diagnostic settings, connection logs, action groups, runbooks, geo-replication alerts, and app dependency correlation.
 - **Event Grid + Service Bus + Azure Functions** - verifies safe cache invalidation, idempotent event handling, dead-letter/replay behavior, and durable downstream messaging.
 - **Blob Storage + Event Grid + Azure AI + AMR vector search** - verifies idempotent RAG ingestion, Azure AI embedding/version boundaries, citation metadata, semantic-cache scoping, and Azure-native connectivity.
+- **Metric-based AMR sizing** - verifies SKU guidance uses peak/P95 memory, server load, connected clients, bandwidth, module needs, regional availability, and preview status rather than legacy/source SKU labels.
+- **Native AMR IaC** - verifies ARM/Bicep and Terraform guidance uses the Azure Managed Redis cluster/database/default-database model, Private Link DNS, and deployment preflight checks.
+- **DB0 and clustered key design** - verifies Redis application guidance uses key prefixes for logical separation and hash tags for clustered multi-key or Lua operations.
 
 These scenarios should expose whether the skill adds value beyond standalone Redis advice by requiring the answer to connect AMR practices with surrounding Azure services.
 

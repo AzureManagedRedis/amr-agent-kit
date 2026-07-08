@@ -235,6 +235,85 @@
       ],
       "minimum_skill_score": 0.85,
       "minimum_uplift": 0.2
+    },
+    {
+      "id": 9,
+      "name": "amr-sizing-from-workload-metrics",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Review this Azure Managed Redis sizing recommendation. The team wants to pick Balanced B10 because it roughly matches their old cache label and says they can resize later. They have 10 days of metrics: peak used memory 18 GB, P95 used memory 14 GB, Server Load often 78-85%, 55K connected clients at peak, high read bandwidth, and they also need RedisJSON and RediSearch. They have not checked region availability or preview status. Produce the corrected AMR tier/SKU decision process and what should be validated before provisioning.",
+      "expected_output": "A metric-based AMR sizing process that uses peak/P95 memory, Server Load, connected clients, bandwidth, module needs, regional availability, and preview status instead of source SKU labels; compares usable memory to target capacity; considers X-series for compute/client pressure, B-series for balanced load, M-series for memory-heavy workloads, and Flash only for very large tiered-storage cases; and treats modules, cluster policy, HA, networking, diagnostics, and active geo as creation-time or hard-to-change decisions.",
+      "expectations": [
+        "Rejects choosing an AMR SKU only because it resembles an older/source cache label or because it is the smallest acceptable-looking tier.",
+        "Uses peak and P95 used memory, Server Load or CPU pressure, connected clients, read/write bandwidth, latency targets, and module requirements as sizing inputs.",
+        "Compares usable memory and capacity rather than only advertised SKU size, and recommends sizing to cover peak used memory.",
+        "Considers Compute Optimized X-series when server load, command complexity, bandwidth, or client count are high relative to memory.",
+        "Explains when Memory Optimized, Balanced, Compute Optimized, and Flash Optimized tiers are appropriate.",
+        "Requires validation of region availability, preview SKU status, module support, cluster policy, HA, networking, diagnostics, and active geo needs before provisioning.",
+        "Avoids customer-facing AMR shard-count language and describes AMR scale in terms of tier, SKU, capacity, and cluster policy."
+      ],
+      "anti_patterns": [
+        "Maps directly from a source SKU label without using workload metrics.",
+        "Ignores Server Load, connected clients, or bandwidth when memory appears sufficient.",
+        "Recommends the smallest SKU while dismissing creation-time or hard-to-change choices.",
+        "Uses AMR shard count as a customer sizing control.",
+        "Omits module, cluster policy, region availability, or preview-status validation."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 10,
+      "name": "amr-native-iac-arm-bicep-terraform",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Generate guidance for a production Azure Managed Redis IaC module that must support ARM, Bicep, and Terraform. The draft creates one generic Redis resource, leaves database settings implicit, omits clusteringPolicy, uses public access by default, creates no private endpoint DNS zone group, and tells apps to infer the port. Provide the corrected native AMR IaC resource shape, required database/default-database settings, Private Link/DNS settings, and validation steps.",
+      "expected_output": "Native AMR IaC guidance that models ARM/Bicep as Microsoft.Cache/redisEnterprise plus Microsoft.Cache/redisEnterprise/databases named default, uses Terraform azurerm_managed_redis with default_database, explicitly sets port 10000/clientProtocol/clusteringPolicy/evictionPolicy/modules/persistence where applicable, disables public access for production Private Link, uses private endpoint subresource redisEnterprise and private DNS zone privatelink.redis.azure.net, and validates with what-if or terraform validate/plan.",
+      "expectations": [
+        "For ARM/Bicep, models the AMR cluster and the default database as separate resources with the database depending on the cluster.",
+        "For Terraform, uses azurerm_managed_redis with sku_name, public_network_access, high_availability_enabled, and a default_database block.",
+        "Places data-plane settings such as port 10000, clientProtocol, clusteringPolicy, evictionPolicy, modules, persistence, and geo-replication on the database/default_database configuration.",
+        "Uses Private Link for production, disables public network access, uses private endpoint group/subresource redisEnterprise, and uses private DNS zone privatelink.redis.azure.net.",
+        "Keeps clients on the normal <cache-name>.<region>.redis.azure.net hostname rather than a privatelink hostname.",
+        "Includes diagnostic settings, alerts, identity/access policy assignments, and parameterized creation-time decisions in the IaC module.",
+        "Requires preflight validation such as ARM/Bicep what-if or terraform validate and terraform plan."
+      ],
+      "anti_patterns": [
+        "Creates a single generic Redis resource without a default database configuration.",
+        "Omits clusteringPolicy or relies on provider defaults.",
+        "Leaves production public network access enabled without a justified exception.",
+        "Uses the wrong private endpoint group/subresource or private DNS zone.",
+        "Tells application clients to connect to a privatelink hostname directly.",
+        "Omits validation before deployment."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 11,
+      "name": "redis-db0-cluster-key-design",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Review this Redis application design for Azure Managed Redis. The app plans to put tenants in Redis databases 0-15, uses SELECT to switch databases per request, and runs multi-key Lua scripts over keys like tenantA:user:1:cart and tenantA:user:1:totals. The infrastructure team may use OSSCluster for throughput, but the app team says the client does not need cluster mode and hash tags are optional. Provide the corrected key naming, logical separation, client/cluster-policy assumptions, and multi-key/Lua safety guidance.",
+      "expected_output": "A Redis application design for AMR that uses database 0/default with colon-separated tenant/workload prefixes for logical separation, avoids SELECT and multiple DB indexes, coordinates clusteringPolicy with client capabilities, uses NoCluster where supported for single-endpoint semantics, uses OSSCluster only with cluster-aware clients, and applies hash tags to related keys used in MGET/MSET/transactions/Lua to avoid CROSSSLOT errors.",
+      "expectations": [
+        "States that Azure Managed Redis uses the default database/database 0 pattern and logical separation should be implemented with key prefixes, not Redis DB indexes and SELECT.",
+        "Defines consistent colon-separated tenant, environment, workload, and version prefixes for logical isolation and safe scans.",
+        "Warns that OSSCluster requires Redis Cluster-aware clients and should not be chosen blindly for non-cluster-aware applications.",
+        "Mentions NoCluster as a preferred option when supported by target size and single-endpoint semantics are required.",
+        "Requires hash tags for related keys that participate in multi-key commands, transactions, or Lua scripts in clustered Redis.",
+        "Explains CROSSSLOT risk when keys used together do not share a hash slot.",
+        "Keeps AMR client assumptions aligned with TLS on port 10000 and reusable clients rather than treating it as local standalone Redis."
+      ],
+      "anti_patterns": [
+        "Uses SELECT or Redis DB indexes for tenant separation in Azure Managed Redis.",
+        "Claims hash tags are optional for clustered multi-key or Lua operations.",
+        "Chooses OSSCluster while assuming a non-cluster-aware client will work unchanged.",
+        "Ignores CROSSSLOT errors for MGET, transactions, or Lua scripts.",
+        "Uses inconsistent tenant key prefixes or broad KEYS scans for tenant management."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
     }
   ]
 }

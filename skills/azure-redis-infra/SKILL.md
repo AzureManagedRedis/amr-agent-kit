@@ -4,7 +4,8 @@ description: |
   Azure Managed Redis (Redis Enterprise 7.4) infrastructure patterns and best
   practices. Use when provisioning AMR, configuring networking/security,
   enabling high availability or geo-replication, setting persistence, choosing
-  cluster policy, or monitoring AMR in Azure. Triggers on tasks involving Azure
+  cluster policy, generating native ARM/Bicep/Terraform, sizing from workload
+  metrics, or monitoring AMR in Azure. Triggers on tasks involving Azure
   Managed Redis, private endpoints, Entra ID auth, TLS, active geo-replication,
   zone redundancy, Azure Monitor diagnostics, persistence, or AMR SKU selection.
   Do NOT use for: Redis application code patterns, vector/RAG application design,
@@ -23,6 +24,7 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 ## Scope
 
 - Provisioning Azure Managed Redis and selecting the right tier/SKU
+- Generating native ARM, Bicep, or Terraform for Azure Managed Redis
 - Configuring networking (Private Link, public network access, DNS)
 - Enforcing security (TLS, Entra ID, access keys, RBAC)
 - Enabling high availability, zone redundancy, and failover
@@ -35,7 +37,11 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 ### Validate Creation-Time Choices Early
 
-For Azure Managed Redis, several choices should be decided before provisioning, including tier/SKU, modules, cluster policy, high availability, active geo-replication, and networking model. Surface these early to avoid disruptive reprovisioning.
+For Azure Managed Redis, several choices should be decided before provisioning, including tier/SKU, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, and networking model. Surface these early to avoid disruptive reprovisioning.
+
+### Prefer Native AMR IaC Shapes
+
+When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep the data-plane choices such as port `10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
 
 ### Prefer Secure Azure Defaults
 
@@ -90,6 +96,7 @@ Tier/SKU selection, region placement, and capacity planning.
 - `provision-select-tier` - Choose tiers/SKUs based on workload needs
 - `provision-select-modules-at-create` - Enable required modules at creation time
 - `provision-codify-creation-time-settings` - Capture AMR creation-time settings in IaC
+- `provision-use-native-amr-iac` - Generate native ARM, Bicep, and Terraform shapes for AMR
 
 ### 2. Networking & Access (CRITICAL)
 

@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure. Covers provisioning and sizing, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.
+Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure. Covers metric-based provisioning and sizing, native ARM/Bicep/Terraform generation, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.
 
 ---
 
@@ -22,8 +22,9 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 1. [Provisioning & Sizing](#1-provisioning--sizing) — **CRITICAL**
    - 1.1 [Codify Creation-Time Settings in Infrastructure as Code](#11-codify-creation-time-settings-in-infrastructure-as-code)
-   - 1.2 [Select Redis Modules at Provisioning Time](#12-select-redis-modules-at-provisioning-time)
-   - 1.3 [Select the Right Tier and SKU Before Provisioning](#13-select-the-right-tier-and-sku-before-provisioning)
+   - 1.2 [Generate Native AMR Infrastructure as Code](#12-generate-native-amr-infrastructure-as-code)
+   - 1.3 [Select Redis Modules at Provisioning Time](#13-select-redis-modules-at-provisioning-time)
+   - 1.4 [Select the Right Tier and SKU Before Provisioning](#14-select-the-right-tier-and-sku-before-provisioning)
 2. [Networking & Access](#2-networking--access) — **CRITICAL**
    - 2.1 [Configure Private DNS for Private Endpoints](#21-configure-private-dns-for-private-endpoints)
    - 2.2 [Use Private Link and Disable Public Network Access](#22-use-private-link-and-disable-public-network-access)
@@ -50,7 +51,7 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 **Impact: CRITICAL**
 
-Choose the right Azure Managed Redis tier/SKU, region, and capacity to meet latency, throughput, and cost goals. Covers memory/compute/flash tiers, region placement, and sizing for Redis Enterprise 7.4.
+Choose the right Azure Managed Redis tier/SKU, region, capacity, and native IaC shape to meet latency, throughput, and cost goals. Covers memory/compute/flash tiers, region placement, sizing from workload metrics, and ARM/Bicep/Terraform generation for Redis Enterprise 7.4.
 
 ---
 
@@ -58,7 +59,7 @@ Choose the right Azure Managed Redis tier/SKU, region, and capacity to meet late
 
 **Impact: CRITICAL (prevents drift and disruptive reprovisioning)**
 
-Azure Managed Redis choices such as tier/SKU, region, modules, cluster policy, high availability, active geo-replication, private connectivity, diagnostics, and access policies should be modeled before deployment. Use Bicep, Azure Verified Modules, or Terraform modules with parameters per environment, and review changes with `what-if`, `terraform validate`, and `terraform plan` before applying. Portal-only deployments hide creation-time decisions and increase drift.
+Azure Managed Redis choices such as tier/SKU, region, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, private connectivity, diagnostics, and access policies should be modeled before deployment. Use Bicep, Azure Verified Modules, or Terraform modules with parameters per environment, and review changes with `what-if`, `terraform validate`, and `terraform plan` before applying. Portal-only deployments hide creation-time decisions and increase drift.
 
 **Incorrect: manual deployment with deferred decisions**
 
@@ -75,16 +76,78 @@ Preflight: no what-if or plan review
 
 ```text
 IaC: Bicep/AVM or Terraform module checked into source control
-Parameters: tier, SKU, region, modules, cluster policy, HA, zones
+Parameters: tier, SKU, region, modules, cluster policy, HA, protocol, persistence
 Networking: private endpoint, publicNetworkAccess, DNS links
 Security: Entra users, access policies, TLS, key posture
+Database: default database, port 10000, clientProtocol, evictionPolicy
 Preflight: az deployment what-if or terraform validate && terraform plan
 Operations: diagnostic settings and alerts deployed with the cache
 ```
 
+When generating IaC, prefer the native AMR resource model in `provision-use-native-amr-iac`: ARM/Bicep uses a cluster resource plus a `default` database child, while Terraform uses `azurerm_managed_redis` with an inline `default_database` block. Include creation-time choices as explicit parameters so review can catch risky defaults before deployment.
+
 Reference: [https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise), [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis)
 
-### 1.2 Select Redis Modules at Provisioning Time
+### 1.2 Generate Native AMR Infrastructure as Code
+
+**Impact: CRITICAL (prevents invalid or incomplete AMR deployments)**
+
+Generate Azure Managed Redis infrastructure using native AMR resource shapes. Capture cluster-level settings, database-level settings, Private Link, diagnostics, and access controls explicitly so production deployments are reviewable before provisioning.
+
+**Incorrect: incomplete generic Redis shape**
+
+```text
+Resource: one cache resource only
+Database settings: omitted
+Port/protocol: implicit
+Cluster policy: implicit default
+Private connectivity: no private endpoint or DNS zone group
+```
+
+**Correct: native ARM/Bicep shape**
+
+```hcl
+resource "azurerm_managed_redis" "redis" {
+  name                      = var.name
+  location                  = var.location
+  resource_group_name       = var.resource_group_name
+  sku_name                  = var.sku_name
+  public_network_access     = "Disabled"
+  high_availability_enabled = true
+
+  default_database {
+    client_protocol   = "Encrypted"
+    clustering_policy = var.clustering_policy
+    eviction_policy   = var.eviction_policy
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_private_endpoint" "redis" {
+  name                = "${var.name}-pe"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  subnet_id           = var.subnet_id
+
+  private_service_connection {
+    name                           = "redisEnterprise"
+    private_connection_resource_id = azurerm_managed_redis.redis.id
+    subresource_names              = ["redisEnterprise"]
+    is_manual_connection           = false
+  }
+}
+```
+
+For ARM and Bicep, model the AMR cluster and the `default` database separately. The database resource depends on the cluster and holds data-plane settings such as `port: 10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, modules, persistence, and geo-replication settings. Keep applications configured for `<cache-name>.<region>.redis.azure.net`.
+
+For Terraform, use the latest `azurerm` provider documented in the Terraform Registry and model AMR with `azurerm_managed_redis` plus a `default_database` block:
+
+Use the private DNS zone `privatelink.redis.azure.net` for AMR private endpoints. In Terraform, prefer provider-supported attributes and modules for diagnostics, role assignments, private DNS zone links, and private endpoint DNS zone groups rather than shelling out to CLI commands. Validate Terraform with `terraform validate` before `terraform plan`, and validate ARM/Bicep deployments with `what-if`.
+
+Reference: [https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise), [https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis), [https://learn.microsoft.com/en-us/azure/redis/private-link](https://learn.microsoft.com/en-us/azure/redis/private-link)
+
+### 1.3 Select Redis Modules at Provisioning Time
 
 **Impact: CRITICAL (avoids reprovisioning when modules are required)**
 
@@ -108,31 +171,34 @@ Result: vector search and JSON features available
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis)
 
-### 1.3 Select the Right Tier and SKU Before Provisioning
+### 1.4 Select the Right Tier and SKU Before Provisioning
 
 **Impact: CRITICAL (avoids under-provisioning and rework)**
 
-Azure Managed Redis tiers (Memory Optimized, Balanced, Compute Optimized, Flash Optimized) have different memory-to-vCPU ratios and performance profiles. Choose the tier, size, and region that match latency targets and dataset size, and enable features like active geo-replication at creation time because they cannot be added later. Under-sizing or picking the wrong tier forces disruptive reprovisioning.
+Azure Managed Redis tiers (Memory Optimized, Balanced, Compute Optimized, Flash Optimized) have different memory-to-vCPU ratios, connection limits, and performance profiles. Choose the tier, size, and region from workload evidence: peak and P95 used memory, server load or CPU pressure, connected clients, cache read/write bandwidth, latency SLOs, required modules, and availability/DR needs. Avoid sizing from a source SKU label alone; compare usable memory and compute pressure to the target tier.
 
 **Incorrect: pick the smallest tier and plan to change later**
 
 ```text
-# Smallest tier chosen for a latency-sensitive workload
-Tier: Balanced B10
-Performance: Low
-ActiveGeoReplication: Disabled  # plan to enable after go-live (not supported)
-Region: East US
+Workload evidence: not collected
+Tier: Balanced B10 because it is small
+Server load / client count: unknown
+Modules: decide after go-live
+Active geo-replication: plan to add later
 ```
 
 **Correct: size for workload and enable required features up front**
 
 ```text
-# Match tier to workload and enable geo-replication at creation time
-Tier: Compute Optimized X20
-Performance: High throughput
-ActiveGeoReplication: Enabled
-Region: same as application region
+Metric window: 7+ days including peak/P95
+Used memory: target usable memory >= peak used memory
+Server load / clients / bandwidth: choose M, B, X, or Flash based on bottleneck
+Modules and cluster policy: selected before create
+Active geo-replication: enabled during provisioning if required
+Region: same Azure region as latency-sensitive clients where possible
 ```
+
+Use Memory Optimized (M-series) when dataset size is the main constraint and compute pressure is moderate. Use Balanced (B-series) for general-purpose workloads with mixed memory and compute needs. Use Compute Optimized (X-series) when server load, command complexity, bandwidth, or connected-client pressure is high relative to memory. Use Flash Optimized for very large datasets where tiered storage is acceptable and feature support matches the workload. Treat preview sizes and regional availability as explicit validation items.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis), [https://learn.microsoft.com/en-us/azure/redis/overview](https://learn.microsoft.com/en-us/azure/redis/overview)
 
@@ -201,9 +267,10 @@ Private endpoint target: Microsoft.Cache/redisEnterprise
 Group id: redisEnterprise
 PublicNetworkAccess: Disabled
 DNS: Private zone linked to VNet
+NSG/UDR controls: applied around the private endpoint subnet and workload subnets
 ```
 
-Keep application clients on `<cache-name>.<region>.redis.azure.net:10000` with TLS. Private DNS should make that normal hostname resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name.
+Keep application clients on `<cache-name>.<region>.redis.azure.net:10000` with TLS. Private DNS should make that normal hostname resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name. In IaC, include the private endpoint DNS zone group or private DNS zone links so `privatelink.redis.azure.net` is associated with every client network that must resolve AMR privately.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/private-link](https://learn.microsoft.com/en-us/azure/redis/private-link)
 
@@ -366,13 +433,14 @@ Plan active geo-replication groups, eventual consistency behavior, and DR workfl
 
 **Impact: HIGH (reduces regional outage risk)**
 
-Active geo-replication groups up to five Azure Managed Redis instances across regions in an active-active configuration. Plan for eventual consistency and enable geo-replication during provisioning because caches without it cannot join a group later. Ensure all instances use the same configuration.
+Active geo-replication groups up to five Azure Managed Redis instances across regions in an active-active configuration. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Ensure all linked instances use matching configuration, and verify tier/module support because active geo-replication is not available for every SKU or module combination.
 
 **Incorrect: assume you can add geo-replication later or mix configs**
 
 ```text
 ActiveGeoReplication: Disabled at creation
 Region B: different SKU and modules
+Persistence: Enabled
 Consistency expectations: strong, synchronous
 ```
 
@@ -381,8 +449,12 @@ Consistency expectations: strong, synchronous
 ```text
 ActiveGeoReplication: Enabled at creation
 All regions: same SKU, modules, policies
+Persistence: Disabled
 Consistency expectations: eventual
+Clients: region-aware routing and tested failover
 ```
+
+Do not combine active geo-replication with persistence. Treat active geo-replication as a DR and multi-region availability pattern, not a synchronous zero-loss replication guarantee. Monitor replication health and test client failover paths before production.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication](https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication)
 
@@ -400,7 +472,7 @@ Configure RDB/AOF persistence for node recovery and use export for backups and m
 
 **Impact: MEDIUM-HIGH (reduces data loss on node failures)**
 
-Azure Managed Redis persistence (RDB or AOF) helps recover data after node failures but is not a point-in-time backup feature. Persisted files cannot be used to restore to another cache; use the export feature for backups and migrations. Persistence requires high availability and is not supported with active geo-replication.
+Azure Managed Redis persistence (RDB or AOF) helps recover data after node failures but is not a point-in-time backup feature. Persisted files cannot be used to restore to another cache; use the export feature for backups and migrations. Persistence requires high availability and is not supported with active geo-replication. Persistence storage is managed by AMR, so IaC should configure persistence frequency and mode rather than external storage connection strings.
 
 **Incorrect: treat persistence as backup or combine with geo-replication**
 
@@ -415,6 +487,7 @@ Backup plan: rely on RDB files for restore to new cache
 ```text
 High Availability: Enabled
 Persistence: RDB or AOF enabled
+Persistence storage: managed by AMR
 ActiveGeoReplication: Disabled
 Backup plan: scheduled export to Blob storage
 ```
@@ -435,23 +508,27 @@ Choose OSS vs Enterprise cluster policy, understand port requirements, and align
 
 **Impact: MEDIUM (prevents client incompatibility and throughput bottlenecks)**
 
-Azure Managed Redis supports OSS, Enterprise, and Non-clustered policies. OSS clustering provides the best throughput but requires Redis Cluster-capable clients and uses additional shard ports. Enterprise clustering uses a proxy endpoint and is required for RediSearch and RedisJSON modules. Choose the policy based on client capabilities and module requirements.
+Azure Managed Redis supports OSSCluster, EnterpriseCluster, and NoCluster policies. Choose the policy explicitly based on client capabilities, module requirements, cache size, and multi-key command behavior; do not rely on provider defaults. AMR manages partitioning internally, so avoid describing the service in terms of customer-managed shard counts.
 
 **Incorrect: select OSS when clients and modules require Enterprise**
 
 ```text
-Cluster policy: OSS
+Cluster policy: OSSCluster
 Client library: not Redis Cluster-aware
 Modules: RediSearch enabled
+Multi-key/Lua: uses keys across slots
 ```
 
 **Correct: align policy with client/module requirements**
 
 ```text
-Cluster policy: Enterprise
-Client library: standard Redis client
-Modules: RediSearch/RedisJSON enabled
+Cluster policy: NoCluster when supported for simple single-endpoint workloads
+Cluster policy: OSSCluster only for Redis Cluster-aware clients
+Cluster policy: EnterpriseCluster when required by modules or client compatibility
+Multi-key/Lua: keys use hash tags or avoid cross-slot operations
 ```
+
+Prefer `NoCluster` when the workload fits its supported size and needs single-endpoint semantics with the least CROSSSLOT risk. Use `OSSCluster` only when clients are cluster-aware and operational runbooks account for cluster topology. Use `EnterpriseCluster` when module support or client compatibility requires it, while still checking multi-key commands and Lua scripts for cross-slot behavior. For application code, require hash tags such as `cart:{userId}:items` and `cart:{userId}:totals` when related keys must be used together.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
@@ -531,3 +608,5 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/monitor-cache](https:/
 8. [https://learn.microsoft.com/en-us/azure/redis/how-to-persistence](https://learn.microsoft.com/en-us/azure/redis/how-to-persistence)
 9. [https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-settings](https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-settings)
 10. [https://learn.microsoft.com/en-us/azure/redis/how-to-import-export-data](https://learn.microsoft.com/en-us/azure/redis/how-to-import-export-data)
+11. [https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise)
+12. [https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis)
