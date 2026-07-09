@@ -7,7 +7,7 @@ tags: vectors, dimensions, cosine, hnsw
 
 ## Keep Embedding Dimensions and Distance Metric Aligned
 
-Each vector index must use a single embedding dimension and a metric aligned with the selected model. Mixing dimensions or changing metrics without rebuilding the index causes runtime errors or poor ranking quality.
+Each vector index must use a single embedding model, dimension, and distance metric aligned with the selected model. Mixing dimensions or changing metrics without rebuilding the index causes runtime errors or poor ranking quality. When designing RAG or semantic cache indexes, name the full index contract in the answer: embedding model/version, vector dimension, distance metric, and the re-embed or new-index plan for model changes.
 
 **Incorrect (mixed model dimensions in one index):**
 

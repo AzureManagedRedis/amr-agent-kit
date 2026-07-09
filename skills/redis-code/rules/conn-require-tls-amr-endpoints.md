@@ -7,7 +7,7 @@ tags: connection, tls, azure, security, configuration
 
 ## Use TLS and Azure Managed Redis Ports
 
-Production clients for Azure Managed Redis must connect to the normal managed endpoint, for example `<cache-name>.<region>.redis.azure.net`, on port `10000` with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, or direct `privatelink` host names into production configuration.
+Production clients for Azure Managed Redis must connect to the normal managed endpoint, for example `<cache-name>.<region>.redis.azure.net`, on port `10000` with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or Azure Cache for Redis port `6380` into production configuration.
 
 **Incorrect (local/non-TLS defaults used for AMR):**
 
@@ -55,7 +55,7 @@ r = redis.Redis(
 r.set("cache:ready", "true", ex=60)
 ```
 
-Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication.
+Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication. When reviewing production code, explicitly reject port `6380`; it belongs to the legacy Azure Cache for Redis pattern, not Azure Managed Redis.
 
 References:
 - [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)

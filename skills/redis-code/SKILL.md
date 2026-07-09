@@ -36,13 +36,17 @@ Use this skill for code-level decisions: clients, keys, commands, indexes, retri
 
 ### Apply Critical Rules First
 
-Start with data structures, key design, vector index schema, and tenant/security boundaries. Incorrect structures, unbounded keys, unsafe cluster key placement, mismatched embedding dimensions, or missing RAG access controls usually require design changes before smaller command-level optimizations matter.
+Start with data structures, key design, vector index schema, and tenant/security boundaries. Incorrect structures, unbounded keys, SELECT/database-index tenancy on AMR, unsafe cluster key placement, mismatched embedding dimensions, or missing RAG access controls usually require design changes before smaller command-level optimizations matter.
 
 ### Prefer AMR-Safe Code Defaults
 
 When generating Redis client code for Azure Managed Redis, default to TLS-enabled endpoints, explicit timeouts, bounded retries with jitter, connection pooling or multiplexing, key TTLs, Microsoft Entra authentication where appropriate, and deterministic ingestion/reindexing workflows.
 
-For production application code, surface the AMR client checklist near the client setup: use the normal `<cache-name>.<region>.redis.azure.net` host on port `10000`, enable TLS or `rediss://`, keep certificate validation on, prefer Microsoft Entra or managed identity where supported, validate required configuration at startup, reuse a singleton/pool/multiplexer, set connect/socket/command timeouts, use bounded jittered retries, and refresh Entra tokens before expiry.
+For production application code, surface the AMR client checklist near the client setup: use the normal `<cache-name>.<region>.redis.azure.net` host on port `10000`, enable TLS or `rediss://`, keep certificate validation on, prefer Microsoft Entra or managed identity where supported, validate required configuration at startup, reuse a singleton/pool/multiplexer, set connect/socket/command timeouts, use bounded jittered retries, refresh Entra tokens before expiry, and log/measure authentication failures, token-refresh events, connection failures, and Redis latency. Do not reuse Azure Cache for Redis defaults such as port `6380`; Azure Managed Redis production clients use port `10000`.
+
+Azure Managed Redis uses the `default` database / database 0 pattern. It does not support Redis logical-database multi-tenancy with `SELECT`, numbered DB indexes, or `db=N` connection settings the way older Azure Cache for Redis designs often did. If code uses Redis DB indexes for tenants, environments, or tests, refactor to explicit key prefixes, tenant-aware metadata filters, scoped data access policies/key patterns, and separate AMR caches for hard tenant isolation.
+
+For DB-index, `SELECT`, cluster-policy, multi-key command, transaction, or Lua reviews, include the full compatibility checklist in the answer: DB0/default database, prefix-based logical separation, `NoCluster` versus `OSSCluster` client assumptions, hash tags, the `CROSSSLOT` failure risk, and AMR client basics: normal AMR host, TLS on port `10000`, certificate validation, and a reusable singleton/pool/multiplexer.
 
 ### Choose the Correct Code Path
 
@@ -65,7 +69,7 @@ For production application code, surface the AMR client checklist near the clien
 ## Redis Code Workflow
 
 1. Identify the Redis workload: application data, cache, messaging, search, RAG, memory, or agent state.
-2. Select the smallest correct Redis structure and define key names, TTLs, size bounds, logical key-prefix boundaries, and cluster hash tags.
+2. Select the smallest correct Redis structure and define DB0/default database use, key names, TTLs, size bounds, logical key-prefix boundaries, and cluster hash tags.
 3. Configure AMR-safe client behavior: TLS, authentication, pooling, timeouts, retries, and health checks.
 4. For AI workloads, define embedding model, dimensions, distance metric, index schema, metadata filters, and source/tenant boundaries.
 5. Batch or pipeline hot paths and ingestion flows while preserving idempotency and replay safety.

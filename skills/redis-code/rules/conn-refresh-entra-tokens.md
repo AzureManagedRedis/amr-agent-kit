@@ -68,9 +68,8 @@ class RedisClientFactory:
 redis_factory = RedisClientFactory()
 ```
 
-Do not scatter token acquisition across request handlers. Keep the token refresh path coordinated with connection pooling, retry policy, and process shutdown so reconnects do not reuse expired credentials.
+Do not scatter token acquisition across request handlers. Keep the token refresh path coordinated with connection pooling, retry policy, and process shutdown so reconnects do not reuse expired credentials. Instrument the refresh path: emit metrics or logs for refresh success/failure, refresh lead time before expiry, re-authentication or reconnect attempts, and downstream authentication failures.
 
 References:
 - [Use Microsoft Entra for Redis authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
 - [Azure Identity client library for Python](https://learn.microsoft.com/en-us/python/api/overview/azure/identity-readme)
-

@@ -39,6 +39,10 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 For Azure Managed Redis, several choices should be decided before provisioning, including tier/SKU, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, and networking model. Surface these early to avoid disruptive reprovisioning.
 
+### Size from Metrics, Not Source Labels
+
+When reviewing or generating AMR sizing guidance, explicitly compare Memory Optimized (M-series), Balanced (B-series), Compute Optimized (X-series), and Flash Optimized tiers. Use peak and P95 used memory, Server Load or CPU pressure, connected clients, read/write bandwidth, latency targets, module needs, region availability, preview status, HA, networking, diagnostics, and active geo needs. Avoid customer-facing shard-count recommendations; describe scale with tier, SKU, capacity, usable memory, and cluster policy.
+
 ### Prefer Native AMR IaC Shapes
 
 When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep the data-plane choices such as port `10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
@@ -46,6 +50,10 @@ When generating infrastructure as code, model Azure Managed Redis directly rathe
 ### Prefer Secure Azure Defaults
 
 For production guidance, prefer Private Link, disabled public network access, TLS 1.2 or later, Microsoft Entra authentication, Azure RBAC, diagnostic logging, and Azure Monitor metrics.
+
+### Design Tenant Boundaries Explicitly
+
+Azure Managed Redis does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes. For tenant-aware deployments, use scoped identities, data access policies/key patterns, application key prefixes, metadata filters for search/RAG workloads, and separate AMR caches when tenants need hard isolation or independent lifecycle.
 
 ### Separate Infrastructure Workflows
 

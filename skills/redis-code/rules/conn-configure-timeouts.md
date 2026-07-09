@@ -85,7 +85,7 @@ except redis.ConnectionError:
     raise
 ```
 
-Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, use TLS and combine timeout/retry settings with your token refresh strategy.
+Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, validate host, port, TLS, authentication mode, username or identity, and required credentials at startup; fail fast on missing or local-only settings. Combine timeout/retry settings with bounded retries plus jitter, your token refresh strategy, and logs or metrics for authentication failures, connection failures, token refresh success/failure, and Redis latency.
 
 References:
 - [Redis Client Error Handling](https://redis.io/docs/latest/develop/clients/error-handling/)

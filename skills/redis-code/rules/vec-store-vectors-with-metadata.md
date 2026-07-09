@@ -7,7 +7,7 @@ tags: vectors, metadata, redisjson, redisearch
 
 ## Store Vectors with Filterable Metadata
 
-Store embeddings together with filterable metadata (for example tenant, ACL or policy boundary, category, language, source URI, document version, knowledge-base version, and updated timestamp). Vector-only records reduce retrieval precision, break citations, and prevent efficient hybrid filtering.
+Store embeddings together with filterable metadata (for example tenant, ACL or policy boundary, source URI, document ID, document version, page, section, content hash, embedding model, knowledge-base version, category, language, and updated timestamp). Vector-only records reduce retrieval precision, break citations, and prevent efficient hybrid filtering.
 
 **Incorrect (vector without retrieval metadata):**
 
@@ -28,7 +28,12 @@ Store embeddings together with filterable metadata (for example tenant, ACL or p
   "category": "billing",
   "language": "en",
   "source_uri": "https://storage.example/kb/billing.pdf",
+  "doc_id": "billing-handbook",
   "doc_version": "etag-or-version-id",
+  "page": 4,
+  "section": "Refund policy",
+  "content_hash": "sha256-normalized-chunk",
+  "embedding_model": "text-embedding-3-small",
   "knowledge_base_version": "kb-2026-02-01",
   "updatedAt": 1739059200,
   "embedding": [0.12, -0.04, 0.88]

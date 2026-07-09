@@ -56,7 +56,7 @@ afterAll(async () => {
 });
 ```
 
-Use separate resource groups, databases, credentials, or local containers for test workloads when possible. Block destructive commands such as `FLUSHALL` and `FLUSHDB` against shared Azure Managed Redis environments, and require production configuration to be explicit at startup.
+Use separate resource groups, AMR caches, credentials, key prefixes, or local containers for test workloads when possible. Azure Managed Redis does not provide Redis DB-index isolation for local/test/prod separation, so do not rely on `SELECT`, `db=N`, or `FLUSHDB` cleanup. Block destructive commands such as `FLUSHALL` and `FLUSHDB` against shared Azure Managed Redis environments, and require production configuration to be explicit at startup.
 
 References:
 - [Redis SCAN command](https://redis.io/docs/latest/commands/scan/)

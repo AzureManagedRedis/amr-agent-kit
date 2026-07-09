@@ -727,7 +727,7 @@ Reference: [https://redis.io/docs/latest/operate/oss_and_stack/management/optimi
 
 **Impact: CRITICAL (enables organized keyspace and efficient scanning)**
 
-Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management. Azure Managed Redis uses the `default` database, so model logical databases, tenants, environments, and workloads with explicit key prefixes rather than Redis DB indexes.
+Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management. Azure Managed Redis uses the `default` database / database 0 pattern and does not support Redis logical-database multi-tenancy with `SELECT`, numbered DB indexes, or per-tenant `db=N` connection settings. Model tenants, environments, workloads, and schema versions with explicit key prefixes instead.
 
 **Incorrect: inconsistent or flat naming**
 
@@ -744,6 +744,10 @@ r.set("user1name", "John")
 r.set("user_1_email", "john@example.com")
 r.set("1-user-age", "30")
 r.set("sessionabc123", "data")
+
+# Azure Cache for Redis-style logical DB tenancy does not port to AMR
+r.execute_command("SELECT", tenant_db_index)
+r.set("session:abc123", session_payload, ex=3600)
 
 # No way to efficiently find all user keys
 # KEYS * would return everything
@@ -776,8 +780,13 @@ r.set("cache:db:v2:query:hash123", cached_result, ex=900)
 r.set("ratelimit:api:user:1000", "5")
 
 # Logical database or tenant separation through prefixes
-r.set("tenant:contoso:session:abc123", session_payload, ex=3600)
-r.set("tenant:fabrikam:session:def456", other_session_payload, ex=3600)
+r.set("prod:tenant:contoso:session:v1:abc123", session_payload, ex=3600)
+r.set("prod:tenant:fabrikam:session:v1:def456", other_session_payload, ex=3600)
+
+# Canonical AMR prefix template:
+# <env>:tenant:<tenantId>:<workload>:v<schemaVersion>:<entity>:<id>
+r.set("prod:tenant:contoso:cart:v1:user:1000:items", cart_items, ex=900)
+r.set("prod:tenant:contoso:cart:v1:user:1000:totals", cart_totals, ex=900)
 
 # Scan for all user keys efficiently
 cursor = 0
@@ -791,9 +800,15 @@ while True:
 # Scan for all sessions
 for key in r.scan_iter(match="session:*"):
     print(key)
+
+# Scan only the tenant/workload/version prefix you own
+for key in r.scan_iter(match="prod:tenant:contoso:cart:v1:*", count=1000):
+    print(key)
 ```
 
-The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For Azure Managed Redis, keep application data in database 0 and use prefixes such as `tenant:{tenantId}:`, `env:prod:`, or `cache:catalog:v2:` for logical separation. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
+The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For Azure Managed Redis, keep application data in database 0 and use a prefix template such as `<env>:tenant:<tenantId>:<workload>:v<schemaVersion>:<entity>:<id>` for logical separation. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
+
+When refactoring an application that used Azure Cache for Redis logical databases, remove `SELECT`, `db=N`, tenant-to-database maps, and `FLUSHDB` cleanup. Add a central key builder that requires environment, tenant, workload, schema version, entity, and identifier; change maintenance jobs to `SCAN MATCH <prefix>:* COUNT ...` with batched `DEL` or `UNLINK`; enforce tenant boundaries with application authorization, Redis ACL/data access key patterns, and metadata filters for search/RAG workloads. Use separate Azure Managed Redis caches when tenants require hard isolation, independent lifecycle, or separate compliance boundaries.
 
 Reference: [https://redis.io/docs/latest/develop/use/keyspace/](https://redis.io/docs/latest/develop/use/keyspace/)
 
@@ -801,23 +816,29 @@ Reference: [https://redis.io/docs/latest/develop/use/keyspace/](https://redis.io
 
 **Impact: MEDIUM-HIGH (avoids CROSSSLOT errors in clustered caches)**
 
-In clustered Redis (including Azure Managed Redis with OSSCluster policy), multi-key commands require all keys to map to the same hash slot. Use hash tags (`{...}`) in keys so related keys co-locate, enabling commands like MGET, MSET, transactions, and Lua scripts without CROSSSLOT errors.
+In clustered Redis (including Azure Managed Redis with OSSCluster policy), multi-key commands require all keys to map to the same hash slot. Use hash tags (`{...}`) in keys so related keys co-locate, enabling commands like MGET, MSET, transactions, and Lua scripts without `CROSSSLOT` errors. Prefer `NoCluster` when the target AMR size supports it and the application needs single-endpoint semantics or is not Redis Cluster-aware; use `OSSCluster` only when the client handles MOVED/ASK redirects and every multi-key path is slot-safe.
 
 **Incorrect: keys map to different slots**
 
 ```text
-user:1001:profile
-user:1001:settings
+prod:tenant:contoso:cart:v1:user:1001:items
+prod:tenant:contoso:cart:v1:user:1001:totals
 ```
+
+This can fail under OSSCluster with `CROSSSLOT Keys in request don't hash to the same slot`.
 
 **Correct: use hash tag to co-locate**
 
 ```text
-user:{1001}:profile
-user:{1001}:settings
+prod:tenant:{contoso:user:1001}:cart:v1:items
+prod:tenant:{contoso:user:1001}:cart:v1:totals
 ```
 
-For Azure Managed Redis, coordinate key design with the selected `clusteringPolicy`. `NoCluster` avoids cluster hash-slot constraints when supported by the target size. `OSSCluster` requires Redis Cluster-aware clients and hash tags for any related multi-key operation. `EnterpriseCluster` can improve compatibility for some clients and modules, but application code should still avoid accidental multi-key or Lua operations across unrelated hash slots.
+The value inside `{...}` should be the smallest stable routing key for the keys that must be read or written together. Do not hash tag the whole tenant unless co-locating all tenant keys is intentional; that can create hot slots. For Lua scripts, pass every Redis key through `KEYS[]` and values through `ARGV[]`. Do not construct hidden key names inside the script, because Redis Cluster clients can only route and validate declared keys, and every declared key must share the same hash tag.
+
+For Azure Managed Redis, coordinate key design with the selected `clusteringPolicy`. `NoCluster` avoids cluster hash-slot constraints when supported by the target size and is the safer default for non-cluster-aware applications. `OSSCluster` requires Redis Cluster-aware clients and hash tags for any related multi-key operation; otherwise multi-key commands, transactions, and Lua scripts can fail with `CROSSSLOT`. `EnterpriseCluster` can improve compatibility for some clients and modules, but application code should still avoid accidental multi-key or Lua operations across unrelated hash slots.
+
+When reviewing DB0/SELECT, cluster-policy, multi-key, transaction, or Lua designs, surface the AMR client assumptions alongside key guidance: connect to the normal `<cache-name>.<region>.redis.azure.net` host on port `10000`, use TLS or `rediss://` with certificate validation, reuse a singleton/pool/multiplexer, and only choose `OSSCluster` when that reusable client is Redis Cluster-aware.
 
 Reference: [https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/)
 
@@ -876,6 +897,10 @@ def get_keys_by_pattern(pattern, count=100):
 for key in r.scan_iter(match="user:*", count=100):
     process_key(key)
 
+# Tenant/workload scoped scan for AMR DB0 key-prefix tenancy
+for key in r.scan_iter(match="prod:tenant:contoso:cart:v1:*", count=1000):
+    process_tenant_cart_key(key)
+
 # Type-specific scan commands
 for field, value in r.hscan_iter("myhash"):
     print(f"{field}: {value}")
@@ -905,7 +930,7 @@ def delete_keys_by_pattern(pattern, batch_size=100):
 cursor, keys = r.scan(0, match="cache:*", count=1000)
 ```
 
-SCAN may return duplicate keys across iterations and doesn't guarantee consistency if keys are modified during scanning. Handle duplicates in your application code.
+SCAN may return duplicate keys across iterations and doesn't guarantee consistency if keys are modified during scanning. Handle duplicates in your application code. On Azure Managed Redis, use scoped prefixes such as `<env>:tenant:<tenantId>:<workload>:v<schemaVersion>:*` for tenant or workload maintenance. Do not replace unsupported `SELECT`/DB-index tenancy with broad `KEYS *` cleanup.
 
 Reference: [https://redis.io/docs/latest/commands/scan/](https://redis.io/docs/latest/commands/scan/)
 
@@ -968,7 +993,7 @@ reserve_item = r.register_script(reserve_item_script)
 
 # Execute atomically
 success = reserve_item(
-    keys=["inventory:item:123", "orders:pending"],
+    keys=["inventory:{item:123}:stock", "inventory:{item:123}:orders"],
     args=["order:456"]
 )
 
@@ -1010,9 +1035,10 @@ return 0
 
 # Always pass keys via KEYS array for cluster compatibility
 # Use ARGV for values and parameters
+# In OSSCluster, all KEYS must share the same hash tag
 ```
 
-Always use KEYS array for Redis keys (required for cluster mode). Keep scripts short and focused. Use `register_script()` to cache scripts and execute with EVALSHA for better performance.
+Always use the `KEYS` array for Redis keys (required for cluster mode) and `ARGV` for values and parameters. In Azure Managed Redis with OSSCluster, every key passed to a script must share the same hash tag or Redis can return `CROSSSLOT Keys in request don't hash to the same slot`. Do not construct additional Redis key names inside Lua; cluster clients cannot route hidden keys that were not declared in `KEYS`. Keep scripts short and focused. Use `register_script()` to cache scripts and execute with EVALSHA for better performance.
 
 Reference: [https://redis.io/docs/latest/develop/interact/programmability/eval-intro/](https://redis.io/docs/latest/develop/interact/programmability/eval-intro/)
 
@@ -1053,8 +1079,9 @@ r = redis.Redis(
     ssl=True,
     decode_responses=True
 )
-# Get multiple keys in one call
-values = r.mget("user:1:name", "user:1:email", "user:1:status")
+# Get multiple related keys in one call.
+# The hash tag keeps these keys in one slot if AMR uses OSSCluster.
+values = r.mget("user:{1}:name", "user:{1}:email", "user:{1}:status")
 name, email, status = values
 
 # Set multiple keys in one call
@@ -1073,14 +1100,14 @@ success = r.msetnx({
 # Combine with key pattern for bulk operations
 def get_user_fields(user_id, fields):
     """Get multiple user fields efficiently"""
-    keys = [f"user:{user_id}:{field}" for field in fields]
+    keys = [f"user:{{{user_id}}}:{field}" for field in fields]
     values = r.mget(keys)
     return dict(zip(fields, values))
 
 user_data = get_user_fields(1000, ["name", "email", "created_at"])
 ```
 
-MGET returns None for keys that don't exist, maintaining position in the result list. For related data, consider using hashes with HMGET/HMSET instead of separate string keys.
+MGET returns None for keys that don't exist, maintaining position in the result list. For related data, consider using hashes with HMGET/HMSET instead of separate string keys. On Azure Managed Redis with OSSCluster, MGET/MSET keys must share a hash slot or Redis can return `CROSSSLOT`; use a deliberate hash tag such as `user:{1000}:name` and `user:{1000}:email`, or prefer a single hash key when the fields belong to one object.
 
 Reference: [https://redis.io/docs/latest/commands/mget/](https://redis.io/docs/latest/commands/mget/)
 
@@ -1161,7 +1188,7 @@ def increment_multiple(keys):
     return pipe.execute()
 ```
 
-WATCH monitors keys and aborts the transaction if they change before EXEC. This provides optimistic locking for read-modify-write patterns. Use Lua scripts for complex atomic logic.
+WATCH monitors keys and aborts the transaction if they change before EXEC. This provides optimistic locking for read-modify-write patterns. Use Lua scripts for complex atomic logic. On Azure Managed Redis with OSSCluster, every key in a transaction must share the same hash slot or Redis can return `CROSSSLOT`; use intentional hash tags, refactor related fields into one hash, or choose `NoCluster` when supported for workloads that require cross-key atomicity with non-cluster-aware clients.
 
 Reference: [https://redis.io/docs/latest/develop/interact/transactions/](https://redis.io/docs/latest/develop/interact/transactions/)
 
@@ -1334,7 +1361,7 @@ except redis.ConnectionError:
     raise
 ```
 
-Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, use TLS and combine timeout/retry settings with your token refresh strategy.
+Set `socket_timeout` shorter than your application's request timeout. Use `health_check_interval` to detect stale connections. For Azure Managed Redis, validate host, port, TLS, authentication mode, username or identity, and required credentials at startup; fail fast on missing or local-only settings. Combine timeout/retry settings with bounded retries plus jitter, your token refresh strategy, and logs or metrics for authentication failures, connection failures, token refresh success/failure, and Redis latency.
 
 ### 4.2 Refresh Entra Tokens Before Expiry
 
@@ -1405,7 +1432,7 @@ class RedisClientFactory:
 redis_factory = RedisClientFactory()
 ```
 
-Do not scatter token acquisition across request handlers. Keep the token refresh path coordinated with connection pooling, retry policy, and process shutdown so reconnects do not reuse expired credentials.
+Do not scatter token acquisition across request handlers. Keep the token refresh path coordinated with connection pooling, retry policy, and process shutdown so reconnects do not reuse expired credentials. Instrument the refresh path: emit metrics or logs for refresh success/failure, refresh lead time before expiry, re-authentication or reconnect attempts, and downstream authentication failures.
 
 ### 4.3 Reuse SDK Clients and Pools
 
@@ -1616,7 +1643,7 @@ r = redis.Redis(
 
 **Impact: CRITICAL (prevents plaintext traffic and endpoint misconfiguration)**
 
-Production clients for Azure Managed Redis must connect to the normal managed endpoint, for example `<cache-name>.<region>.redis.azure.net`, on port `10000` with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, or direct `privatelink` host names into production configuration.
+Production clients for Azure Managed Redis must connect to the normal managed endpoint, for example `<cache-name>.<region>.redis.azure.net`, on port `10000` with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or Azure Cache for Redis port `6380` into production configuration.
 
 - [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
@@ -1668,7 +1695,7 @@ r = redis.Redis(
 r.set("cache:ready", "true", ex=60)
 ```
 
-Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication.
+Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication. When reviewing production code, explicitly reject port `6380`; it belongs to the legacy Azure Cache for Redis pattern, not Azure Managed Redis.
 
 ---
 
@@ -3470,7 +3497,7 @@ afterAll(async () => {
 });
 ```
 
-Use separate resource groups, databases, credentials, or local containers for test workloads when possible. Block destructive commands such as `FLUSHALL` and `FLUSHDB` against shared Azure Managed Redis environments, and require production configuration to be explicit at startup.
+Use separate resource groups, AMR caches, credentials, key prefixes, or local containers for test workloads when possible. Azure Managed Redis does not provide Redis DB-index isolation for local/test/prod separation, so do not rely on `SELECT`, `db=N`, or `FLUSHDB` cleanup. Block destructive commands such as `FLUSHALL` and `FLUSHDB` against shared Azure Managed Redis environments, and require production configuration to be explicit at startup.
 
 ### 10.5 Use Bounded Retries with Jitter
 
@@ -3547,7 +3574,7 @@ Vector index schema choices define search quality, memory footprint, and query p
 
 **Impact: CRITICAL (prevents query failures and relevance degradation)**
 
-Each vector index must use a single embedding dimension and a metric aligned with the selected model. Mixing dimensions or changing metrics without rebuilding the index causes runtime errors or poor ranking quality.
+Each vector index must use a single embedding model, dimension, and distance metric aligned with the selected model. Mixing dimensions or changing metrics without rebuilding the index causes runtime errors or poor ranking quality. When designing RAG or semantic cache indexes, name the full index contract in the answer: embedding model/version, vector dimension, distance metric, and the re-embed or new-index plan for model changes.
 
 **Incorrect: mixed model dimensions in one index**
 
@@ -3572,7 +3599,7 @@ Reference: [https://redis.io/docs/latest/develop/ai/search-and-query/vectors/](h
 
 **Impact: CRITICAL (enables high-quality retrieval and hybrid filtering)**
 
-Store embeddings together with filterable metadata (for example tenant, ACL or policy boundary, category, language, source URI, document version, knowledge-base version, and updated timestamp). Vector-only records reduce retrieval precision, break citations, and prevent efficient hybrid filtering.
+Store embeddings together with filterable metadata (for example tenant, ACL or policy boundary, source URI, document ID, document version, page, section, content hash, embedding model, knowledge-base version, category, language, and updated timestamp). Vector-only records reduce retrieval precision, break citations, and prevent efficient hybrid filtering.
 
 **Incorrect: vector without retrieval metadata**
 
@@ -3593,7 +3620,12 @@ Store embeddings together with filterable metadata (for example tenant, ACL or p
   "category": "billing",
   "language": "en",
   "source_uri": "https://storage.example/kb/billing.pdf",
+  "doc_id": "billing-handbook",
   "doc_version": "etag-or-version-id",
+  "page": 4,
+  "section": "Refund policy",
+  "content_hash": "sha256-normalized-chunk",
+  "embedding_model": "text-embedding-3-small",
   "knowledge_base_version": "kb-2026-02-01",
   "updatedAt": 1739059200,
   "embedding": [0.12, -0.04, 0.88]
@@ -3738,7 +3770,7 @@ Reference: [https://redis.io/docs/latest/develop/get-started/rag/](https://redis
 
 **Impact: CRITICAL (prevents cross-tenant data leakage in retrieval-grounded responses)**
 
-Treat tenant and access-control filters as part of the retrieval contract, not prompt instructions. Every indexed chunk should carry the fields needed to enforce tenant, user group, classification, and lifecycle status before context reaches the LLM.
+Treat tenant and access-control filters as part of the retrieval contract, not prompt instructions. Azure Managed Redis does not provide Redis DB-index multi-tenancy with `SELECT`/numbered databases, so RAG tenant isolation must be enforced with key prefixes, filterable metadata, scoped identities or data access policies, and separate AMR caches when hard tenant isolation is required. Every indexed chunk should carry the fields needed to enforce tenant, user group, classification, and lifecycle status before context reaches the LLM, plus citation and version fields such as source URI, document ID/version, page, section, content hash, embedding model, and knowledge-base version.
 
 **Incorrect: relying on the prompt for isolation**
 

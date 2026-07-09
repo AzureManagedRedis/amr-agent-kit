@@ -7,7 +7,7 @@ tags: rag, tenant-isolation, acl, security, metadata
 
 ## Enforce Tenant and ACL Boundaries in RAG
 
-Treat tenant and access-control filters as part of the retrieval contract, not prompt instructions. Every indexed chunk should carry the fields needed to enforce tenant, user group, classification, and lifecycle status before context reaches the LLM.
+Treat tenant and access-control filters as part of the retrieval contract, not prompt instructions. Azure Managed Redis does not provide Redis DB-index multi-tenancy with `SELECT`/numbered databases, so RAG tenant isolation must be enforced with key prefixes, filterable metadata, scoped identities or data access policies, and separate AMR caches when hard tenant isolation is required. Every indexed chunk should carry the fields needed to enforce tenant, user group, classification, and lifecycle status before context reaches the LLM, plus citation and version fields such as source URI, document ID/version, page, section, content hash, embedding model, and knowledge-base version.
 
 **Incorrect (relying on the prompt for isolation):**
 

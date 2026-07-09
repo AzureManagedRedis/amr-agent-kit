@@ -59,7 +59,7 @@ Choose the right Azure Managed Redis tier/SKU, region, capacity, and native IaC 
 
 **Impact: CRITICAL (prevents drift and disruptive reprovisioning)**
 
-Azure Managed Redis choices such as tier/SKU, region, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, private connectivity, diagnostics, and access policies should be modeled before deployment. Use Bicep, Azure Verified Modules, or Terraform modules with parameters per environment, and review changes with `what-if`, `terraform validate`, and `terraform plan` before applying. Portal-only deployments hide creation-time decisions and increase drift.
+Azure Managed Redis choices such as tier/SKU, region, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, private endpoint, private DNS zone links, public network access, diagnostics, and access policies should be modeled before deployment. Use Bicep, Azure Verified Modules, or Terraform modules with parameters per environment, and review changes with `what-if`, `terraform validate`, and `terraform plan` before applying. Portal-only deployments hide creation-time decisions and increase drift.
 
 **Incorrect: manual deployment with deferred decisions**
 
@@ -175,7 +175,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-mana
 
 **Impact: CRITICAL (avoids under-provisioning and rework)**
 
-Azure Managed Redis tiers (Memory Optimized, Balanced, Compute Optimized, Flash Optimized) have different memory-to-vCPU ratios, connection limits, and performance profiles. Choose the tier, size, and region from workload evidence: peak and P95 used memory, server load or CPU pressure, connected clients, cache read/write bandwidth, latency SLOs, required modules, and availability/DR needs. Avoid sizing from a source SKU label alone; compare usable memory and compute pressure to the target tier.
+Azure Managed Redis tiers (Memory Optimized, Balanced, Compute Optimized, Flash Optimized) have different memory-to-vCPU ratios, connection limits, and performance profiles. Choose the tier, size, and region from workload evidence: peak and P95 used memory, server load or CPU pressure, connected clients, cache read/write bandwidth, latency SLOs, required modules, and availability/DR needs. Avoid sizing from a source SKU label alone; compare usable memory and compute pressure to the target tier. In sizing answers, explicitly name M-series, B-series, X-series, and Flash tradeoffs so the recommendation does not collapse into a generic "larger SKU" answer.
 
 **Incorrect: pick the smallest tier and plan to change later**
 
@@ -198,7 +198,7 @@ Active geo-replication: enabled during provisioning if required
 Region: same Azure region as latency-sensitive clients where possible
 ```
 
-Use Memory Optimized (M-series) when dataset size is the main constraint and compute pressure is moderate. Use Balanced (B-series) for general-purpose workloads with mixed memory and compute needs. Use Compute Optimized (X-series) when server load, command complexity, bandwidth, or connected-client pressure is high relative to memory. Use Flash Optimized for very large datasets where tiered storage is acceptable and feature support matches the workload. Treat preview sizes and regional availability as explicit validation items.
+Use Memory Optimized (M-series) when dataset size is the main constraint and compute pressure is moderate. Use Balanced (B-series) for general-purpose workloads with mixed memory and compute needs. Use Compute Optimized (X-series) when Server Load, command complexity, bandwidth, or connected-client pressure is high relative to memory. Use Flash Optimized for very large datasets where tiered storage is acceptable and feature support matches the workload. Treat preview sizes and regional availability as explicit validation items. Do not recommend "adding shards" as the customer-facing AMR sizing control; frame scale decisions as tier, SKU, capacity or usable memory, and cluster policy.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis), [https://learn.microsoft.com/en-us/azure/redis/overview](https://learn.microsoft.com/en-us/azure/redis/overview)
 
@@ -362,7 +362,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authenticati
 
 **Impact: CRITICAL (limits blast radius for compromised identities)**
 
-Azure Managed Redis uses Microsoft Entra identities for password-free access, but newly assigned users or service principals can receive broad command and key permissions unless you scope them. Assign managed identities or service principals per workload, use custom data access policies where available, and express least privilege with Redis ACL syntax such as command categories and key patterns. Track each access policy assignment as infrastructure so reviews and removals are auditable.
+Azure Managed Redis uses Microsoft Entra identities for password-free access, but newly assigned users or service principals can receive broad command and key permissions unless you scope them. AMR does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes, so do not map tenants to Redis databases the way some Azure Cache for Redis designs did. Assign managed identities or service principals per workload, use custom data access policies where available, and express least privilege with Redis ACL syntax such as command categories and key patterns. Track each access policy assignment as infrastructure so reviews and removals are auditable.
 
 **Incorrect: shared identity with full data-plane access**
 
@@ -383,6 +383,8 @@ Access string: +@read +@write ~checkout:* ~session:*
 Admin/destructive commands: not granted unless explicitly required
 Review process: quarterly identity and ACL review
 ```
+
+When you find a migration design that uses database indexes for tenant isolation, refactor the infrastructure plan to key-pattern boundaries and identity boundaries: provision workload-specific managed identities, assign data access policies scoped to prefixes such as `prod:tenant:contoso:*`, and use separate AMR caches for tenants that require hard isolation, independent maintenance windows, or separate compliance controls. Application code still needs tenant-aware key builders and authorization checks; access policies reduce blast radius but do not replace application authorization.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions](https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions), [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
 
@@ -454,7 +456,7 @@ Consistency expectations: eventual
 Clients: region-aware routing and tested failover
 ```
 
-Do not combine active geo-replication with persistence. Treat active geo-replication as a DR and multi-region availability pattern, not a synchronous zero-loss replication guarantee. Monitor replication health and test client failover paths before production.
+Do not combine active geo-replication with persistence. Treat active geo-replication as a DR and multi-region availability pattern, not a synchronous zero-loss replication guarantee. Monitor replication health and lag, define retry deadlines, make write paths idempotent where regional replay is possible, and test client endpoint failover paths before production.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication](https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication)
 
@@ -508,7 +510,7 @@ Choose OSS vs Enterprise cluster policy, understand port requirements, and align
 
 **Impact: MEDIUM (prevents client incompatibility and throughput bottlenecks)**
 
-Azure Managed Redis supports OSSCluster, EnterpriseCluster, and NoCluster policies. Choose the policy explicitly based on client capabilities, module requirements, cache size, and multi-key command behavior; do not rely on provider defaults. AMR manages partitioning internally, so avoid describing the service in terms of customer-managed shard counts.
+Azure Managed Redis supports OSSCluster, EnterpriseCluster, and NoCluster policies. Choose the policy explicitly based on client capabilities, module requirements, cache size, and multi-key command behavior; do not rely on provider defaults. AMR manages partitioning internally, so avoid describing the service in terms of customer-managed shard counts. In customer-facing guidance, say tier, SKU, capacity or usable memory, and cluster policy instead of "number of shards."
 
 **Incorrect: select OSS when clients and modules require Enterprise**
 
@@ -525,10 +527,11 @@ Multi-key/Lua: uses keys across slots
 Cluster policy: NoCluster when supported for simple single-endpoint workloads
 Cluster policy: OSSCluster only for Redis Cluster-aware clients
 Cluster policy: EnterpriseCluster when required by modules or client compatibility
+Scale language: tier, SKU, capacity, usable memory, and cluster policy
 Multi-key/Lua: keys use hash tags or avoid cross-slot operations
 ```
 
-Prefer `NoCluster` when the workload fits its supported size and needs single-endpoint semantics with the least CROSSSLOT risk. Use `OSSCluster` only when clients are cluster-aware and operational runbooks account for cluster topology. Use `EnterpriseCluster` when module support or client compatibility requires it, while still checking multi-key commands and Lua scripts for cross-slot behavior. For application code, require hash tags such as `cart:{userId}:items` and `cart:{userId}:totals` when related keys must be used together.
+Prefer `NoCluster` when the workload fits its supported size and needs single-endpoint semantics with the least CROSSSLOT risk, especially when the application is not Redis Cluster-aware. Use `OSSCluster` only when clients handle MOVED/ASK redirects and operational runbooks account for cluster topology. Use `EnterpriseCluster` when module support or client compatibility requires it, while still checking multi-key commands and Lua scripts for cross-slot behavior. For application code, require hash tags such as `cart:{userId}:items` and `cart:{userId}:totals` when related keys must be used together.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
@@ -544,7 +547,7 @@ Configure Azure Monitor metrics and diagnostic logs, enable connection auditing,
 
 **Impact: MEDIUM (improves operational visibility and auditing)**
 
-Azure Managed Redis emits metrics and diagnostic logs through Azure Monitor. Enable metrics (AllMetrics) and connection logs to capture performance signals and authentication events, and send them to Log Analytics or storage for alerting and auditing.
+Azure Managed Redis emits metrics and diagnostic logs through Azure Monitor. Enable metrics (AllMetrics) and connection logs to capture performance signals and authentication events, and send them to Log Analytics or storage for alerting and auditing. For private deployments, include private endpoint and private DNS health in the operational view so a cache health issue is not confused with name-resolution or network reachability failure.
 
 **Incorrect: no diagnostics enabled**
 
@@ -560,6 +563,7 @@ Connection logs: Off
 Diagnostic settings: Enabled
 Categories: AllMetrics, Connection logs
 Destination: Log Analytics workspace
+Network checks: private endpoint connection state and private DNS resolution
 ```
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-settings](https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-settings)
@@ -568,7 +572,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-set
 
 **Impact: HIGH (shortens detection and response time)**
 
-Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, and geo-replication health where used. Route diagnostic settings to Log Analytics so alerts can be investigated with connection logs and historical metrics.
+Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and geo-replication health/lag where used. Route diagnostic settings to Log Analytics so alerts can be investigated with connection logs and historical metrics.
 
 **Incorrect: dashboards only, no actionable alerts**
 
@@ -588,6 +592,8 @@ Diagnostic settings: AllMetrics and Connection logs to Log Analytics
 Metric alerts: usedmemorypercentage, serverLoad, percentProcessorTime
 Metric alerts: connectedclients, cacheLatency, evictedkeys
 Geo alerts: geoReplicationHealthy when active geo-replication is enabled
+Network alerts/checks: private endpoint state and private DNS resolution
+Operational drills: restore/export import drill and regional failover drill
 Actions: on-call action group with severity, owner, and runbook URL
 Review: tune thresholds after load test and first production week
 ```

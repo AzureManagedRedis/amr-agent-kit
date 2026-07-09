@@ -58,6 +58,10 @@ def get_keys_by_pattern(pattern, count=100):
 for key in r.scan_iter(match="user:*", count=100):
     process_key(key)
 
+# Tenant/workload scoped scan for AMR DB0 key-prefix tenancy
+for key in r.scan_iter(match="prod:tenant:contoso:cart:v1:*", count=1000):
+    process_tenant_cart_key(key)
+
 # Type-specific scan commands
 for field, value in r.hscan_iter("myhash"):
     print(f"{field}: {value}")
@@ -87,6 +91,6 @@ def delete_keys_by_pattern(pattern, batch_size=100):
 cursor, keys = r.scan(0, match="cache:*", count=1000)
 ```
 
-SCAN may return duplicate keys across iterations and doesn't guarantee consistency if keys are modified during scanning. Handle duplicates in your application code.
+SCAN may return duplicate keys across iterations and doesn't guarantee consistency if keys are modified during scanning. Handle duplicates in your application code. On Azure Managed Redis, use scoped prefixes such as `<env>:tenant:<tenantId>:<workload>:v<schemaVersion>:*` for tenant or workload maintenance. Do not replace unsupported `SELECT`/DB-index tenancy with broad `KEYS *` cleanup.
 
 Reference: [SCAN Command](https://redis.io/docs/latest/commands/scan/)
