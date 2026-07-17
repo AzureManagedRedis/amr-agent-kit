@@ -42,6 +42,9 @@
     "validate": "cd packages\\amr-agent-skills-build && npm run validate",
     "validate:skill": "cd packages\\amr-agent-skills-build && npx tsx src\\validate.ts",
     "dev": "cd packages\\amr-agent-skills-build && npm run dev",
-    "efficacy:prepare": "node scripts\\prepare-efficacy-workspace.mjs"
+    "efficacy:prepare": "node scripts\\prepare-efficacy-workspace.mjs",
+    "soak:build": "npm --prefix packages\\amr-agent-soak run build",
+    "soak:test": "npm --prefix packages\\amr-agent-soak test",
+    "soak:status": "powershell -NoProfile -File scripts\\soak-status.ps1"
   }
 }

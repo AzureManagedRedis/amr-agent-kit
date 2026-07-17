@@ -1,0 +1,394 @@
+import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { pipeline } from "node:stream/promises";
+import type {
+  ExecutionArtifact,
+  ExecutionRequest,
+  ExecutorCapabilities,
+  HeadlessExecutor,
+  IsolatedWorkspace,
+} from "../core/contracts.js";
+import { writeAtomicJson } from "../core/atomic.js";
+import { detectContamination } from "../core/isolation.js";
+import { hashBytes, hashTree } from "../core/hash.js";
+
+interface CapturedProcess {
+  readonly pid: number;
+  readonly exitCode: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+async function capture(
+  command: string,
+  args: ReadonlyArray<string>,
+  options: { cwd: string; env: NodeJS.ProcessEnv; signal?: AbortSignal },
+): Promise<CapturedProcess> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      signal: options.signal,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    child.on("error", reject);
+    child.on("close", (exitCode, signal) => {
+      resolve({ pid: child.pid ?? -1, exitCode, signal, stdout, stderr });
+    });
+  });
+}
+
+async function resolveExecutable(command: string, workspace: IsolatedWorkspace): Promise<string> {
+  const resolver = process.platform === "win32" ? "where.exe" : "which";
+  const result = await capture(resolver, [command], {
+    cwd: workspace.projectDir,
+    env: workspace.environment,
+  });
+  if (result.exitCode !== 0) {
+    throw new Error(`Unable to resolve ${command}: ${result.stderr || result.stdout}`);
+  }
+  const executablePath = result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find(Boolean);
+  if (!executablePath) {
+    throw new Error(`Resolver returned no path for ${command}`);
+  }
+  return path.resolve(executablePath);
+}
+
+function requireCapabilities(capabilities: ExecutorCapabilities): void {
+  const missing = Object.entries({
+    prompt: capabilities.supportsPrompt,
+    jsonOutput: capabilities.supportsJsonOutput,
+    noAskUser: capabilities.supportsNoAskUser,
+    toolApproval: capabilities.supportsToolApproval,
+    instructionDisable: capabilities.supportsInstructionDisable,
+    mcpDisable: capabilities.supportsMcpDisable,
+  })
+    .filter(([, supported]) => !supported)
+    .map(([name]) => name);
+  if (missing.length > 0) {
+    throw new Error(`Copilot CLI cannot prove required headless controls: ${missing.join(", ")}`);
+  }
+}
+
+function skillRecords(value: unknown): ReadonlyArray<Record<string, unknown>> {
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry) => entry && typeof entry === "object" && !Array.isArray(entry))
+  ) {
+    throw new Error("Copilot CLI skill discovery returned an unexpected shape");
+  }
+  return value as ReadonlyArray<Record<string, unknown>>;
+}
+
+export class CopilotCliExecutor implements HeadlessExecutor {
+  readonly #command: string;
+
+  constructor(command = "copilot") {
+    this.#command = command;
+  }
+
+  async probe(workspaces: {
+    readonly withoutSkill: IsolatedWorkspace;
+    readonly withSkill: IsolatedWorkspace;
+  }): Promise<ExecutorCapabilities> {
+    const workspace = workspaces.withoutSkill;
+    const executablePath = await resolveExecutable(this.#command, workspace);
+    // CLI startup initializes profile state. Probe sequentially so concurrent initialization
+    // cannot fall back to the operator profile while an isolated profile is being created.
+    const executableBytes = await readFile(executablePath);
+    const help = await capture(executablePath, ["--help"], {
+      cwd: workspace.projectDir,
+      env: workspace.environment,
+    });
+    const version = await capture(executablePath, ["--version"], {
+      cwd: workspace.projectDir,
+      env: workspace.environment,
+    });
+    const withoutSkills = await capture(
+      executablePath,
+      ["--no-custom-instructions", "skill", "list", "--json"],
+      {
+        cwd: workspaces.withoutSkill.projectDir,
+        env: workspaces.withoutSkill.environment,
+      },
+    );
+    const withSkills = await capture(
+      executablePath,
+      ["--no-custom-instructions", "skill", "list", "--json"],
+      {
+        cwd: workspaces.withSkill.projectDir,
+        env: workspaces.withSkill.environment,
+      },
+    );
+    if (
+      help.exitCode !== 0 ||
+      version.exitCode !== 0 ||
+      withoutSkills.exitCode !== 0 ||
+      withSkills.exitCode !== 0
+    ) {
+      throw new Error(
+        `Copilot CLI probe failed: ${help.stderr || version.stderr || withoutSkills.stderr || withSkills.stderr}`,
+      );
+    }
+    let withoutSkillList: unknown;
+    let withSkillList: unknown;
+    try {
+      withoutSkillList = JSON.parse(withoutSkills.stdout);
+      withSkillList = JSON.parse(withSkills.stdout);
+    } catch (error) {
+      throw new Error(`Copilot CLI skill discovery did not return valid JSON: ${String(error)}`);
+    }
+    const pinnedSkillName = workspaces.withSkill.pinnedSkillName?.toLowerCase();
+    if (!pinnedSkillName) {
+      throw new Error("With-skill preflight has no pinned skill name");
+    }
+    const isAmrSkill = (record: Record<string, unknown>): boolean => {
+      const name = typeof record.name === "string" ? record.name.toLowerCase() : "";
+      return (
+        name === pinnedSkillName ||
+        name === "redis-code" ||
+        name === "azure-redis-infra" ||
+        name.includes("amr-agent")
+      );
+    };
+    const amrWithout = skillRecords(withoutSkillList).filter(isAmrSkill);
+    if (amrWithout.length > 0) {
+      throw new Error(
+        `Without-skill preflight discovered AMR skill contamination: ${JSON.stringify(amrWithout)}`,
+      );
+    }
+    const copiedSkillRoot = path.join(workspaces.withSkill.profileDir, ".copilot", "skills");
+    const externalWith = skillRecords(withSkillList).filter((record) => record.source !== "builtin");
+    const copiedRootPrefix = `${path.resolve(copiedSkillRoot).toLowerCase()}${path.sep}`;
+    const pinnedRecords = externalWith.filter(
+      (record) =>
+        typeof record.path === "string" &&
+        `${path.resolve(record.path).toLowerCase()}${path.sep}`.startsWith(copiedRootPrefix),
+    );
+    const externalAmrRecords = externalWith.filter(
+      (record) => isAmrSkill(record) && !pinnedRecords.includes(record),
+    );
+    if (pinnedRecords.length !== 1 || externalAmrRecords.length > 0) {
+      throw new Error("With-skill preflight could not prove discovery of the pinned skill snapshot");
+    }
+    const isolationFindings = await detectContamination(workspaces.withoutSkill, []);
+    if (isolationFindings.length > 0) {
+      throw new Error(
+        `Without-skill preflight created contaminated state: ${isolationFindings.join(", ")}`,
+      );
+    }
+    const text = help.stdout;
+    const capabilities: ExecutorCapabilities = {
+      executablePath,
+      executableHash: hashBytes(executableBytes),
+      version: version.stdout.trim(),
+      helpHash: hashBytes(text),
+      supportsPrompt: /(?:-p,\s*)?--prompt\b/.test(text),
+      supportsJsonOutput: /--output-format\b[\s\S]*json/.test(text),
+      supportsNoAskUser: /--no-ask-user\b/.test(text),
+      supportsToolApproval: /--allow-all-tools\b/.test(text),
+      supportsInstructionDisable: /--no-custom-instructions\b/.test(text),
+      supportsMcpDisable: /--disable-builtin-mcps\b/.test(text),
+    };
+    requireCapabilities(capabilities);
+    return capabilities;
+  }
+
+  async execute(
+    request: ExecutionRequest,
+    capabilities: ExecutorCapabilities,
+  ): Promise<ExecutionArtifact> {
+    requireCapabilities(capabilities);
+    const startedAt = new Date().toISOString();
+    const stdoutFile = path.join(request.workspace.root, "stdout.jsonl");
+    const stderrFile = path.join(request.workspace.root, "stderr.log");
+    const traceFile = path.join(request.workspace.root, "process-trace.json");
+    await mkdir(request.workspace.root, { recursive: true });
+    await Promise.all([writeFile(stdoutFile, ""), writeFile(stderrFile, "")]);
+
+    const args = [
+      "-C",
+      request.workspace.projectDir,
+      "--prompt",
+      request.scenario.prompt,
+      "--output-format",
+      "json",
+      "--allow-all-tools",
+      "--no-ask-user",
+      "--no-custom-instructions",
+      "--disable-builtin-mcps",
+      "--no-auto-update",
+      "--no-remote",
+      "--no-remote-export",
+      "--stream",
+      "off",
+      "--log-dir",
+      request.workspace.logDir,
+    ];
+    if (request.model) {
+      args.push("--model", request.model);
+    }
+
+    const controller = new AbortController();
+    let timedOut = false;
+    let cancelled = false;
+    const forwardAbort = (): void => {
+      cancelled = true;
+      controller.abort(request.signal.reason);
+    };
+    request.signal.addEventListener("abort", forwardAbort, { once: true });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort(new Error(`Execution timed out after ${request.timeoutMs}ms`));
+    }, request.timeoutMs);
+
+    const stdout = createWriteStream(stdoutFile, { flags: "a" });
+    const stderr = createWriteStream(stderrFile, { flags: "a" });
+    const child = spawn(capabilities.executablePath, args, {
+      cwd: request.workspace.projectDir,
+      env: request.workspace.environment,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      signal: controller.signal,
+    });
+    const pid = child.pid;
+    if (!pid) {
+      clearTimeout(timeout);
+      throw new Error("Copilot CLI did not expose a process id");
+    }
+    request.onProcessStarted?.(pid);
+    let forceKillTimer: NodeJS.Timeout | undefined;
+    controller.signal.addEventListener(
+      "abort",
+      () => {
+        forceKillTimer = setTimeout(() => {
+          if (child.exitCode === null && child.signalCode === null) {
+            child.kill("SIGKILL");
+          }
+        }, 5_000);
+      },
+      { once: true },
+    );
+    const pipeErrors: Error[] = [];
+    const stdoutPipeline = pipeline(child.stdout, stdout).catch((error: Error) => {
+      pipeErrors.push(error);
+    });
+    const stderrPipeline = pipeline(child.stderr, stderr).catch((error: Error) => {
+      pipeErrors.push(error);
+    });
+
+    let exitCode: number | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
+    let spawnError: Error | undefined;
+    await new Promise<void>((resolve) => {
+      child.on("error", (error) => {
+        spawnError = error;
+      });
+      child.on("close", (code, signal) => {
+        exitCode = code;
+        exitSignal = signal;
+        resolve();
+      });
+    });
+    clearTimeout(timeout);
+    if (forceKillTimer) {
+      clearTimeout(forceKillTimer);
+    }
+    request.signal.removeEventListener("abort", forwardAbort);
+    request.onProcessExited?.(pid);
+    await Promise.all([stdoutPipeline, stderrPipeline]);
+    if (pipeErrors.length > 0 && !spawnError) {
+      spawnError = pipeErrors[0];
+    }
+
+    const finishedAt = new Date().toISOString();
+    const [projectHashAfter, profileHashAfter, stdoutText] = await Promise.all([
+      hashTree(request.workspace.projectDir),
+      hashTree(request.workspace.profileDir),
+      readFile(stdoutFile, "utf8"),
+    ]);
+    const contamination = await detectContamination(request.workspace, [stdoutFile, stderrFile]);
+    const events = stdoutText
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        try {
+          return JSON.parse(line) as unknown;
+        } catch {
+          return { type: "unparsed", text: line };
+        }
+      });
+    const responseText = events
+      .map((event) => {
+        if (!event || typeof event !== "object") {
+          return "";
+        }
+        const record = event as Record<string, unknown>;
+        return typeof record.content === "string"
+          ? record.content
+          : typeof record.message === "string"
+            ? record.message
+            : "";
+      })
+      .filter(Boolean)
+      .join("\n");
+
+    const status: ExecutionArtifact["status"] = timedOut
+      ? "timed-out"
+      : cancelled
+        ? "cancelled"
+        : exitCode === 0 && contamination.length === 0 && !spawnError
+          ? "completed"
+          : "failed";
+    const trace = {
+      executablePath: capabilities.executablePath,
+      executableHash: capabilities.executableHash,
+      args,
+      cwd: request.workspace.projectDir,
+      pid,
+      startedAt,
+      finishedAt,
+      exitCode,
+      signal: exitSignal,
+      timedOut,
+      cancelled,
+      stdoutFile,
+      stderrFile,
+      projectHashBefore: request.workspace.projectHash,
+      projectHashAfter,
+      profileHashBefore: request.workspace.profileHash,
+      profileHashAfter,
+      contamination,
+    };
+    await writeAtomicJson(traceFile, trace);
+    return {
+      soakRunId: request.workspace.environment.SOAK_RUN_ID ?? "unknown",
+      executionId: request.executionId,
+      scenarioId: request.scenario.id,
+      arm: request.arm,
+      status,
+      startedAt,
+      finishedAt,
+      responseText,
+      events,
+      trace,
+    };
+  }
+}

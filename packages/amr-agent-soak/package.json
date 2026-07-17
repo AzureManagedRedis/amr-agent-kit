@@ -1,0 +1,32 @@
+{
+  "name": "amr-agent-soak",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Headless paired soak runner for AMR Agent Kit skill evaluations",
+  "type": "module",
+  "exports": {
+    "./core": {
+      "types": "./dist/src/core/index.d.ts",
+      "import": "./dist/src/core/index.js"
+    },
+    "./executor": {
+      "types": "./dist/src/executor/index.d.ts",
+      "import": "./dist/src/executor/index.js"
+    }
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/core/*.test.js",
+    "soak": "node dist/src/cli/main.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  },
+  "dependencies": {
+    "amr-agent-kit": "file:../.."
+  }
+}
