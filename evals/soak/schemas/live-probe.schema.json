@@ -16,6 +16,8 @@
     "expected_signal": { "type": "string", "minLength": 5, "description": "Abstract expectation the probe verifies (e.g. 'cluster_enabled:1', 'CROSSSLOT error on multi-key op across slots')." },
     "locator_ref": { "type": "string", "pattern": "^loc-[a-z0-9]+(-[a-z0-9]+)*$" },
     "destructive": { "type": "boolean", "description": "True if the probe mutates state; runners must gate destructive probes." },
+    "isolation": { "type": "string", "enum": ["read-only", "exclusive", "namespaced"], "description": "Concurrency isolation for this probe. Destructive probes must not be read-only." },
+    "cohort_ref": { "type": "string", "pattern": "^coh-[a-z0-9]+(-[a-z0-9]+)*$", "description": "Optional execution cohort that governs how this probe is scheduled and leased." },
     "public_safe": { "type": "boolean", "const": true }
   }
 }

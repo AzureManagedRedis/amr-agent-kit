@@ -20,6 +20,7 @@
   ],
   "safety_classes": ["saf-availability-regression"],
   "source_facts": ["src-lifecycle-scale-online", "src-lifecycle-provision-time-only"],
+  "probe_cohorts": ["coh-gen2-unit-test", "coh-reqnroll-dry-run"],
   "correctness_rubric_ref": "rub-lifecycle-cor",
   "actionability_rubric_ref": "rub-lifecycle-act",
   "baseline_leakage_canaries": ["blc-lifecycle-baseline"],

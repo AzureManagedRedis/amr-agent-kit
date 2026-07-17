@@ -18,9 +18,10 @@
       ]
     }
   ],
-  "safety_classes": ["saf-db-semantics"],
+  "safety_classes": ["saf-db-semantics", "saf-shared-cleanup-reuse"],
   "source_facts": ["src-crdb-active-active", "src-crdb-db0"],
   "live_probes": ["prb-crdb-replication"],
+  "probe_cohorts": ["coh-mutating-crud", "coh-background-load"],
   "correctness_rubric_ref": "rub-crdb-cor",
   "actionability_rubric_ref": "rub-crdb-act",
   "baseline_leakage_canaries": ["blc-crdb-baseline", "blc-crdb-internal-leak"],

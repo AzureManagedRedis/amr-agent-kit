@@ -12,7 +12,8 @@
     "baseline_leakage_canaries": "baseline-leakage-canaries.json",
     "grader_canaries": "grader-canaries.json",
     "mutation_selections": "mutation-selections.json",
-    "acceptance_thresholds": "acceptance-thresholds.json"
+    "acceptance_thresholds": "acceptance-thresholds.json",
+    "probe_cohorts": "probe-cohorts.json"
   },
   "scenarios": [
     { "id": "scn-routing-skill-selection", "domain": "routing", "file": "scenarios/scn-routing-skill-selection.json" },

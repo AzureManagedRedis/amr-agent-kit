@@ -1,0 +1,4 @@
+{ "id": "coh-fixture-cleanup", "cohort_kind": "mutating-crud", "determinism": "best-effort", "isolation": "exclusive", "namespace_injection": false, "public_safe": true,
+  "lease": { "required": true, "scope": "per-run", "mode": "exclusive" },
+  "runtime_config": { "provider_id": "fixture-crud-harness", "locator_ref": "loc-testing-harness", "config_keys": ["AMR_MUTATING_TARGET"] },
+  "cleanup": { "policy": "leased-target-teardown", "forbid_subscription_wide_cleanup": false } }

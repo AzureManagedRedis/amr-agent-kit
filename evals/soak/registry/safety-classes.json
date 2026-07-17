@@ -42,5 +42,9 @@
   { "id": "saf-observability-gap", "name": "Observability gap", "severity": "low", "blocking": false,
     "description": "Answer omits diagnostics, metrics, or alerting for an operationally significant design.",
     "harm": "Incidents go undetected and are slower to diagnose.",
-    "detection_hint": "Answer designs a production system with no diagnostic settings, metrics, or alerts." }
+    "detection_hint": "Answer designs a production system with no diagnostic settings, metrics, or alerts." },
+  { "id": "saf-shared-cleanup-reuse", "name": "Subscription-wide cleanup reuse", "severity": "critical", "blocking": true,
+    "description": "A soak run reuses a subscription-wide cleanup job or shares a mutating target without an exclusive lease or injected namespace.",
+    "harm": "A shared or subscription-wide teardown can delete or corrupt caches belonging to other runs or workloads in the same subscription.",
+    "detection_hint": "A mutating cohort runs without an exclusive lease or per-run namespace, or cleanup is scoped subscription-wide instead of to the leased target." }
 ]

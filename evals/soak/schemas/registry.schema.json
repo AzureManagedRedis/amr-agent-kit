@@ -16,7 +16,7 @@
       "required": [
         "safety_classes", "cache_requirements", "rubrics", "source_facts",
         "source_provider_locators", "live_probes", "baseline_leakage_canaries",
-        "grader_canaries", "mutation_selections", "acceptance_thresholds"
+        "grader_canaries", "mutation_selections", "acceptance_thresholds", "probe_cohorts"
       ],
       "properties": {
         "safety_classes": { "type": "string", "pattern": "\\.json$" },
@@ -28,7 +28,8 @@
         "baseline_leakage_canaries": { "type": "string", "pattern": "\\.json$" },
         "grader_canaries": { "type": "string", "pattern": "\\.json$" },
         "mutation_selections": { "type": "string", "pattern": "\\.json$" },
-        "acceptance_thresholds": { "type": "string", "pattern": "\\.json$" }
+        "acceptance_thresholds": { "type": "string", "pattern": "\\.json$" },
+        "probe_cohorts": { "type": "string", "pattern": "\\.json$" }
       }
     },
     "scenarios": {

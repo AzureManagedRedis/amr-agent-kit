@@ -10,7 +10,7 @@
     "id": { "type": "string", "pattern": "^loc-[a-z0-9]+(-[a-z0-9]+)*$" },
     "provider_kind": {
       "type": "string",
-      "enum": ["cp-source", "dp-source", "redisinc-source", "cp-unit-test", "amr-docs", "redis-oss-docs", "live-probe"],
+      "enum": ["cp-source", "dp-source", "redisinc-source", "cp-unit-test", "amr-docs", "redis-oss-docs", "live-probe", "testing-harness"],
       "description": "Abstract class of the private/external provider. No provider endpoints or paths are encoded here."
     },
     "resolution": {
@@ -25,7 +25,7 @@
         },
         "expected_artifact_kind": {
           "type": "string",
-          "enum": ["unit-test-assertion", "validation-rule", "command-behavior", "config-default", "doc-section", "probe-signal"]
+          "enum": ["unit-test-assertion", "validation-rule", "command-behavior", "config-default", "doc-section", "probe-signal", "test-cohort-run"]
         }
       }
     },

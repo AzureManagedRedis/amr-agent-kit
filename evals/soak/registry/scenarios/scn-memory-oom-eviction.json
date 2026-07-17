@@ -23,6 +23,7 @@
   "cache_requirements": ["cch-eviction-policy"],
   "source_facts": ["src-mem-eviction-policy", "src-mem-headroom", "src-mem-bigkeys"],
   "live_probes": ["prb-maxmemory-policy"],
+  "probe_cohorts": ["coh-readonly-connectivity"],
   "correctness_rubric_ref": "rub-mem-cor",
   "actionability_rubric_ref": "rub-mem-act",
   "baseline_leakage_canaries": ["blc-mem-baseline"],

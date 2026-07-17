@@ -21,6 +21,7 @@
   ],
   "safety_classes": ["saf-stale-guidance"],
   "source_facts": ["src-cp-reject-invalid-name", "src-cp-reject-incompatible-feature"],
+  "probe_cohorts": ["coh-gen2-unit-test", "coh-reqnroll-dry-run"],
   "correctness_rubric_ref": "rub-cpneg-cor",
   "actionability_rubric_ref": "rub-cpneg-act",
   "baseline_leakage_canaries": ["blc-cpneg-baseline", "blc-cpneg-internal-leak"],

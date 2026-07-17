@@ -24,6 +24,9 @@
     { "file": "invalid/acceptance-thresholds.nonzero-blocking.json", "schema": "acceptance-thresholds", "expect": "invalid" },
     { "file": "valid/scenario.valid.json", "schema": "scenario", "expect": "valid" },
     { "file": "invalid/scenario.additional-prop.json", "schema": "scenario", "expect": "invalid" },
-    { "file": "invalid/scenario.missing-source-facts.json", "schema": "scenario", "expect": "invalid" }
+    { "file": "invalid/scenario.missing-source-facts.json", "schema": "scenario", "expect": "invalid" },
+    { "file": "valid/probe-cohort.valid.json", "schema": "probe-cohort", "expect": "valid" },
+    { "file": "invalid/probe-cohort.subscription-cleanup.json", "schema": "probe-cohort", "expect": "invalid" },
+    { "file": "invalid/probe-cohort.bad-config-key.json", "schema": "probe-cohort", "expect": "invalid" }
   ]
 }

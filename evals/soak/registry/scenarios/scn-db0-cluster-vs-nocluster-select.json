@@ -23,6 +23,7 @@
   "safety_classes": ["saf-db-semantics"],
   "source_facts": ["src-db0-clustered-single-db", "src-db0-nocluster-select", "src-db0-keyprefix-guidance"],
   "live_probes": ["prb-select-support", "prb-cluster-enabled"],
+  "probe_cohorts": ["coh-gen2-unit-test", "coh-reqnroll-dry-run", "coh-readonly-connectivity"],
   "correctness_rubric_ref": "rub-db0-cor",
   "actionability_rubric_ref": "rub-db0-act",
   "baseline_leakage_canaries": ["blc-db0-baseline", "blc-db0-internal-leak"],

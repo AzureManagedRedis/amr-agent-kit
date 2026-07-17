@@ -23,6 +23,7 @@
   "cache_requirements": ["cch-hashtag-colocation"],
   "source_facts": ["src-cluster-crossslot", "src-cluster-hashtag", "src-cluster-mkms-nuance"],
   "live_probes": ["prb-cluster-enabled", "prb-crossslot-error"],
+  "probe_cohorts": ["coh-readonly-connectivity"],
   "correctness_rubric_ref": "rub-cluster-cor",
   "actionability_rubric_ref": "rub-cluster-act",
   "baseline_leakage_canaries": ["blc-cluster-baseline"],

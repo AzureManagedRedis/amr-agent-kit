@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/probe-cohort.schema.json",
+  "title": "SoakProbeCohort",
+  "description": "A runtime-configured execution cohort for scenario probes, derived from the AMR testing repository's isolation reality. A cohort declares its determinism, its concurrency isolation, its lease requirement, and its cleanup policy. Public-safe: the testing harness is referenced by an abstract provider id and a runtime locator plus configuration KEY NAMES only. No proprietary testing paths, test names, subscriptions, or effective config are committed. Mutating cohorts must be exclusive and leased unless the harness injects per-run namespaces, because existing tests use fixed keys with no cross-run lease. Reuse of subscription-wide cleanup jobs is forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "cohort_kind", "determinism", "isolation", "lease", "namespace_injection", "runtime_config", "cleanup", "public_safe"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^coh-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "cohort_kind": {
+      "type": "string",
+      "enum": ["gen2-unit-test", "reqnroll-dry-run", "readonly-connectivity", "mutating-crud", "mutating-module", "background-load"],
+      "description": "gen2-unit-test and reqnroll-dry-run are deterministic and side-effect-free; readonly-connectivity only reads an existing cache; mutating-crud/mutating-module/background-load change state and must be leased."
+    },
+    "determinism": { "type": "string", "enum": ["deterministic", "best-effort", "nondeterministic"] },
+    "isolation": {
+      "type": "string",
+      "enum": ["read-only", "exclusive", "namespaced"],
+      "description": "read-only: safe to share a target. exclusive: requires an exclusive lease on the target. namespaced: safe to share only because the harness injects a per-run key namespace."
+    },
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required", "scope", "mode"],
+      "properties": {
+        "required": { "type": "boolean" },
+        "scope": { "type": "string", "enum": ["none", "per-cohort", "per-run"] },
+        "mode": { "type": "string", "enum": ["shared", "exclusive"] }
+      }
+    },
+    "namespace_injection": {
+      "type": "boolean",
+      "description": "True only when the harness injects a per-run key namespace so mutating work cannot collide across runs. Existing tests use fixed keys, so this is false for them and forces exclusive leasing."
+    },
+    "runtime_config": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider_id", "locator_ref", "config_keys"],
+      "properties": {
+        "provider_id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$", "description": "Public-safe abstract id of the testing provider (e.g. 'gen2-e2e-harness'). Not a path." },
+        "locator_ref": { "type": "string", "pattern": "^loc-[a-z0-9]+(-[a-z0-9]+)*$" },
+        "config_keys": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^[A-Z0-9]+(_[A-Z0-9]+)*$" },
+          "description": "Configuration/environment KEY NAMES the runtime reads (e.g. REQNROLL_DRY_RUN). Values, paths, and connection details resolve into eval-runs, never here."
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "forbid_subscription_wide_cleanup"],
+      "properties": {
+        "policy": { "type": "string", "enum": ["none", "per-run-namespace-teardown", "leased-target-teardown"] },
+        "forbid_subscription_wide_cleanup": {
+          "type": "boolean",
+          "const": true,
+          "description": "Reuse of subscription-wide cleanup jobs is explicitly rejected; cleanup must be scoped to the leased target or injected namespace."
+        }
+      }
+    },
+    "public_safe": { "type": "boolean", "const": true }
+  }
+}

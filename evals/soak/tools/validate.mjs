@@ -121,11 +121,12 @@ const catalogFiles = {
   "baseline-leakage-canary": "baseline-leakage-canaries.json",
   "grader-canary": "grader-canaries.json",
   "mutation-selection": "mutation-selections.json",
-  "acceptance-thresholds": "acceptance-thresholds.json"
+  "acceptance-thresholds": "acceptance-thresholds.json",
+  "probe-cohort": "probe-cohorts.json"
 };
 
-const ids = { saf: new Set(), cch: new Set(), rub: new Set(), src: new Set(), loc: new Set(), prb: new Set(), blc: new Set(), grc: new Set(), mut: new Set(), acc: new Set(), scn: new Set() };
-const idOf = { "safety-class": "saf", "cache-requirement": "cch", "rubric": "rub", "source-fact": "src", "source-provider-locator": "loc", "live-probe": "prb", "baseline-leakage-canary": "blc", "grader-canary": "grc", "mutation-selection": "mut", "acceptance-thresholds": "acc" };
+const ids = { saf: new Set(), cch: new Set(), rub: new Set(), src: new Set(), loc: new Set(), prb: new Set(), blc: new Set(), grc: new Set(), mut: new Set(), acc: new Set(), coh: new Set(), scn: new Set() };
+const idOf = { "safety-class": "saf", "cache-requirement": "cch", "rubric": "rub", "source-fact": "src", "source-provider-locator": "loc", "live-probe": "prb", "baseline-leakage-canary": "blc", "grader-canary": "grc", "mutation-selection": "mut", "acceptance-thresholds": "acc", "probe-cohort": "coh" };
 const rubricKind = {};
 const factById = {};
 
@@ -170,6 +171,7 @@ for (const { scn, entry } of scenarios) {
   (scn.cache_requirements || []).forEach((x) => ref("cch", x, w, "cache-requirement"));
   (scn.source_facts || []).forEach((x) => ref("src", x, w, "source-fact"));
   (scn.live_probes || []).forEach((x) => ref("prb", x, w, "live-probe"));
+  (scn.probe_cohorts || []).forEach((x) => ref("coh", x, w, "probe-cohort"));
   (scn.baseline_leakage_canaries || []).forEach((x) => ref("blc", x, w, "baseline-leakage-canary"));
   (scn.grader_canaries || []).forEach((x) => ref("grc", x, w, "grader-canary"));
   ref("rub", scn.correctness_rubric_ref, w, "rubric");
@@ -198,6 +200,25 @@ const blcData = readJson(path.join(registryDir, catalogFiles["baseline-leakage-c
 for (const b of blcData) ref("scn", b.scenario_ref, `baseline-leakage-canaries.json (${b.id})`, "scenario");
 const mutData = readJson(path.join(registryDir, catalogFiles["mutation-selection"])) || [];
 for (const m of mutData) ref("scn", m.scenario_ref, `mutation-selections.json (${m.id})`, "scenario");
+
+// live-probe cohort refs + destructive/isolation coherence
+const probeData = readJson(path.join(registryDir, catalogFiles["live-probe"])) || [];
+for (const p of probeData) {
+  if (p.cohort_ref) ref("coh", p.cohort_ref, `live-probes.json (${p.id})`, "probe-cohort");
+  if (p.destructive === true && p.isolation === "read-only") fail(`live-probes.json (${p.id})`, "destructive probe cannot have read-only isolation");
+}
+
+// probe-cohort semantic rules: locator ref, mutating classification, cleanup safety
+const cohData = readJson(path.join(registryDir, catalogFiles["probe-cohort"])) || [];
+const mutatingKinds = new Set(["mutating-crud", "mutating-module", "background-load"]);
+for (const c of cohData) {
+  ref("loc", c.runtime_config && c.runtime_config.locator_ref, `probe-cohorts.json (${c.id})`, "source-provider-locator");
+  if (mutatingKinds.has(c.cohort_kind) && c.namespace_injection === false) {
+    if (c.isolation !== "exclusive") fail(`probe-cohorts.json (${c.id})`, "mutating cohort without namespace injection must be exclusive");
+    if (!c.lease || c.lease.required !== true || c.lease.mode !== "exclusive") fail(`probe-cohorts.json (${c.id})`, "mutating cohort without namespace injection must require an exclusive lease");
+  }
+  if (c.cleanup && c.cleanup.forbid_subscription_wide_cleanup !== true) fail(`probe-cohorts.json (${c.id})`, "cohort must forbid subscription-wide cleanup reuse");
+}
 
 // ---- Fixtures ----------------------------------------------------------
 let fixtureCount = 0;

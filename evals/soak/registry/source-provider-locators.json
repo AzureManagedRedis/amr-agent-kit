@@ -26,5 +26,9 @@
   { "id": "loc-live-probe", "provider_kind": "live-probe", "public_safe": true,
     "resolution": { "query_shape": "runtime probe against a provisioned test instance to confirm the observable signal", "expected_artifact_kind": "probe-signal" },
     "citation_sink": { "destination": "eval-runs", "path_template": "eval-runs/citations/live-probe/{fact_id}.json" },
-    "redaction_policy": "Strip endpoints, hostnames, credentials, subscription ids, and effective config; retain only the abstract signal outcome." }
+    "redaction_policy": "Strip endpoints, hostnames, credentials, subscription ids, and effective config; retain only the abstract signal outcome." },
+  { "id": "loc-testing-harness", "provider_kind": "testing-harness", "public_safe": true,
+    "resolution": { "query_shape": "cohort-run lookup in the AMR testing harness for the named execution cohort", "expected_artifact_kind": "test-cohort-run" },
+    "citation_sink": { "destination": "eval-runs", "path_template": "eval-runs/citations/testing-harness/{fact_id}.json" },
+    "redaction_policy": "Never commit testing repository paths, test names, subscription ids, lease targets, endpoints, or effective config; resolve provider ids and config-key values into eval-runs only." }
 ]

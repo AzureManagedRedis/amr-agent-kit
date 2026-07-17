@@ -20,10 +20,11 @@
       ]
     }
   ],
-  "safety_classes": ["saf-cross-tenant-leak"],
+  "safety_classes": ["saf-cross-tenant-leak", "saf-shared-cleanup-reuse"],
   "cache_requirements": ["cch-semcache-scoping"],
   "source_facts": ["src-vec-tier-capability", "src-vec-tenant-filter", "src-vec-dim-metric", "src-semcache-scope"],
   "live_probes": ["prb-module-search"],
+  "probe_cohorts": ["coh-readonly-connectivity", "coh-mutating-module"],
   "correctness_rubric_ref": "rub-vec-cor",
   "actionability_rubric_ref": "rub-vec-act",
   "baseline_leakage_canaries": ["blc-vec-baseline"],

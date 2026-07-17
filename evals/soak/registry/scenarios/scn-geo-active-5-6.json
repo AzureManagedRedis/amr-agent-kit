@@ -21,6 +21,7 @@
   ],
   "safety_classes": ["saf-availability-regression", "saf-db-semantics"],
   "source_facts": ["src-geo-5-6-topology", "src-geo-5-6-db0"],
+  "probe_cohorts": ["coh-gen2-unit-test", "coh-reqnroll-dry-run"],
   "correctness_rubric_ref": "rub-geo-cor",
   "actionability_rubric_ref": "rub-geo-act",
   "baseline_leakage_canaries": ["blc-geo-baseline", "blc-geo-internal-leak"],

@@ -1,0 +1,4 @@
+{ "id": "coh-fixture-badkeys", "cohort_kind": "reqnroll-dry-run", "determinism": "deterministic", "isolation": "read-only", "namespace_injection": false, "public_safe": true,
+  "lease": { "required": false, "scope": "none", "mode": "shared" },
+  "runtime_config": { "provider_id": "fixture-runner", "locator_ref": "loc-testing-harness", "config_keys": ["reqnroll_dry_run"] },
+  "cleanup": { "policy": "none", "forbid_subscription_wide_cleanup": true } }

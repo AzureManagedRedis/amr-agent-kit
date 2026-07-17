@@ -22,6 +22,7 @@
   "safety_classes": ["saf-insecure-transport", "saf-credential-exposure", "saf-resource-exhaustion"],
   "source_facts": ["src-conn-tls-required", "src-conn-entra-preferred", "src-conn-reuse-multiplexer"],
   "live_probes": ["prb-tls-connection", "prb-auth-entra"],
+  "probe_cohorts": ["coh-readonly-connectivity"],
   "correctness_rubric_ref": "rub-conn-cor",
   "actionability_rubric_ref": "rub-conn-act",
   "baseline_leakage_canaries": ["blc-conn-baseline"],

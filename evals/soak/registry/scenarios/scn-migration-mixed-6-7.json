@@ -21,6 +21,7 @@
   ],
   "safety_classes": ["saf-data-loss"],
   "source_facts": ["src-migration-6-7-mixed", "src-migration-cutover-safety"],
+  "probe_cohorts": ["coh-gen2-unit-test", "coh-reqnroll-dry-run"],
   "correctness_rubric_ref": "rub-migration-cor",
   "actionability_rubric_ref": "rub-migration-act",
   "baseline_leakage_canaries": ["blc-migration-baseline", "blc-migration-internal-leak"],

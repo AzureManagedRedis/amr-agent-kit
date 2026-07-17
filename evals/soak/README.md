@@ -117,6 +117,7 @@ id-reference:
 | `cache_requirements` | `cache-requirements.json` | Cache-correctness requirements where relevant |
 | `source_facts` | `source-facts.json` | Facts the answer must honor |
 | `live_probes` | `live-probes.json` | Optional runtime confirmations |
+| `probe_cohorts` | `probe-cohorts.json` | Runtime execution cohorts (determinism, isolation, leasing) |
 | `correctness_rubric_ref` | `rubrics.json` (kind=correctness) | Fact-anchored scoring |
 | `actionability_rubric_ref` | `rubrics.json` (kind=actionability) | Is the answer concretely usable |
 | `baseline_leakage_canaries` | `baseline-leakage-canaries.json` | Non-discriminating baseline / internal-leak detectors |
@@ -142,6 +143,46 @@ A scenario passes only when correctness, actionability, safety (zero blocking vi
 grader-canary, leakage (zero internal leaks), and held-out gates are all satisfied. `uplift` is
 the optional, separate efficacy gate.
 
+## Runtime execution cohorts, leasing, and isolation
+
+Findings from the AMR testing repository are encoded as **probe cohorts**
+(`registry/probe-cohorts.json`). A cohort classifies how a scenario's probes are
+executed against real test infrastructure, and each is referenced from scenarios via
+`probe_cohorts` and from probes via `cohort_ref`.
+
+| Cohort | Determinism | Isolation | Lease |
+|---|---|---|---|
+| `coh-gen2-unit-test` | deterministic | read-only | none |
+| `coh-reqnroll-dry-run` | deterministic | read-only | none |
+| `coh-readonly-connectivity` | deterministic | read-only | shared, per-run |
+| `coh-mutating-crud` | best-effort | exclusive | **exclusive, per-run** |
+| `coh-mutating-module` | best-effort | exclusive | **exclusive, per-run** |
+| `coh-background-load` | nondeterministic | exclusive | **exclusive, per-run** |
+
+- **Deterministic, side-effect-free cohorts** — Gen2 unit tests and `REQNROLL_DRY_RUN`
+  runs — need no lease and can share infrastructure.
+- **Read-only connectivity** against an existing cache takes a shared per-run lease.
+- **Mutating cohorts** (CRUD, module, background load) are classified **exclusive and
+  leased**. The existing tests use fixed keys with **no cross-run lease**, so a mutating
+  selector cannot safely share a target. A cohort may only relax to shared/`namespaced`
+  isolation when `namespace_injection: true` (the harness injects a per-run key
+  namespace). Until then, mutating selectors are exclusive. The validator enforces this:
+  a `mutating-*`/`background-load` cohort with `namespace_injection: false` **must** be
+  `isolation: exclusive` with an exclusive per-run lease.
+
+**Runtime configuration is public-safe.** Each cohort names an abstract `provider_id`
+(e.g. `gen2-e2e-harness`), a `locator_ref` to `loc-testing-harness`, and configuration
+**KEY NAMES** only (e.g. `REQNROLL_DRY_RUN`). No testing-repository paths, test names,
+subscription ids, lease targets, endpoints, or effective config are committed; those
+resolve through the locator into `eval-runs/`.
+
+**Subscription-wide cleanup is rejected.** Every cohort sets
+`cleanup.forbid_subscription_wide_cleanup: true` (a schema `const`), and the blocking
+safety class `saf-shared-cleanup-reuse` fails any answer or run that reuses a
+subscription-wide cleanup job or shares a mutating target without an exclusive lease or
+injected namespace. Cleanup must be scoped to the leased target or the injected per-run
+namespace.
+
 ## Domain coverage (17 scenarios)
 
 routing · connection/auth · stampede · cluster-policy (CROSSSLOT / multi-key multi-slot) ·
@@ -154,9 +195,11 @@ mixed migration 6→7 · lifecycle · networking/identity/observability · CRDB 
 - Committed here: public-safe schemas, scenarios, rubrics, facts (statements only), safety
   classes, cache requirements, canaries, mutations, acceptance thresholds, and runtime
   **locator contracts**.
-- Never committed: proprietary CP/DP/RedisInc source, internal paths/symbols/lines,
-  subscription ids, endpoints, credentials, or effective config. Those resolve only into the
-  already-gitignored `eval-runs/` tree.
-- Schemas enforce this where they can: `public_safe` is `const true`, locator/mutation sinks are
-  pinned to `eval-runs`, and an `internal-content-leak` canary rejects answers that echo a
+- Never committed: proprietary CP/DP/RedisInc **or testing-repository** source, internal
+  paths/symbols/lines, test names, subscription ids, endpoints, credentials, lease
+  targets, or effective config. Those resolve only into the already-gitignored
+  `eval-runs/` tree.
+- Schemas enforce this where they can: `public_safe` is `const true`, locator/mutation
+  and cohort-cleanup sinks are pinned to `eval-runs`/`const true`, cohort config exposes
+  key names only, and an `internal-content-leak` canary rejects answers that echo a
   source line reference.
