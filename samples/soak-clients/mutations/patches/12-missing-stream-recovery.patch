@@ -1,6 +1,6 @@
 --- a/reference-good/invariants.txt
 +++ b/reference-good/invariants.txt
-@@ -12,3 +12,3 @@
+@@ -15,3 +15,3 @@
  pubsub-reliability=durable-stream-fallback
 -stream-recovery=consumer-group-pending-claim
 +stream-recovery=no-pending-claim

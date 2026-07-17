@@ -1,6 +1,6 @@
 --- a/reference-good/invariants.txt
 +++ b/reference-good/invariants.txt
-@@ -5,4 +5,4 @@
+@@ -8,4 +8,4 @@
  retry-policy=bounded-with-jitter
 -operation-deadline=required
 -key-ttl=required

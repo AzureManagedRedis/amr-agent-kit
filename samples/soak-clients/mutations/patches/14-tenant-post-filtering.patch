@@ -1,6 +1,6 @@
 --- a/reference-good/invariants.txt
 +++ b/reference-good/invariants.txt
-@@ -14,3 +14,3 @@
+@@ -17,3 +17,3 @@
  ingestion=idempotency-keyed
 -tenant-isolation=key-boundary-enforced
 +tenant-isolation=post-filter-results

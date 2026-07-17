@@ -22,5 +22,7 @@ func newGoRedisClient(endpoint string, timeout time.Duration) *redis.Client {
 }
 
 func writeProbe(ctx context.Context, client *redis.Client, key string, ttl time.Duration) error {
+	teardownKey := key[:len(key)-len(":probe")] + ":teardown"
+	defer client.Del(ctx, key, teardownKey)
 	return client.Set(ctx, key, "1", ttl).Err()
 }

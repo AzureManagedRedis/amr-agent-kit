@@ -1,4 +1,7 @@
 endpoint=tls-validated
+key-namespace=run-and-scenario-configurable
+module-teardown=explicit-scoped-cleanup
+flush-operations=disabled
 certificate-validation=required
 client-lifecycle=retained
 credential-lifecycle=refresh-before-expiry

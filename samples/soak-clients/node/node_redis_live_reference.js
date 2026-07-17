@@ -15,4 +15,14 @@ function createRetainedClient(endpoint, timeoutMs) {
   });
 }
 
-module.exports = { createRetainedClient };
+async function runProbe(client, namespace, runId, scenario, ttlSeconds) {
+  const probeKey = `${namespace}:${runId}:${scenario}:probe`;
+  const teardownKey = `${namespace}:${runId}:${scenario}:teardown`;
+  try {
+    await client.set(probeKey, "1", { EX: ttlSeconds });
+  } finally {
+    await client.del(probeKey, teardownKey);
+  }
+}
+
+module.exports = { createRetainedClient, runProbe };

@@ -4,6 +4,7 @@ param()
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("retained-soak-client-" + [Guid]::NewGuid().ToString("N"))
+$exitCode = 0
 New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
 
 function Assert-Result {
@@ -16,7 +17,7 @@ function Assert-Result {
     if ($result.library -ne $Library -or $result.mode -ne "dry-run" -or $result.status -ne "ok") {
         throw "Unexpected dry-run result for $Library."
     }
-    foreach ($property in @("library", "mode", "scenario", "status", "keyNamespace", "probeKey", "metrics")) {
+    foreach ($property in @("library", "mode", "scenario", "status", "keyNamespace", "runId", "probeKey", "teardownKey", "ttlSeconds", "metrics")) {
         if ($result.PSObject.Properties.Name -notcontains $property) {
             throw "Result contract uses a missing or incorrectly cased '$property' property for $Library."
         }
@@ -26,8 +27,11 @@ function Assert-Result {
             throw "Metric contract uses a missing or incorrectly cased '$property' property for $Library."
         }
     }
-    if ($result.probeKey -notlike "$($result.keyNamespace):$($result.scenario):probe") {
+    if ($result.probeKey -notlike "$($result.keyNamespace):$($result.runId):$($result.scenario):probe") {
         throw "Result key is not namespaced for $Library."
+    }
+    if ($result.teardownKey -notlike "$($result.keyNamespace):$($result.runId):$($result.scenario):teardown" -or $result.ttlSeconds -lt 1) {
+        throw "Result teardown or TTL contract is invalid for $Library."
     }
 }
 
@@ -55,6 +59,7 @@ try {
     Assert-Result -Json ($go | Select-Object -Last 1) -Library "go-redis"
 
     $env:CARGO_TARGET_DIR = Join-Path $tempRoot "cargo-target"
+    New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
     $rust = & cargo run --manifest-path (Join-Path $root "rust\Cargo.toml") --offline --quiet
     Assert-Result -Json ($rust | Select-Object -Last 1) -Library "redis-rs"
 
@@ -62,7 +67,10 @@ try {
     Assert-Result -Json ($node | Select-Object -Last 1) -Library "node-redis"
 
     & python -m unittest discover -s (Join-Path $root "tests") -p "test_*.py"
+    $exitCode = $LASTEXITCODE
 } finally {
     Remove-Item -Force (Join-Path $root "rust\Cargo.lock") -ErrorAction SilentlyContinue
     Remove-Item -Recurse -Force $tempRoot -ErrorAction SilentlyContinue
 }
+
+exit $exitCode

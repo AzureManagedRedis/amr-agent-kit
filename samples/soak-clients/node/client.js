@@ -19,8 +19,10 @@ function validLiveEndpoint(value) {
 
 const mode = process.env.SOAK_MODE ?? "dry-run";
 const scenario = process.env.SOAK_SCENARIO ?? "cache";
-const keyNamespace = process.env.SOAK_KEY_NAMESPACE ?? "soak:offline";
-let invalid = !["dry-run", "live"].includes(mode) || !scenarios.has(scenario) || !namespacePattern.test(keyNamespace) ||
+const keyNamespace = process.env.SOAK_KEY_NAMESPACE ?? "soak";
+const runId = process.env.SOAK_RUN_ID ?? "offline";
+const ttlSeconds = Number.parseInt(process.env.SOAK_TTL_SECONDS ?? "60", 10);
+let invalid = !["dry-run", "live"].includes(mode) || !scenarios.has(scenario) || !namespacePattern.test(keyNamespace) || !namespacePattern.test(runId) ||
   !positive("SOAK_TIMEOUT_MS", 750) || !positive("SOAK_MAX_RETRIES", 3) || !positive("SOAK_TTL_SECONDS", 60);
 if (mode === "live" && !validLiveEndpoint(process.env.REDIS_ENDPOINT ?? "")) {
   invalid = true;
@@ -33,7 +35,10 @@ console.log(JSON.stringify({
   scenario,
   status,
   keyNamespace,
-  probeKey: `${keyNamespace}:${scenario}:probe`,
+  runId,
+  probeKey: `${keyNamespace}:${runId}:${scenario}:probe`,
+  teardownKey: `${keyNamespace}:${runId}:${scenario}:teardown`,
+  ttlSeconds,
   metrics: { attempted: 1, succeeded, failed: 1 - succeeded, latencyMs: 0 }
 }));
 process.exitCode = invalid ? 2 : 0;

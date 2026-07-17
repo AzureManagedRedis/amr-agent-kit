@@ -1,4 +1,5 @@
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -42,8 +43,19 @@ class CorpusContractTests(unittest.TestCase):
                     text=True,
                     capture_output=True,
                     check=True,
+                    env={
+                        **os.environ,
+                        "SOAK_KEY_NAMESPACE": "soak",
+                        "SOAK_RUN_ID": "offline",
+                        "SOAK_SCENARIO": "cache",
+                        "SOAK_TTL_SECONDS": "60",
+                    },
                 )
-                self.assertEqual("mutated", json.loads(fixture.stdout)["status"], patch.name)
+                payload = json.loads(fixture.stdout)
+                self.assertEqual("mutated", payload["status"], patch.name)
+                self.assertEqual("soak:offline:cache:probe", payload["probeKey"], patch.name)
+                self.assertEqual("soak:offline:cache:teardown", payload["teardownKey"], patch.name)
+                self.assertEqual(60, payload["ttlSeconds"], patch.name)
 
     def test_retention_contract_has_required_trees(self) -> None:
         document = (ROOT / "artifact-contract.md").read_text(encoding="utf-8")

@@ -35,15 +35,20 @@ fn json_string(value: &str) -> String {
 fn main() {
     let mode = env::var("SOAK_MODE").unwrap_or_else(|_| "dry-run".to_owned());
     let scenario = env::var("SOAK_SCENARIO").unwrap_or_else(|_| "cache".to_owned());
-    let namespace = env::var("SOAK_KEY_NAMESPACE").unwrap_or_else(|_| "soak:offline".to_owned());
+    let namespace = env::var("SOAK_KEY_NAMESPACE").unwrap_or_else(|_| "soak".to_owned());
+    let run_id = env::var("SOAK_RUN_ID").unwrap_or_else(|_| "offline".to_owned());
     let scenarios: HashSet<&str> = ["cache", "stream", "pubsub", "ingestion", "semantic-cache", "checkpoint"].into();
     let mut namespace_characters = namespace.chars();
     let namespace_valid = matches!(namespace_characters.next(), Some(character) if character.is_ascii_alphanumeric())
         && namespace_characters.all(|character| character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-'));
+    let mut run_id_characters = run_id.chars();
+    let run_id_valid = matches!(run_id_characters.next(), Some(character) if character.is_ascii_alphanumeric())
+        && run_id_characters.all(|character| character.is_ascii_alphanumeric() || matches!(character, ':' | '_' | '-'));
     let mut invalid = !matches!(mode.as_str(), "dry-run" | "live")
         || !scenarios.contains(scenario.as_str())
         || namespace.is_empty()
         || !namespace_valid
+        || !run_id_valid
         || !positive("SOAK_TIMEOUT_MS", 750)
         || !positive("SOAK_MAX_RETRIES", 3)
         || !positive("SOAK_TTL_SECONDS", 60);
@@ -59,14 +64,21 @@ fn main() {
         "ok"
     };
     let succeeded = usize::from(status == "ok");
+    let ttl_seconds = env::var("SOAK_TTL_SECONDS").unwrap_or_else(|_| "60".to_owned()).parse::<u32>().unwrap_or(60);
     println!(
-        "{{\"library\":\"redis-rs\",\"mode\":\"{}\",\"scenario\":\"{}\",\"status\":\"{}\",\"keyNamespace\":\"{}\",\"probeKey\":\"{}:{}:probe\",\"metrics\":{{\"attempted\":1,\"succeeded\":{},\"failed\":{},\"latencyMs\":0}}}}",
+        "{{\"library\":\"redis-rs\",\"mode\":\"{}\",\"scenario\":\"{}\",\"status\":\"{}\",\"keyNamespace\":\"{}\",\"runId\":\"{}\",\"probeKey\":\"{}:{}:{}:probe\",\"teardownKey\":\"{}:{}:{}:teardown\",\"ttlSeconds\":{},\"metrics\":{{\"attempted\":1,\"succeeded\":{},\"failed\":{},\"latencyMs\":0}}}}",
         json_string(&mode),
         json_string(&scenario),
         status,
         json_string(&namespace),
+        json_string(&run_id),
         json_string(&namespace),
+        json_string(&run_id),
         json_string(&scenario),
+        json_string(&namespace),
+        json_string(&run_id),
+        json_string(&scenario),
+        ttl_seconds,
         succeeded,
         1 - succeeded
     );

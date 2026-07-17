@@ -1,6 +1,9 @@
 --- a/reference-good/invariants.txt
 +++ b/reference-good/invariants.txt
-@@ -1,2 +1,2 @@
+@@ -1,5 +1,5 @@
 -endpoint=tls-validated
 +endpoint=redis://legacy.invalid:6379
+ key-namespace=run-and-scenario-configurable
+ module-teardown=explicit-scoped-cleanup
+ flush-operations=disabled
  certificate-validation=required

@@ -1,6 +1,6 @@
 --- a/reference-good/invariants.txt
 +++ b/reference-good/invariants.txt
-@@ -16,2 +16,2 @@
+@@ -19,2 +19,2 @@
  semantic-cache=tenant-model-and-prompt-bound
 -checkpoint=resumable-progress-recorded
 +checkpoint=best-effort-no-cursor

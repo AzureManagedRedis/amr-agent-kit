@@ -25,7 +25,10 @@ type result struct {
 	Scenario     string  `json:"scenario"`
 	Status       string  `json:"status"`
 	KeyNamespace string  `json:"keyNamespace"`
+	RunID        string  `json:"runId"`
 	ProbeKey     string  `json:"probeKey"`
+	TeardownKey  string  `json:"teardownKey"`
+	TtlSeconds   int     `json:"ttlSeconds"`
 	Metrics      metrics `json:"metrics"`
 }
 
@@ -47,8 +50,8 @@ func validLiveEndpoint(endpoint string) bool {
 }
 
 func main() {
-	mode, scenario, namespace := env("SOAK_MODE", "dry-run"), env("SOAK_SCENARIO", "cache"), env("SOAK_KEY_NAMESPACE", "soak:offline")
-	invalid := (mode != "dry-run" && mode != "live") || !scenarios[scenario] || !namespacePattern.MatchString(namespace) ||
+	mode, scenario, namespace, runID := env("SOAK_MODE", "dry-run"), env("SOAK_SCENARIO", "cache"), env("SOAK_KEY_NAMESPACE", "soak"), env("SOAK_RUN_ID", "offline")
+	invalid := (mode != "dry-run" && mode != "live") || !scenarios[scenario] || !namespacePattern.MatchString(namespace) || !namespacePattern.MatchString(runID) ||
 		!positive("SOAK_TIMEOUT_MS", 750) || !positive("SOAK_MAX_RETRIES", 3) || !positive("SOAK_TTL_SECONDS", 60)
 	if mode == "live" && !validLiveEndpoint(os.Getenv("REDIS_ENDPOINT")) {
 		invalid = true
@@ -63,7 +66,8 @@ func main() {
 	if status == "ok" {
 		succeeded = 1
 	}
-	encoded, _ := json.Marshal(result{"go-redis", mode, scenario, status, namespace, fmt.Sprintf("%s:%s:probe", namespace, scenario), metrics{1, succeeded, 1 - succeeded, 0}})
+	ttlSeconds, _ := strconv.Atoi(env("SOAK_TTL_SECONDS", "60"))
+	encoded, _ := json.Marshal(result{"go-redis", mode, scenario, status, namespace, runID, fmt.Sprintf("%s:%s:%s:probe", namespace, runID, scenario), fmt.Sprintf("%s:%s:%s:teardown", namespace, runID, scenario), ttlSeconds, metrics{1, succeeded, 1 - succeeded, 0}})
 	fmt.Println(string(encoded))
 	if invalid {
 		os.Exit(2)

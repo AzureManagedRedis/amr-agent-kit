@@ -12,7 +12,8 @@ Every client reads the same environment variables:
 | --- | --- | --- |
 | `SOAK_MODE` | No | `dry-run` (default) or `live`. |
 | `SOAK_SCENARIO` | No | `cache`, `stream`, `pubsub`, `ingestion`, `semantic-cache`, or `checkpoint`. |
-| `SOAK_KEY_NAMESPACE` | Live only | Colon-delimited namespace. Every generated key starts with it. Dry-run defaults to `soak:offline`. |
+| `SOAK_KEY_NAMESPACE` | No | Colon-delimited namespace prefix. Dry-run defaults to `soak`. |
+| `SOAK_RUN_ID` | No | Per-run identifier. Every key and structure includes it; dry-run defaults to `offline`. |
 | `REDIS_ENDPOINT` | Live only | TLS endpoint. It is validated but never printed. |
 | `SOAK_TIMEOUT_MS` | No | Positive operation deadline; default `750`. |
 | `SOAK_MAX_RETRIES` | No | Bounded retries; default `3`. |
@@ -21,7 +22,8 @@ Every client reads the same environment variables:
 Each executable emits exactly one JSON result to standard output. It deliberately
 omits endpoints, credentials, authorization headers, subscription identifiers,
 and raw client exceptions. `dry-run` validates the contract and computes a
-namespaced probe key without connecting to Redis.
+namespaced probe and teardown keys without connecting to Redis. Keys use
+`<namespace>:<run-id>:<scenario>:<purpose>`.
 
 ## Layout
 
@@ -57,5 +59,16 @@ bounded deadlines and retries, namespaced keys, explicit TTLs, and
 machine-readable telemetry. A consumer supplies the named SDK outside this
 corpus and retains live results under `eval-runs`; do not vendor dependencies
 or generated output here.
+
+Every live scenario must delete only its own `teardownKey` and named module
+indexes or structures in a `finally`/defer cleanup path. Reference-good code
+never uses `FLUSHDB`, `FLUSHALL`, or unscoped `KEYS`; teardown is limited to the
+configured namespace, run ID, and scenario.
+
+When a scenario creates a module index or structure, derive its name as
+`<namespace>:<run-id>:<scenario>:structure` and use that module's targeted
+drop API in the same cleanup path. The structure name and drop result belong in
+the retained live result; never replace targeted teardown with a database-wide
+flush.
 
 Read [artifact-contract.md](artifact-contract.md) before producing an eval run.

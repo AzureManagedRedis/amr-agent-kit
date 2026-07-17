@@ -17,7 +17,10 @@ class Result:
     scenario: str
     status: str
     keyNamespace: str
+    runId: str
     probeKey: str
+    teardownKey: str
+    ttlSeconds: int
     metrics: dict[str, int]
 
 
@@ -37,15 +40,16 @@ def validate_live_endpoint(endpoint: str | None) -> bool:
 def main() -> int:
     mode = os.getenv("SOAK_MODE", "dry-run")
     scenario = os.getenv("SOAK_SCENARIO", "cache")
-    namespace = os.getenv("SOAK_KEY_NAMESPACE", "soak:offline")
+    namespace = os.getenv("SOAK_KEY_NAMESPACE", "soak")
+    run_id = os.getenv("SOAK_RUN_ID", "offline")
     bounds = [positive("SOAK_TIMEOUT_MS", 750), positive("SOAK_MAX_RETRIES", 3), positive("SOAK_TTL_SECONDS", 60)]
-    invalid = mode not in {"dry-run", "live"} or scenario not in SCENARIOS or not NAMESPACE.fullmatch(namespace) or None in bounds
+    invalid = mode not in {"dry-run", "live"} or scenario not in SCENARIOS or not NAMESPACE.fullmatch(namespace) or not NAMESPACE.fullmatch(run_id) or None in bounds
     if mode == "live" and not validate_live_endpoint(os.getenv("REDIS_ENDPOINT")):
         invalid = True
 
     status = "invalid-config" if invalid else ("live-adapter-required" if mode == "live" else "ok")
     success = int(status == "ok")
-    print(json.dumps(asdict(Result("redis-py", mode, scenario, status, namespace, f"{namespace}:{scenario}:probe",
+    print(json.dumps(asdict(Result("redis-py", mode, scenario, status, namespace, run_id, f"{namespace}:{run_id}:{scenario}:probe", f"{namespace}:{run_id}:{scenario}:teardown", bounds[2] or 0,
         {"attempted": 1, "succeeded": success, "failed": 1 - success, "latencyMs": 0})), separators=(",", ":")))
     return 2 if invalid else 0
 

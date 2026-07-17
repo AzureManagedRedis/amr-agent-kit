@@ -19,3 +19,7 @@ pub fn client(host: String) -> redis::RedisResult<Client> {
 pub fn deadline() -> Duration {
     Duration::from_millis(750)
 }
+
+pub fn scoped_teardown_key(namespace: &str, run_id: &str, scenario: &str) -> String {
+    format!("{namespace}:{run_id}:{scenario}:teardown")
+}

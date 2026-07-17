@@ -8,7 +8,10 @@
     "scenario",
     "status",
     "keyNamespace",
+    "runId",
     "probeKey",
+    "teardownKey",
+    "ttlSeconds",
     "metrics"
   ],
   "properties": {
@@ -52,9 +55,21 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*$"
     },
+    "runId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*$"
+    },
     "probeKey": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*:(cache|stream|pubsub|ingestion|semantic-cache|checkpoint):probe$"
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*:[A-Za-z0-9][A-Za-z0-9:_-]*:(cache|stream|pubsub|ingestion|semantic-cache|checkpoint):probe$"
+    },
+    "teardownKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*:[A-Za-z0-9][A-Za-z0-9:_-]*:(cache|stream|pubsub|ingestion|semantic-cache|checkpoint):teardown$"
+    },
+    "ttlSeconds": {
+      "type": "integer",
+      "minimum": 1
     },
     "metrics": {
       "type": "object",
