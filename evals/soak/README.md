@@ -203,3 +203,23 @@ mixed migration 6→7 · lifecycle · networking/identity/observability · CRDB 
   and cohort-cleanup sinks are pinned to `eval-runs`/`const true`, cohort config exposes
   key names only, and an `internal-content-leak` canary rejects answers that echo a
   source line reference.
+
+## Integration notes (base / HEAD provenance)
+
+The requested setup step was `git merge --ff-only origin/redis-phil-skill-format-review`
+with an expected HEAD of `9aa6250`. That branch had already been merged into `main`
+(PR #1), so the fast-forward reported **"Already up to date"** and `9aa6250` is an
+**ancestor** of the current HEAD rather than the tip.
+
+Per the containing-HEAD rule, this work proceeded on the containing HEAD without any reset
+or history rewrite:
+
+- **Assigned ownership:** `evals/soak/**` only.
+- **Branch:** `dmon-dmon-soak-source-oracle` (the `rename_branch` tool prefixes the
+  requested `dmon/soak-source-oracle`).
+- **Actual base** (`git merge-base HEAD origin/main`): `ec7e450` — the PR #1 merge of
+  `redis-phil-skill-format-review` into `main`.
+- **`git merge-base --is-ancestor 9aa6250 HEAD`:** true (exit 0) — all expected
+  `redis-phil-skill-format-review` content is present.
+- **Soak commits (on top of `ec7e450`):** `1d6f5c6` (schema + scenario registry), then
+  `5bc9356` (probe-cohort lease/isolation layer).
