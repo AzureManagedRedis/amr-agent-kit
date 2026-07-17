@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "contract": "contract.schema.json",
+  "clients": [
+    {
+      "id": "dotnet-stackexchange-redis",
+      "path": "dotnet",
+      "library": "StackExchange.Redis",
+      "offlineCommand": "dotnet run --project .\\dotnet\\SoakClient.csproj --no-restore"
+    },
+    {
+      "id": "python-redis-py",
+      "path": "python",
+      "library": "redis-py",
+      "offlineCommand": "python .\\python\\client.py"
+    },
+    {
+      "id": "go-go-redis",
+      "path": "go",
+      "library": "go-redis",
+      "offlineCommand": "Push-Location .\\go; go run .; Pop-Location"
+    },
+    {
+      "id": "rust-redis-rs",
+      "path": "rust",
+      "library": "redis-rs",
+      "offlineCommand": "cargo run --manifest-path .\\rust\\Cargo.toml --offline --quiet"
+    },
+    {
+      "id": "node-node-redis",
+      "path": "node",
+      "library": "node-redis",
+      "offlineCommand": "node .\\node\\client.js"
+    }
+  ],
+  "mutationCatalog": "mutations/catalog.json",
+  "retainedArtifactContract": "artifact-contract.md"
+}

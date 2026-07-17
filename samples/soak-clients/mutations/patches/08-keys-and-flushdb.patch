@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -8,3 +8,3 @@
+ lock-release=token-checked-with-expiry
+-key-enumeration=scan-scoped
++key-enumeration=KEYS-*;FLUSHDB
+ database-model=default-db-with-prefixes

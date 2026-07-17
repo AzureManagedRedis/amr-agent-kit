@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -10,3 +10,3 @@
+ database-model=default-db-with-prefixes
+-multi-key-atomicity=hash-tagged
++multi-key-atomicity=unrelated-keys
+ pubsub-reliability=durable-stream-fallback

@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -9,3 +9,3 @@
+ key-enumeration=scan-scoped
+-database-model=default-db-with-prefixes
++database-model=SELECT-per-tenant
+ multi-key-atomicity=hash-tagged

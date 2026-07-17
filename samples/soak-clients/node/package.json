@@ -1,0 +1,9 @@
+{
+  "name": "retained-soak-client",
+  "private": true,
+  "version": "0.1.0",
+  "type": "commonjs",
+  "scripts": {
+    "dry-run": "node client.js"
+  }
+}

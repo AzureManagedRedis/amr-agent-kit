@@ -1,0 +1,6 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -1,2 +1,2 @@
+-endpoint=tls-validated
++endpoint=redis://legacy.invalid:6379
+ certificate-validation=required

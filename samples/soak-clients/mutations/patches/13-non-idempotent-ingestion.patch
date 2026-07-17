@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -13,3 +13,3 @@
+ stream-recovery=consumer-group-pending-claim
+-ingestion=idempotency-keyed
++ingestion=blind-retry
+ tenant-isolation=key-boundary-enforced

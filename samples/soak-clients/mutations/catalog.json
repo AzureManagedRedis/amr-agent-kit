@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "referenceTree": "reference-good",
+  "patchRoot": "patches",
+  "validationCommand": "python .\\reference-good\\soak_client.py",
+  "mutations": [
+    {
+      "id": "legacy-non-tls-endpoint",
+      "patch": "patches/01-legacy-non-tls-endpoint.patch",
+      "description": "Replaces a TLS-validated endpoint invariant with a legacy plaintext endpoint."
+    },
+    {
+      "id": "certificate-bypass",
+      "patch": "patches/02-certificate-bypass.patch",
+      "description": "Disables certificate validation."
+    },
+    {
+      "id": "per-request-clients",
+      "patch": "patches/03-per-request-clients.patch",
+      "description": "Creates a Redis client for each request."
+    },
+    {
+      "id": "stale-credentials",
+      "patch": "patches/04-stale-credentials.patch",
+      "description": "Uses startup-only credentials without refresh."
+    },
+    {
+      "id": "infinite-retries",
+      "patch": "patches/05-infinite-retries.patch",
+      "description": "Replaces bounded jittered retries with an unlimited loop."
+    },
+    {
+      "id": "missing-deadlines-and-ttls",
+      "patch": "patches/06-missing-deadlines-and-ttls.patch",
+      "description": "Removes the operation deadline and cache or lock TTL."
+    },
+    {
+      "id": "unsafe-lock",
+      "patch": "patches/07-unsafe-lock.patch",
+      "description": "Uses an unowned lock release with no compare-and-delete."
+    },
+    {
+      "id": "keys-and-flushdb",
+      "patch": "patches/08-keys-and-flushdb.patch",
+      "description": "Uses KEYS and FLUSHDB for maintenance."
+    },
+    {
+      "id": "select-assumption",
+      "patch": "patches/09-select-assumption.patch",
+      "description": "Assumes logical database selection separates tenants."
+    },
+    {
+      "id": "cross-slot-atomicity",
+      "patch": "patches/10-cross-slot-atomicity.patch",
+      "description": "Uses atomic multi-key operations without a shared hash tag."
+    },
+    {
+      "id": "unreliable-pubsub",
+      "patch": "patches/11-unreliable-pubsub.patch",
+      "description": "Treats ephemeral Pub/Sub as the only delivery record."
+    },
+    {
+      "id": "missing-stream-recovery",
+      "patch": "patches/12-missing-stream-recovery.patch",
+      "description": "Omits pending-entry recovery for consumer groups."
+    },
+    {
+      "id": "non-idempotent-ingestion",
+      "patch": "patches/13-non-idempotent-ingestion.patch",
+      "description": "Retries ingestion without an idempotency key."
+    },
+    {
+      "id": "tenant-post-filtering",
+      "patch": "patches/14-tenant-post-filtering.patch",
+      "description": "Filters tenant results after an unscoped query."
+    },
+    {
+      "id": "semantic-cache-boundary-error",
+      "patch": "patches/15-semantic-cache-boundary-error.patch",
+      "description": "Shares semantic-cache entries across tenant or model boundaries."
+    },
+    {
+      "id": "non-resumable-checkpoints",
+      "patch": "patches/16-non-resumable-checkpoints.patch",
+      "description": "Stores checkpoints without a durable progress cursor."
+    }
+  ]
+}

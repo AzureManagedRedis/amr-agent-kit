@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -4,3 +4,3 @@
+ credential-lifecycle=refresh-before-expiry
+-retry-policy=bounded-with-jitter
++retry-policy=retry-forever
+ operation-deadline=required

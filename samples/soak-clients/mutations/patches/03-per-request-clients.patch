@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -2,3 +2,3 @@
+ certificate-validation=required
+-client-lifecycle=retained
++client-lifecycle=create-per-request
+ credential-lifecycle=refresh-before-expiry

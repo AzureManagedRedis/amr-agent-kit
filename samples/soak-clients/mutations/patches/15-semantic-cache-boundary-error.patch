@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -15,3 +15,3 @@
+ tenant-isolation=key-boundary-enforced
+-semantic-cache=tenant-model-and-prompt-bound
++semantic-cache=global-similarity-only
+ checkpoint=resumable-progress-recorded

@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -7,3 +7,3 @@
+ key-ttl=required
+-lock-release=token-checked-with-expiry
++lock-release=del-without-token-or-expiry
+ key-enumeration=scan-scoped

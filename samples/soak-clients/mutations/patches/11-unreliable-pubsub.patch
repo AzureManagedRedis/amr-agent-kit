@@ -1,0 +1,7 @@
+--- a/reference-good/invariants.txt
++++ b/reference-good/invariants.txt
+@@ -11,3 +11,3 @@
+ multi-key-atomicity=hash-tagged
+-pubsub-reliability=durable-stream-fallback
++pubsub-reliability=pubsub-only
+ stream-recovery=consumer-group-pending-claim

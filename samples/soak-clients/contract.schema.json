@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Retained Soak Client Result",
+  "type": "object",
+  "required": [
+    "library",
+    "mode",
+    "scenario",
+    "status",
+    "keyNamespace",
+    "probeKey",
+    "metrics"
+  ],
+  "properties": {
+    "library": {
+      "type": "string",
+      "enum": [
+        "StackExchange.Redis",
+        "redis-py",
+        "go-redis",
+        "redis-rs",
+        "node-redis"
+      ]
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "dry-run",
+        "live"
+      ]
+    },
+    "scenario": {
+      "type": "string",
+      "enum": [
+        "cache",
+        "stream",
+        "pubsub",
+        "ingestion",
+        "semantic-cache",
+        "checkpoint"
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "invalid-config",
+        "live-adapter-required"
+      ]
+    },
+    "keyNamespace": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*$"
+    },
+    "probeKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:_-]*:(cache|stream|pubsub|ingestion|semantic-cache|checkpoint):probe$"
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "attempted",
+        "succeeded",
+        "failed",
+        "latencyMs"
+      ],
+      "properties": {
+        "attempted": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "succeeded": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "latencyMs": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

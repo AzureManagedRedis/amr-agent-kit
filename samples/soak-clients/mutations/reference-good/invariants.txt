@@ -1,0 +1,17 @@
+endpoint=tls-validated
+certificate-validation=required
+client-lifecycle=retained
+credential-lifecycle=refresh-before-expiry
+retry-policy=bounded-with-jitter
+operation-deadline=required
+key-ttl=required
+lock-release=token-checked-with-expiry
+key-enumeration=scan-scoped
+database-model=default-db-with-prefixes
+multi-key-atomicity=hash-tagged
+pubsub-reliability=durable-stream-fallback
+stream-recovery=consumer-group-pending-claim
+ingestion=idempotency-keyed
+tenant-isolation=key-boundary-enforced
+semantic-cache=tenant-model-and-prompt-bound
+checkpoint=resumable-progress-recorded
