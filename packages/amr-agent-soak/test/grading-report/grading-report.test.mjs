@@ -15,6 +15,7 @@ import {
 } from '../../src/grading/statistics.mjs'
 import {
   assertCalibrationCanaries,
+  buildBlindArmBundle,
   gradeAnswer,
 } from '../../src/grading/grade.mjs'
 import { buildClientArtifactIndex } from '../../src/report/artifacts.mjs'
@@ -87,6 +88,30 @@ test('paired statistics preserve visible thresholds and mark crossing uplift inc
   assert.equal(result.verdict, 'inconclusive')
 })
 
+test('paired statistics require at least two valid pairs', () => {
+  const result = pairedStatistics([{ withSkill: 1, withoutSkill: 0 }])
+  assert.equal(result.n, 1)
+  assert.equal(result.verdict, 'inconclusive')
+})
+
+test('blind bundles shuffle actual paired members before assigning labels', () => {
+  const pair = {
+    with_skill: { run_id: 'with', answer: 'skill answer' },
+    without_skill: { run_id: 'without', answer: 'baseline answer' },
+  }
+  const observed = new Map([['with_skill', new Set()], ['without_skill', new Set()]])
+  for (const seed of [1, 682]) {
+    const bundle = buildBlindArmBundle(pair, { seed })
+    for (const arm of bundle.arms) {
+      observed.get(arm.label).add(arm.blind_label)
+      assert.notEqual(arm.payload, undefined)
+    }
+    assert.notEqual(bundle.arms[0].payload.answer, bundle.arms[1].payload.answer)
+  }
+  assert.deepEqual([...observed.get('with_skill')].sort(), ['arm-a', 'arm-b'])
+  assert.deepEqual([...observed.get('without_skill')].sort(), ['arm-a', 'arm-b'])
+})
+
 test('computes Cohen kappa for two graders', () => {
   assert.equal(cohensKappa([true, true, false, false], [true, true, false, false]), 1)
   assert.equal(cohensKappa([true, false], [false, true]), -1)
@@ -148,7 +173,7 @@ test('generates complete reports with excluded runs and escaped static HTML', as
       SoakRunId: 'soak-1',
       selector: '<script>alert(1)</script>',
       lease_class: 'test',
-      resource_id: 'resource-id',
+      resource_id: 'access_token=do-not-publish',
       namespace: 'test-namespace',
       secret: 'access_token=do-not-publish',
       cleanup_terminal_state: 'deleted',
@@ -164,6 +189,8 @@ test('generates complete reports with excluded runs and escaped static HTML', as
   assert.ok(written.has('benchmark.json'))
   assert.ok(written.get('review.html').includes('\\u0026lt;script\\u0026gt;'))
   assert.ok(!written.get('review.html').includes('do-not-publish'))
+  assert.ok(!written.get('report.md').includes('do-not-publish'))
+  assert.ok(!written.get('benchmark.md').includes('do-not-publish'))
   assert.ok(written.get('report.md').includes('0.85'))
   assert.ok(written.get('report.md').includes('0.20'))
 })

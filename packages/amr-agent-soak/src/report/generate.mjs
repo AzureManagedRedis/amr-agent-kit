@@ -188,15 +188,16 @@ export async function generateReport(input, {
   }
   const fixes = candidateFixesFromRuns(retainedRuns)
   const report = reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement })
+  const redactedReport = redact(report)
   const files = {
-    'report.md': report,
+    'report.md': redactedReport,
     'benchmark.json': `${JSON.stringify(redactJson(benchmarkOutput), null, 2)}\n`,
-    'benchmark.md': `${report}\n`,
+    'benchmark.md': `${redactedReport}\n`,
     'source-correctness.json': `${JSON.stringify(redactJson(sourceCorrectness), null, 2)}\n`,
     'safety.json': `${JSON.stringify(redactJson(safety), null, 2)}\n`,
     'client-artifact-index.json': `${JSON.stringify(redactJson(artifactIndex), null, 2)}\n`,
     'candidate-fixes.json': `${JSON.stringify(redactJson({ schema_version: 1, fixes }), null, 2)}\n`,
-    'review.html': reviewHtml(benchmarkOutput, report, safety, sourceCorrectness),
+    'review.html': reviewHtml(benchmarkOutput, redactedReport, safety, sourceCorrectness),
   }
   const outputWriter = atomicWriter ?? writer
   for (const [name, content] of Object.entries(files)) await outputWriter(path.join(outDir, name), content)

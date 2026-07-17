@@ -42,7 +42,7 @@ export function pairedStatistics(pairs, { scoreThreshold = SCORE_THRESHOLD, upli
   const withSkill = confidenceInterval95(validPairs.map((pair) => pair.withSkill))
   const withoutSkill = confidenceInterval95(validPairs.map((pair) => pair.withoutSkill))
   const uplift = mean(differences)
-  const thresholdResult = withSkill.mean === null || uplift === null
+  const thresholdResult = validPairs.length < 2 || withSkill.mean === null || uplift === null
     ? 'inconclusive'
     : withSkill.mean >= scoreThreshold && uplift >= upliftThreshold
       ? 'pass'

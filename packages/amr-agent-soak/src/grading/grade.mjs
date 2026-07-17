@@ -128,19 +128,35 @@ function rng(seed) {
   }
 }
 
-export function createBlindArmBundles(runs, { seed = 1 } = {}) {
-  if (!Array.isArray(runs)) throw new TypeError('runs must be an array')
-  const random = rng(seed)
-  const bundles = []
-  for (const run of runs) {
-    const arms = [
-      { label: 'with_skill', blind_label: 'arm-a', run },
-      { label: 'without_skill', blind_label: 'arm-b', run },
-    ]
-    if (random() >= 0.5) [arms[0], arms[1]] = [arms[1], arms[0]]
-    bundles.push({ bundle_id: `${run.eval_id ?? run.evalId}:${run.run_id ?? run.runId ?? run.id}`, arms })
+function pairedMembers(pair, index) {
+  const withSkill = pair?.with_skill ?? pair?.withSkill
+  const withoutSkill = pair?.without_skill ?? pair?.withoutSkill
+  if (!withSkill || !withoutSkill) {
+    throw new TypeError(`pair ${index} must contain with_skill and without_skill members`)
   }
-  return bundles
+  return { withSkill, withoutSkill }
+}
+
+export function buildBlindArmBundle(pair, { seed = 1 } = {}) {
+  const random = rng(seed)
+  const { withSkill, withoutSkill } = pairedMembers(pair, 0)
+  const arms = [
+    { label: 'with_skill', payload: withSkill },
+    { label: 'without_skill', payload: withoutSkill },
+  ]
+  if (random() >= 0.5) [arms[0], arms[1]] = [arms[1], arms[0]]
+  return {
+    bundle_id: pair.bundle_id ?? pair.bundleId ?? `${withSkill.eval_id ?? withSkill.evalId}:${withSkill.run_id ?? withSkill.runId ?? withSkill.id}`,
+    arms: arms.map((arm, index) => ({ ...arm, blind_label: `arm-${String.fromCharCode(97 + index)}` })),
+  }
+}
+
+export function createBlindArmBundles(pairs, options = {}) {
+  if (!Array.isArray(pairs)) throw new TypeError('pairs must be an array')
+  return pairs.map((pair, index) => buildBlindArmBundle({ ...pair, ...pairedMembers(pair, index) }, {
+    ...options,
+    seed: Number.isInteger(options.seed) ? options.seed + index : undefined,
+  }))
 }
 
 export function unblindArmBundles(bundles) {
