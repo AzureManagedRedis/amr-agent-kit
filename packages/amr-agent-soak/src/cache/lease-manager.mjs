@@ -6,6 +6,19 @@
 // budget. At most six leases may be active at once, global/destructive
 // scenarios require an exclusive lease, and the kill switch is checked
 // before any mutating-class lease is acquired.
+//
+// Leases also carry a monotonically increasing fencing token. If a lease
+// expires (or is released) and is reaped, its token is no longer recognized
+// -- so a caller that kept mutating after losing its lease (e.g. a stalled
+// worker that missed its heartbeat window) cannot continue: any mutation
+// path must present (leaseId, fencingToken) and have it validated via
+// assertFencingTokenValid before touching the RP.
+//
+// Lease *class* additionally gates *what kind* of operation it authorizes:
+// shared leases are read-only (connectivity checks only); exclusive leases
+// authorize write/control-plane mutations; topology leases authorize
+// topology-shape changes only; dry-run leases authorize everything because
+// nothing they "authorize" ever reaches the real adapter.
 
 import { randomUUID } from 'node:crypto';
 import { KillSwitch } from './kill-switch.mjs';
@@ -19,6 +32,49 @@ export class LeaseError extends Error {
   constructor(message) {
     super(message);
     this.name = 'LeaseError';
+  }
+}
+
+export class FencingTokenStale extends LeaseError {
+  constructor(message) {
+    super(message);
+    this.name = 'FencingTokenStale';
+  }
+}
+
+export class LeaseNotAuthorized extends LeaseError {
+  constructor(message) {
+    super(message);
+    this.name = 'LeaseNotAuthorized';
+  }
+}
+
+/** The kinds of operation a lease can be asked to authorize. */
+export const OPERATION_KINDS = Object.freeze(['read', 'write', 'topology']);
+
+const CLASS_ALLOWED_OPERATIONS = {
+  shared: new Set(['read']),
+  exclusive: new Set(['read', 'write', 'topology']),
+  topology: new Set(['read', 'topology']),
+  'dry-run': new Set(['read', 'write', 'topology']),
+};
+
+/**
+ * Asserts that `lease` (as returned by LeaseManager#acquire) authorizes the
+ * given operation kind. Shared leases are read-only/connectivity-only;
+ * write and control-plane mutations require an exclusive lease; topology
+ * leases authorize topology-shape changes only.
+ */
+export function assertLeaseAuthorizes(lease, operationKind) {
+  if (!OPERATION_KINDS.includes(operationKind)) {
+    throw new LeaseError(`Unknown operation kind "${operationKind}". Expected one of: ${OPERATION_KINDS.join(', ')}.`);
+  }
+  const allowed = CLASS_ALLOWED_OPERATIONS[lease?.class];
+  if (!allowed || !allowed.has(operationKind)) {
+    throw new LeaseNotAuthorized(
+      `Lease class "${lease?.class}" does not authorize "${operationKind}" operations ` +
+        `(shared leases are read-only/connectivity; write and control-plane mutations require an exclusive lease).`
+    );
   }
 }
 
@@ -45,6 +101,7 @@ export class LeaseManager {
     this.now = now;
     /** @type {Map<string, object>} */
     this.leases = new Map();
+    this.fencingCounter = 0;
   }
 
   #reapExpired() {
@@ -94,6 +151,7 @@ export class LeaseManager {
 
     const id = randomUUID();
     const nowMs = this.now();
+    const fencingToken = ++this.fencingCounter;
     const lease = {
       id,
       class: leaseClass,
@@ -104,6 +162,7 @@ export class LeaseManager {
       expiresAt: nowMs + ttlMs,
       ttlMs,
       lastHeartbeatAt: nowMs,
+      fencingToken,
     };
     this.leases.set(id, lease);
     return { ...lease };
@@ -124,6 +183,40 @@ export class LeaseManager {
 
   release(leaseId) {
     this.leases.delete(leaseId);
+  }
+
+  /**
+   * Throws FencingTokenStale unless `fencingToken` matches the token
+   * currently held by lease `leaseId` AND that lease is still active (not
+   * expired/reaped/released). This is what prevents an owner that has lost
+   * its lease -- e.g. missed heartbeats past TTL -- from continuing to
+   * mutate: once reaped, its token is never recognized again, even if the
+   * same leaseId were somehow presented.
+   */
+  assertFencingTokenValid(leaseId, fencingToken) {
+    this.#reapExpired();
+    const lease = this.leases.get(leaseId);
+    if (!lease) {
+      throw new FencingTokenStale(
+        `Fencing token rejected: lease "${leaseId}" is no longer active (expired, released, or never existed).`
+      );
+    }
+    if (lease.fencingToken !== fencingToken) {
+      throw new FencingTokenStale(
+        `Fencing token rejected: token ${fencingToken} does not match the current token for lease "${leaseId}".`
+      );
+    }
+    return true;
+  }
+
+  /** Boolean form of assertFencingTokenValid, for callers that want to check without throwing. */
+  isFencingTokenValid(leaseId, fencingToken) {
+    try {
+      this.assertFencingTokenValid(leaseId, fencingToken);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   isActive(leaseId) {

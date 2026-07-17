@@ -5,6 +5,7 @@ import { assertSafeToMutate, GuardViolation } from '../../src/cache/guards.mjs';
 import { LocalRpHttpAdapter } from '../../src/cache/http-adapter.mjs';
 import { ResourceLedger } from '../../src/cache/ledger.mjs';
 import { reverseCleanup } from '../../src/cache/cleanup.mjs';
+import { LeaseManager } from '../../src/cache/lease-manager.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -48,7 +49,9 @@ test('run A cleanup never deletes run B resources sharing the same fake RP insta
     const ledgerA = new ResourceLedger({ path: join(dir, 'ledgerA.jsonl') });
     ledgerA.append('created', 'dmon-run1-cache1');
 
-    const resultsA = await reverseCleanup({ ledger: ledgerA, adapter, resourcePrefix: 'dmon-run1-' });
+    const leaseManager = new LeaseManager();
+    const lease = leaseManager.acquire({ class: 'exclusive' });
+    const resultsA = await reverseCleanup({ ledger: ledgerA, adapter, resourcePrefix: 'dmon-run1-', lease, leaseManager });
     assert.deepEqual(resultsA.map((r) => r.resourceName), ['dmon-run1-cache1']);
     assert.equal(fake._caches.has('phil-run2-cache1'), true); // run B's cache is untouched
     assert.equal(fake._caches.has('dmon-run1-cache1'), false);

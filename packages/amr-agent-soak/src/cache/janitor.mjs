@@ -72,10 +72,21 @@ export function readHeartbeat(heartbeatFilePath) {
  * live RP, then produces "zero-orphan evidence" -- a report proving that,
  * after reconciliation, the ledger and the RP agree on every resource this
  * run owns (i.e. every live resource under our prefix is tracked as active
- * in the ledger, and vice versa).
+ * in the ledger, and vice versa). Resources quarantined by tag-based
+ * eligibility checks (see reconciliation.mjs/tags.mjs) are intentionally
+ * left un-adopted, so they still surface here as orphans requiring manual
+ * review rather than being silently swept up.
+ *
+ * @param {object} opts
+ * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
+ * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
+ * @param {string} opts.resourcePrefix
+ * @param {string} [opts.ownerAlias] - forwarded to reconcileOnStartup for tag-based eligibility.
+ * @param {string} [opts.runId]
+ * @param {() => number} [opts.now]
  */
-export async function runJanitorPass({ ledger, adapter, resourcePrefix, now = () => Date.now() }) {
-  const reconciliation = await reconcileOnStartup({ ledger, adapter, resourcePrefix });
+export async function runJanitorPass({ ledger, adapter, resourcePrefix, ownerAlias, runId, now = () => Date.now() }) {
+  const reconciliation = await reconcileOnStartup({ ledger, adapter, resourcePrefix, ownerAlias, runId, now });
 
   const liveList = await adapter.listCaches();
   const rawList = Array.isArray(liveList) ? liveList : (liveList?.caches ?? []);
@@ -93,6 +104,7 @@ export async function runJanitorPass({ ledger, adapter, resourcePrefix, now = ()
     checkedLedger: activeInLedger.size,
     orphanCount: orphans.length,
     orphans,
+    quarantined: reconciliation.quarantined,
     zeroOrphans: orphans.length === 0,
     reconciliation,
   };
@@ -116,6 +128,8 @@ export async function startJanitor({
   ledger,
   adapter,
   resourcePrefix,
+  ownerAlias,
+  runId,
   intervalMs = 30000,
   now = () => Date.now(),
   writeEvidence = defaultWriteEvidence,
@@ -126,7 +140,7 @@ export async function startJanitor({
 
   const tick = async () => {
     writeHeartbeat(heartbeatFilePath, { now });
-    const evidence = await runJanitorPass({ ledger, adapter, resourcePrefix, now });
+    const evidence = await runJanitorPass({ ledger, adapter, resourcePrefix, ownerAlias, runId, now });
     evidenceLog.push(evidence);
     if (evidencePath) writeEvidence(evidencePath, evidence);
     return evidence;
@@ -168,6 +182,8 @@ if (isMainModule) {
     ledger,
     adapter,
     resourcePrefix: config.resourcePrefix,
+    ownerAlias: config.ownerAlias,
+    runId: config.runId,
     intervalMs: Number(process.env.AMR_SOAK_JANITOR_INTERVAL_MS ?? 30000),
   });
 }

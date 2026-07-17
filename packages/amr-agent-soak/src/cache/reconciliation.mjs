@@ -8,8 +8,18 @@
 // safe: an orphan discovered here is only *adopted* into the ledger (so it
 // becomes trackable/cleanable by the normal, guarded cleanup path), never
 // deleted directly.
+//
+// Orphan adoption is additionally gated by tag-based eligibility (see
+// tags.mjs) whenever `ownerAlias`/`runId` are supplied: a live resource
+// matching our name prefix is only adopted if its tags prove exact
+// ownership, are not marked persistent, and carry valid CreatedOn/ExpiresOn
+// metadata. Anything that merely matches the prefix but fails that
+// fail-closed check is quarantined (reported, never touched) instead of
+// being silently adopted -- unlike the existing (not reused) orphan job,
+// which treats missing metadata as license to delete.
 
 import { assertOwnedResource } from './guards.mjs';
+import { evaluateCleanupEligibility } from './tags.mjs';
 
 export class ReconciliationError extends Error {
   constructor(message) {
@@ -20,11 +30,16 @@ export class ReconciliationError extends Error {
 
 const TERMINAL_STATES = new Set(['Succeeded', 'Failed', 'Canceled']);
 
-function extractLiveNames(liveList, resourcePrefix) {
+function extractLiveRecords(liveList, resourcePrefix) {
   const rawList = Array.isArray(liveList) ? liveList : (liveList?.caches ?? []);
-  return new Set(
-    rawList.map((c) => (typeof c === 'string' ? c : c.name)).filter((name) => typeof name === 'string' && name.startsWith(resourcePrefix))
-  );
+  const byName = new Map();
+  for (const item of rawList) {
+    const record = typeof item === 'string' ? { name: item } : item;
+    if (typeof record?.name === 'string' && record.name.startsWith(resourcePrefix)) {
+      byName.set(record.name, record);
+    }
+  }
+  return byName;
 }
 
 /**
@@ -37,23 +52,37 @@ function extractLiveNames(liveList, resourcePrefix) {
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
  * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
  * @param {string} opts.resourcePrefix
+ * @param {string} [opts.ownerAlias] - enables tag-based eligibility checking when supplied with runId.
+ * @param {string} [opts.runId]
+ * @param {() => number} [opts.now]
  */
-export async function reconcileOnStartup({ ledger, adapter, resourcePrefix }) {
+export async function reconcileOnStartup({ ledger, adapter, resourcePrefix, ownerAlias, runId, now = () => Date.now() }) {
   const liveList = await adapter.listCaches();
-  const liveNames = extractLiveNames(liveList, resourcePrefix);
+  const liveRecordsByName = extractLiveRecords(liveList, resourcePrefix);
+  const liveNames = new Set(liveRecordsByName.keys());
+  const tagCheckEnabled = Boolean(ownerAlias && runId);
 
   const { creationOrder, byResource } = ledger.replay();
-  const report = { adoptedOrphans: [], reconciledDeletions: [] };
+  const report = { adoptedOrphans: [], reconciledDeletions: [], quarantined: [] };
 
-  for (const liveName of liveNames) {
+  for (const [liveName, record] of liveRecordsByName) {
     assertOwnedResource(liveName, resourcePrefix);
-    if (!byResource.has(liveName)) {
-      // Exists on the RP, matches our own prefix, but the ledger has no
-      // record at all -- almost certainly a crash between the RP create call
-      // and the ledger append. Adopt it so it becomes trackable/cleanable.
-      ledger.append('created', liveName, { reconciled: true, reason: 'orphan-adopted-on-startup' });
-      report.adoptedOrphans.push(liveName);
+    if (byResource.has(liveName)) continue;
+
+    // Exists on the RP, matches our own prefix, but the ledger has no record
+    // at all -- almost certainly a crash between the RP create call and the
+    // ledger append. Before adopting it (so it becomes trackable/cleanable),
+    // verify tag-based eligibility when we have enough context to do so.
+    if (tagCheckEnabled) {
+      const evaluation = evaluateCleanupEligibility(record.tags, { ownerAlias, runId, now });
+      if (!evaluation.eligible) {
+        report.quarantined.push({ resourceName: liveName, reason: evaluation.reason });
+        continue; // Fail closed: do NOT adopt. Left for manual review.
+      }
     }
+
+    ledger.append('created', liveName, { reconciled: true, reason: 'orphan-adopted-on-startup' });
+    report.adoptedOrphans.push(liveName);
   }
 
   for (const name of creationOrder) {

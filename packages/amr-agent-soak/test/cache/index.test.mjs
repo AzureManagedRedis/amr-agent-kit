@@ -35,6 +35,10 @@ test('index.mjs re-exports the full public API surface', () => {
     'LeaseError',
     'LEASE_CLASSES',
     'MAX_ACTIVE_LEASES',
+    'OPERATION_KINDS',
+    'assertLeaseAuthorizes',
+    'FencingTokenStale',
+    'LeaseNotAuthorized',
     'ResourceLedger',
     'LedgerError',
     'reconcileOnStartup',
@@ -42,6 +46,8 @@ test('index.mjs re-exports the full public API surface', () => {
     'ReconciliationError',
     'reverseCleanup',
     'CleanupError',
+    'CircuitBreakerTripped',
+    'DEFAULT_MAX_DELETES_PER_RUN',
     'claimPidFile',
     'writeHeartbeat',
     'readHeartbeat',
@@ -50,6 +56,12 @@ test('index.mjs re-exports the full public API surface', () => {
     'JanitorError',
     'computeGeoCardinality',
     'GeoTestOnlyViolation',
+    'buildResourceTags',
+    'touchTags',
+    'matchesExactOwnership',
+    'isMarkedPersistent',
+    'evaluateCleanupEligibility',
+    'TagError',
   ];
   for (const name of expectedExports) {
     assert.notEqual(CacheSafety[name], undefined, `expected export "${name}" to be defined`);

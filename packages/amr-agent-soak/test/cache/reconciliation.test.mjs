@@ -7,6 +7,7 @@ import { ResourceLedger } from '../../src/cache/ledger.mjs';
 import { LocalRpHttpAdapter } from '../../src/cache/http-adapter.mjs';
 import { reconcileOnStartup, pollUntilTerminal, ReconciliationError } from '../../src/cache/reconciliation.mjs';
 import { GuardViolation } from '../../src/cache/guards.mjs';
+import { buildResourceTags } from '../../src/cache/tags.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
 
 async function withTempLedger(fn) {
@@ -73,6 +74,97 @@ test('reconciliation refuses (defense in depth) if it is ever asked to reconcile
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
     await assert.rejects(() => reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' }), GuardViolation);
+  });
+});
+
+test('tag-based eligibility: a prefix-matching orphan with valid ownership tags is adopted normally', async () => {
+  await withTempLedger(async (ledger) => {
+    const tags = buildResourceTags({ ownerAlias: 'dmon', runId: 'run1', expiresInMs: 3600000 });
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({
+      ledger,
+      adapter,
+      resourcePrefix: 'dmon-run1-',
+      ownerAlias: 'dmon',
+      runId: 'run1',
+    });
+    assert.deepEqual(report.adoptedOrphans, ['dmon-run1-cache1']);
+    assert.deepEqual(report.quarantined, []);
+  });
+});
+
+test('tag-based eligibility: missing CreatedOn quarantines instead of adopting (fail-closed, opposite of the buggy job)', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({
+      initialCaches: [{ name: 'dmon-run1-cache1', tags: { Owner: 'dmon', SoakRunId: 'run1' } }],
+    });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({
+      ledger,
+      adapter,
+      resourcePrefix: 'dmon-run1-',
+      ownerAlias: 'dmon',
+      runId: 'run1',
+    });
+    assert.deepEqual(report.adoptedOrphans, []);
+    assert.deepEqual(report.quarantined, [{ resourceName: 'dmon-run1-cache1', reason: 'missing-createdon-fail-closed' }]);
+    assert.deepEqual(ledger.activeResources(), []); // never adopted/tracked
+  });
+});
+
+test('tag-based eligibility: an ownership-tag mismatch (name collision) quarantines rather than adopts', async () => {
+  await withTempLedger(async (ledger) => {
+    const tags = buildResourceTags({ ownerAlias: 'someone-else', runId: 'run9', expiresInMs: 3600000 });
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({
+      ledger,
+      adapter,
+      resourcePrefix: 'dmon-run1-',
+      ownerAlias: 'dmon',
+      runId: 'run1',
+    });
+    assert.deepEqual(report.adoptedOrphans, []);
+    assert.equal(report.quarantined[0].reason, 'ownership-tag-mismatch');
+  });
+});
+
+test('tag-based eligibility: an explicitly persistent-tagged resource is never adopted, regardless of prefix match', async () => {
+  await withTempLedger(async (ledger) => {
+    const tags = buildResourceTags({
+      ownerAlias: 'dmon',
+      runId: 'run1',
+      expiresInMs: 3600000,
+      extraTags: { Persistent: true },
+    });
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({
+      ledger,
+      adapter,
+      resourcePrefix: 'dmon-run1-',
+      ownerAlias: 'dmon',
+      runId: 'run1',
+    });
+    assert.deepEqual(report.adoptedOrphans, []);
+    assert.equal(report.quarantined[0].reason, 'marked-persistent');
+  });
+});
+
+test('tag-based eligibility is opt-in: without ownerAlias/runId, adoption falls back to prefix-only (backward compatible)', async () => {
+  await withTempLedger(async (ledger) => {
+    // No tags at all -- would be quarantined if tag-checking were enabled.
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.adoptedOrphans, ['dmon-run1-cache1']);
+    assert.deepEqual(report.quarantined, []);
   });
 });
 

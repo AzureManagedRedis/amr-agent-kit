@@ -1,6 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LeaseManager, LeaseError, LEASE_CLASSES, MAX_ACTIVE_LEASES } from '../../src/cache/lease-manager.mjs';
+import {
+  LeaseManager,
+  LeaseError,
+  LEASE_CLASSES,
+  MAX_ACTIVE_LEASES,
+  assertLeaseAuthorizes,
+  OPERATION_KINDS,
+  LeaseNotAuthorized,
+  FencingTokenStale,
+} from '../../src/cache/lease-manager.mjs';
 import { KillSwitch, KillSwitchEngaged } from '../../src/cache/kill-switch.mjs';
 
 function manager(opts = {}) {
@@ -104,4 +113,99 @@ test('listActive reflects only currently active, non-expired leases', () => {
   const active = m.listActive();
   assert.equal(active.length, 1);
   assert.equal(active[0].resourceName, 'b');
+});
+
+test('every acquired lease carries a monotonically increasing fencing token', () => {
+  const m = manager();
+  const a = m.acquire({ class: 'shared' });
+  const b = m.acquire({ class: 'shared' });
+  const c = m.acquire({ class: 'shared' });
+  assert.ok(a.fencingToken < b.fencingToken);
+  assert.ok(b.fencingToken < c.fencingToken);
+});
+
+test('assertFencingTokenValid passes for a live lease presenting its own token', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'exclusive' });
+  assert.doesNotThrow(() => m.assertFencingTokenValid(lease.id, lease.fencingToken));
+  assert.equal(m.isFencingTokenValid(lease.id, lease.fencingToken), true);
+});
+
+test('assertFencingTokenValid rejects a mismatched token for a still-live lease', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'exclusive' });
+  assert.throws(() => m.assertFencingTokenValid(lease.id, lease.fencingToken + 999), FencingTokenStale);
+  assert.equal(m.isFencingTokenValid(lease.id, lease.fencingToken + 999), false);
+});
+
+test('assertFencingTokenValid rejects an unknown lease id', () => {
+  const m = manager();
+  assert.throws(() => m.assertFencingTokenValid('not-a-real-lease-id', 1), FencingTokenStale);
+});
+
+test('an expired (reaped) lease can no longer authorize mutations via its old fencing token', () => {
+  let now = 1000;
+  const m = manager({ now: () => now });
+  const lease = m.acquire({ class: 'exclusive', ttlMs: 500 });
+  assert.doesNotThrow(() => m.assertFencingTokenValid(lease.id, lease.fencingToken));
+
+  now += 600; // past TTL -- the lease is reaped on next access
+  assert.throws(() => m.assertFencingTokenValid(lease.id, lease.fencingToken), FencingTokenStale);
+});
+
+test('re-acquiring after expiry issues a strictly newer fencing token, superseding the old one', () => {
+  let now = 1000;
+  const m = manager({ now: () => now });
+  const first = m.acquire({ class: 'exclusive', resourceName: 'dmon-run1-cache1', ttlMs: 100 });
+  now += 200; // first lease expires
+  const second = m.acquire({ class: 'exclusive', resourceName: 'dmon-run1-cache1', ttlMs: 100 });
+
+  assert.ok(second.fencingToken > first.fencingToken);
+  // The old (expired) owner's token/lease is no longer valid at all.
+  assert.throws(() => m.assertFencingTokenValid(first.id, first.fencingToken), FencingTokenStale);
+  // The new owner's token is valid.
+  assert.doesNotThrow(() => m.assertFencingTokenValid(second.id, second.fencingToken));
+});
+
+test('heartbeat renewal keeps the same fencing token (it is a renewal, not a new grant)', () => {
+  let now = 1000;
+  const m = manager({ now: () => now });
+  const lease = m.acquire({ class: 'exclusive', ttlMs: 500 });
+  now += 400;
+  const renewed = m.heartbeat(lease.id);
+  assert.equal(renewed.fencingToken, lease.fencingToken);
+});
+
+test('OPERATION_KINDS exposes exactly read/write/topology', () => {
+  assert.deepEqual([...OPERATION_KINDS].sort(), ['read', 'topology', 'write']);
+});
+
+test('assertLeaseAuthorizes: shared leases are read-only (connectivity), never write or topology', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'shared' });
+  assert.doesNotThrow(() => assertLeaseAuthorizes(lease, 'read'));
+  assert.throws(() => assertLeaseAuthorizes(lease, 'write'), LeaseNotAuthorized);
+  assert.throws(() => assertLeaseAuthorizes(lease, 'topology'), LeaseNotAuthorized);
+});
+
+test('assertLeaseAuthorizes: exclusive leases authorize read/write/topology (control-plane mutations)', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'exclusive' });
+  assert.doesNotThrow(() => assertLeaseAuthorizes(lease, 'read'));
+  assert.doesNotThrow(() => assertLeaseAuthorizes(lease, 'write'));
+  assert.doesNotThrow(() => assertLeaseAuthorizes(lease, 'topology'));
+});
+
+test('assertLeaseAuthorizes: topology leases authorize topology-shape changes but not generic write', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'topology' });
+  assert.doesNotThrow(() => assertLeaseAuthorizes(lease, 'read'));
+  assert.doesNotThrow(() => assertLeaseAuthorizes(lease, 'topology'));
+  assert.throws(() => assertLeaseAuthorizes(lease, 'write'), LeaseNotAuthorized);
+});
+
+test('assertLeaseAuthorizes rejects an unknown operation kind', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'exclusive' });
+  assert.throws(() => assertLeaseAuthorizes(lease, 'teleport'), LeaseError);
 });

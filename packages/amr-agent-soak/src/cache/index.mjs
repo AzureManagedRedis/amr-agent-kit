@@ -15,3 +15,4 @@ export * from './reconciliation.mjs';
 export * from './cleanup.mjs';
 export * from './janitor.mjs';
 export * from './geo-cardinality.mjs';
+export * from './tags.mjs';
