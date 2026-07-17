@@ -17,7 +17,15 @@ export class LedgerError extends Error {
   }
 }
 
-const VALID_ACTIONS = new Set(['created', 'mutated', 'deleted', 'lease-acquired', 'lease-released', 'heartbeat']);
+const VALID_ACTIONS = new Set([
+  'creation-intent',
+  'created',
+  'mutated',
+  'deleted',
+  'lease-acquired',
+  'lease-released',
+  'heartbeat',
+]);
 
 export class ResourceLedger {
   /**
@@ -79,5 +87,36 @@ export class ResourceLedger {
   activeResources() {
     const { creationOrder, byResource } = this.replay();
     return creationOrder.filter((name) => !byResource.get(name).deleted);
+  }
+
+  /**
+   * True if the ledger holds durable creation evidence for `name` -- a
+   * 'creation-intent' or 'created' event recorded by *this run itself*.
+   * This is the minimum bar for ever adopting a live resource discovered
+   * during reconciliation: a name/prefix match alone is not evidence, since
+   * names (and even tags) could coincidentally collide or be spoofed. Only
+   * our own durable, previously-appended record counts.
+   */
+  hasCreationEvidence(name) {
+    const { byResource } = this.replay();
+    const entry = byResource.get(name);
+    if (!entry) return false;
+    return entry.events.some((e) => e.action === 'creation-intent' || e.action === 'created');
+  }
+
+  /**
+   * True if the ledger recorded intent to create `name` (durably, before the
+   * RP call was made) but never recorded a confirming 'created' event --
+   * the signature of a crash between the intent append and the create
+   * confirmation. Reconciliation uses this to safely upgrade such entries
+   * to 'created' once it confirms the resource is actually live.
+   */
+  isIntentOnly(name) {
+    const { byResource } = this.replay();
+    const entry = byResource.get(name);
+    if (!entry) return false;
+    const hasCreated = entry.events.some((e) => e.action === 'created');
+    const hasIntent = entry.events.some((e) => e.action === 'creation-intent');
+    return hasIntent && !hasCreated;
   }
 }

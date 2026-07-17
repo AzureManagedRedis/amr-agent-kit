@@ -50,8 +50,10 @@ export function deriveLiveCeiling(catalog) {
  * - Any recognized family (Balanced/MemoryOptimized/ComputeOptimized, i.e.
  *   B/M/X) is eligible, provided memory (and capacity, when the SKU reports
  *   one) are at or below the ceiling.
- * - B0-style SKUs omit capacity entirely in the catalog; for those, only
- *   memory is compared.
+ * - Capacity omission is allowed ONLY for exactly Balanced B0. Any other
+ *   SKU (any M/X SKU, or a Balanced SKU other than B0) missing capacity is
+ *   treated as NOT within the ceiling -- fail closed, forcing dry-run --
+ *   rather than silently given a free pass on memory alone.
  * - SKUs above the ceiling are not rejected here -- callers (see
  *   classifySkuRequest) must force dry-run-only execution for them instead.
  */
@@ -68,8 +70,11 @@ export function isSkuWithinLiveCeiling(sku, ceiling) {
 
   const skuHasCapacity = typeof sku.capacityGb === 'number';
   if (!skuHasCapacity) {
-    // B0 omits capacity entirely: memory alone determines eligibility.
-    return true;
+    const isBalancedB0 = sku.family === 'Balanced' && sku.name === 'B0';
+    // Only Balanced B0 may omit capacity and still be judged on memory
+    // alone. Every other SKU missing capacity fails closed (not within
+    // ceiling), forcing dry-run rather than being silently allowed through.
+    return isBalancedB0;
   }
   if (ceiling.capacityGb == null) return true;
   return sku.capacityGb <= ceiling.capacityGb;

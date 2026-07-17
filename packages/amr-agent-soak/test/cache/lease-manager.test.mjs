@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   LeaseManager,
   LeaseError,
@@ -208,4 +211,111 @@ test('assertLeaseAuthorizes rejects an unknown operation kind', () => {
   const m = manager();
   const lease = m.acquire({ class: 'exclusive' });
   assert.throws(() => assertLeaseAuthorizes(lease, 'teleport'), LeaseError);
+});
+
+// ---- Finding #6: exclusive mutual exclusion + explicit topology semantics ----
+
+test('acquiring an exclusive lease requires that no other lease is currently active', () => {
+  const m = manager();
+  m.acquire({ class: 'shared' });
+  assert.throws(() => m.acquire({ class: 'exclusive' }), LeaseError);
+});
+
+test('no lease of any class may be acquired while an exclusive lease is active', () => {
+  const m = manager();
+  m.acquire({ class: 'exclusive' });
+  assert.throws(() => m.acquire({ class: 'shared' }), LeaseError);
+  assert.throws(() => m.acquire({ class: 'topology' }), LeaseError);
+  assert.throws(() => m.acquire({ class: 'dry-run' }), LeaseError);
+  assert.throws(() => m.acquire({ class: 'exclusive' }), LeaseError);
+});
+
+test('an exclusive lease can be acquired on a fresh manager with no other leases', () => {
+  const m = manager();
+  assert.doesNotThrow(() => m.acquire({ class: 'exclusive' }));
+});
+
+test('once the sole exclusive lease is released, new leases may be acquired again', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'exclusive' });
+  assert.throws(() => m.acquire({ class: 'shared' }), LeaseError);
+  m.release(lease.id);
+  assert.doesNotThrow(() => m.acquire({ class: 'shared' }));
+});
+
+test('once the sole exclusive lease expires (is reaped), new leases may be acquired again', () => {
+  let now = 1000;
+  const m = manager({ now: () => now });
+  m.acquire({ class: 'exclusive', ttlMs: 100 });
+  now += 200;
+  assert.doesNotThrow(() => m.acquire({ class: 'shared' }));
+});
+
+test('shared leases may coexist with each other and with dry-run/topology leases on different resources', () => {
+  const m = manager();
+  assert.doesNotThrow(() => m.acquire({ class: 'shared' }));
+  assert.doesNotThrow(() => m.acquire({ class: 'shared' }));
+  assert.doesNotThrow(() => m.acquire({ class: 'dry-run' }));
+  assert.doesNotThrow(() => m.acquire({ class: 'topology', resourceName: 'dmon-run1-cache1' }));
+  assert.doesNotThrow(() => m.acquire({ class: 'topology', resourceName: 'dmon-run1-cache2' }));
+});
+
+test('topology leases are explicitly exclusive per-resourceName: a second topology lease on the same resource is refused', () => {
+  const m = manager();
+  m.acquire({ class: 'topology', resourceName: 'dmon-run1-cache1' });
+  assert.throws(() => m.acquire({ class: 'topology', resourceName: 'dmon-run1-cache1' }), LeaseError);
+});
+
+test('topology leases on different resourceNames do not conflict with each other', () => {
+  const m = manager();
+  m.acquire({ class: 'topology', resourceName: 'dmon-run1-cache1' });
+  assert.doesNotThrow(() => m.acquire({ class: 'topology', resourceName: 'dmon-run1-cache2' }));
+});
+
+test('a topology lease without a resourceName does not participate in per-resource exclusivity', () => {
+  const m = manager();
+  m.acquire({ class: 'topology' });
+  assert.doesNotThrow(() => m.acquire({ class: 'topology' }));
+});
+
+// ---- Finding #7: persisted monotonic fencing token ----
+
+test('without a fencingStatePath, the fencing counter starts at 1 (in-memory only)', () => {
+  const m = manager();
+  const lease = m.acquire({ class: 'shared' });
+  assert.equal(lease.fencingToken, 1);
+});
+
+test('with a fencingStatePath, the fencing counter survives across LeaseManager instances (process restarts)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'amr-soak-fencing-'));
+  try {
+    const fencingStatePath = join(dir, 'fencing.json');
+    const m1 = new LeaseManager({ connectionBudget: 100, fencingStatePath });
+    const leaseA = m1.acquire({ class: 'shared' });
+    m1.release(leaseA.id);
+
+    // Simulate a process restart: a brand new LeaseManager instance pointed
+    // at the same durable state file must never reissue/reuse leaseA's token.
+    const m2 = new LeaseManager({ connectionBudget: 100, fencingStatePath });
+    const leaseB = m2.acquire({ class: 'shared' });
+    assert.ok(leaseB.fencingToken > leaseA.fencingToken);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the persisted fencing counter monotonically increases across many acquisitions and restarts', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'amr-soak-fencing-'));
+  try {
+    const fencingStatePath = join(dir, 'fencing.json');
+    let lastToken = 0;
+    for (let i = 0; i < 3; i += 1) {
+      const m = new LeaseManager({ connectionBudget: 100, fencingStatePath });
+      const lease = m.acquire({ class: 'shared' });
+      assert.ok(lease.fencingToken > lastToken);
+      lastToken = lease.fencingToken;
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -33,6 +33,18 @@ test('B0 omits capacity: ceiling check only compares memory', () => {
   assert.equal(isSkuWithinLiveCeiling(b0, ceiling), true);
 });
 
+test('capacity omission is allowed ONLY for Balanced B0 -- any other SKU missing capacity fails closed', () => {
+  const ceiling = deriveLiveCeiling(fakeSkuCatalog());
+  // Same tiny memory footprint as B0, but NOT Balanced B0 -- must NOT get a free pass.
+  const m0 = { name: 'M0', family: 'MemoryOptimized', memoryGb: 0.025 };
+  const x0 = { name: 'X0', family: 'ComputeOptimized', memoryGb: 0.025 };
+  const balancedButNotB0 = { name: 'B1', family: 'Balanced', memoryGb: 0.5 }; // capacity omitted, not B0
+  assert.equal('capacityGb' in m0, false);
+  assert.equal(isSkuWithinLiveCeiling(m0, ceiling), false);
+  assert.equal(isSkuWithinLiveCeiling(x0, ceiling), false);
+  assert.equal(isSkuWithinLiveCeiling(balancedButNotB0, ceiling), false);
+});
+
 test('B/M/X equivalents at or below the ceiling are within budget', () => {
   const ceiling = deriveLiveCeiling(fakeSkuCatalog());
   assert.equal(isSkuWithinLiveCeiling({ name: 'B1', family: 'Balanced', memoryGb: 1, capacityGb: 1 }, ceiling), true);

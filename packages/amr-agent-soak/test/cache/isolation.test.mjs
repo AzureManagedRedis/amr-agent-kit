@@ -43,6 +43,7 @@ test('run A cannot mutate a resource that belongs to run B, even with no denylis
 test('run A cleanup never deletes run B resources sharing the same fake RP instance', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'amr-soak-isolation-'));
   try {
+    const runA = loadRuntimeConfig(baseEnv({ AMR_SOAK_OWNER: 'dmon', AMR_SOAK_RUN_ID: 'run1' }));
     const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }, { name: 'phil-run2-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
@@ -51,7 +52,7 @@ test('run A cleanup never deletes run B resources sharing the same fake RP insta
 
     const leaseManager = new LeaseManager();
     const lease = leaseManager.acquire({ class: 'exclusive' });
-    const resultsA = await reverseCleanup({ ledger: ledgerA, adapter, resourcePrefix: 'dmon-run1-', lease, leaseManager });
+    const resultsA = await reverseCleanup({ ledger: ledgerA, adapter, config: runA, lease, leaseManager });
     assert.deepEqual(resultsA.map((r) => r.resourceName), ['dmon-run1-cache1']);
     assert.equal(fake._caches.has('phil-run2-cache1'), true); // run B's cache is untouched
     assert.equal(fake._caches.has('dmon-run1-cache1'), false);

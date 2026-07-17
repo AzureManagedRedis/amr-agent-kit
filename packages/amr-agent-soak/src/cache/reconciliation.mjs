@@ -4,19 +4,22 @@
 // Reconciliation never deletes anything itself -- it only reconciles the
 // ledger's view of the world against what the local RP actually reports, so
 // that a process that crashed mid-operation resumes with an accurate picture
-// instead of silently drifting. This is what makes "crash reconciliation"
-// safe: an orphan discovered here is only *adopted* into the ledger (so it
-// becomes trackable/cleanable by the normal, guarded cleanup path), never
-// deleted directly.
+// instead of silently drifting.
 //
-// Orphan adoption is additionally gated by tag-based eligibility (see
-// tags.mjs) whenever `ownerAlias`/`runId` are supplied: a live resource
-// matching our name prefix is only adopted if its tags prove exact
-// ownership, are not marked persistent, and carry valid CreatedOn/ExpiresOn
-// metadata. Anything that merely matches the prefix but fails that
-// fail-closed check is quarantined (reported, never touched) instead of
-// being silently adopted -- unlike the existing (not reused) orphan job,
-// which treats missing metadata as license to delete.
+// Adoption requires DURABLE PRE-CREATE INTENT EVIDENCE, not merely a
+// name-prefix (or even a tag) match: a live resource is only ever upgraded
+// to "created" in the ledger if the ledger itself already holds a
+// 'creation-intent' record for that exact name (see ledger.mjs and
+// provisioning.mjs) -- proof that *this run* durably recorded, before ever
+// calling the RP, that it intended to create this specific resource. Any
+// prefix-matching live resource with NO ledger evidence at all is
+// unconditionally quarantined (reported, never touched) for manual review,
+// regardless of what its tags claim -- a name or tag match alone is never
+// sufficient, since either could coincidentally collide or be spoofed.
+// Where evidence exists (a 'creation-intent' entry with no confirming
+// 'created' yet -- the signature of a crash in between), tag-based
+// eligibility (tags.mjs) is layered on top as an additional check before
+// confirming the ledger entry.
 
 import { assertOwnedResource } from './guards.mjs';
 import { evaluateCleanupEligibility } from './tags.mjs';
@@ -29,6 +32,7 @@ export class ReconciliationError extends Error {
 }
 
 const TERMINAL_STATES = new Set(['Succeeded', 'Failed', 'Canceled']);
+const TRANSIENT_REQUEST_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 
 function extractLiveRecords(liveList, resourcePrefix) {
   const rawList = Array.isArray(liveList) ? liveList : (liveList?.caches ?? []);
@@ -63,26 +67,37 @@ export async function reconcileOnStartup({ ledger, adapter, resourcePrefix, owne
   const tagCheckEnabled = Boolean(ownerAlias && runId);
 
   const { creationOrder, byResource } = ledger.replay();
-  const report = { adoptedOrphans: [], reconciledDeletions: [], quarantined: [] };
+  const report = { confirmedIntents: [], reconciledDeletions: [], quarantined: [] };
 
   for (const [liveName, record] of liveRecordsByName) {
     assertOwnedResource(liveName, resourcePrefix);
-    if (byResource.has(liveName)) continue;
 
-    // Exists on the RP, matches our own prefix, but the ledger has no record
-    // at all -- almost certainly a crash between the RP create call and the
-    // ledger append. Before adopting it (so it becomes trackable/cleanable),
-    // verify tag-based eligibility when we have enough context to do so.
+    if (!ledger.hasCreationEvidence(liveName)) {
+      // Zero durable evidence that this run ever intended to create this
+      // resource -- a prefix (or tag) match alone is never sufficient.
+      // Fail closed: quarantine unconditionally, never adopt.
+      report.quarantined.push({ resourceName: liveName, reason: 'no-creation-intent-evidence' });
+      continue;
+    }
+
+    if (!ledger.isIntentOnly(liveName)) {
+      continue; // Already confirmed 'created' previously -- nothing to do.
+    }
+
+    // Durable 'creation-intent' evidence exists with no confirming 'created'
+    // yet: the signature of a crash between the intent append and the
+    // create confirmation. Layer tag-based eligibility on top before
+    // confirming, when we have enough context to check it.
     if (tagCheckEnabled) {
       const evaluation = evaluateCleanupEligibility(record.tags, { ownerAlias, runId, now });
       if (!evaluation.eligible) {
         report.quarantined.push({ resourceName: liveName, reason: evaluation.reason });
-        continue; // Fail closed: do NOT adopt. Left for manual review.
+        continue;
       }
     }
 
-    ledger.append('created', liveName, { reconciled: true, reason: 'orphan-adopted-on-startup' });
-    report.adoptedOrphans.push(liveName);
+    ledger.append('created', liveName, { reconciled: true, reason: 'intent-confirmed-on-startup' });
+    report.confirmedIntents.push(liveName);
   }
 
   for (const name of creationOrder) {
@@ -105,9 +120,23 @@ function defaultSleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function callWithAbortTimeout(fn, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error(`Request timed out after ${timeoutMs}ms`)), timeoutMs);
+  try {
+    return await fn(controller.signal);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Polls the local RP for an operation's terminal state with exponential
- * backoff, up to `timeoutMs`.
+ * backoff, up to an overall `timeoutMs` deadline. Every individual poll
+ * request is itself bounded by an AbortController -- `remaining` overall
+ * deadline time, capped at `perRequestTimeoutMs` -- so a single hung request
+ * can never let the overall poll exceed its deadline; a request that times
+ * out is treated as transient and retried against the remaining budget.
  */
 export async function pollUntilTerminal({
   adapter,
@@ -116,16 +145,33 @@ export async function pollUntilTerminal({
   backoffFactor = 2,
   maxIntervalMs = 5000,
   timeoutMs = 60000,
+  perRequestTimeoutMs = 5000,
   sleep = defaultSleep,
 }) {
   const start = Date.now();
   let interval = intervalMs;
   for (;;) {
-    const status = await adapter.getOperationStatus(operationId);
-    if (TERMINAL_STATES.has(status.state)) return status;
+    const remaining = timeoutMs - (Date.now() - start);
+    if (remaining <= 0) {
+      throw new ReconciliationError(`Operation "${operationId}" did not reach a terminal state within ${timeoutMs}ms.`);
+    }
+
+    const requestTimeout = Math.min(perRequestTimeoutMs, remaining);
+    let status = null;
+    try {
+      status = await callWithAbortTimeout((signal) => adapter.getOperationStatus(operationId, { signal }), requestTimeout);
+    } catch (err) {
+      if (!TRANSIENT_REQUEST_ERROR_NAMES.has(err?.name)) throw err;
+      // A single hung/aborted request is transient -- fall through to the
+      // overall-deadline check below instead of retrying indefinitely.
+    }
+
+    if (status && TERMINAL_STATES.has(status.state)) return status;
+
     if (Date.now() - start >= timeoutMs) {
       throw new ReconciliationError(
-        `Operation "${operationId}" did not reach a terminal state within ${timeoutMs}ms (last state: ${status.state}).`
+        `Operation "${operationId}" did not reach a terminal state within ${timeoutMs}ms` +
+          (status ? ` (last state: ${status.state}).` : ' (last request timed out).')
       );
     }
     await sleep(interval);

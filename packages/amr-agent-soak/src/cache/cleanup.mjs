@@ -8,9 +8,14 @@
 // Real (non-dry-run) mutations require an exclusive lease whose fencing
 // token is still valid (see lease-manager.mjs) -- an owner that has lost its
 // lease cannot keep deleting things. Each delete waits for the RP operation
-// to reach a terminal state before the ledger records it as deleted. A
-// max-delete circuit breaker refuses to proceed (fail closed) if a single
-// run would delete more than expected, guarding against exactly the kind of
+// to reach a terminal state AND is verified actually absent (a fresh GET)
+// before the ledger ever records it as deleted; a delete that does not
+// reach a Succeeded terminal state, or whose target is somehow still
+// present afterward, is NOT ledgered as deleted -- it is preserved as still
+// active so a future reconciliation/cleanup pass retries it, rather than
+// the ledger falsely believing the resource is gone. A max-delete circuit
+// breaker refuses to proceed (fail closed) if a single run would delete
+// more than expected, guarding against exactly the kind of
 // runaway/duplicate-processing bug the existing (not reused) orphan job is
 // known to have.
 
@@ -38,12 +43,74 @@ export class CircuitBreakerTripped extends CleanupError {
  * after manual review. */
 export const DEFAULT_MAX_DELETES_PER_RUN = MAX_ACTIVE_LEASES;
 
+async function verifyAbsent(adapter, resourceName) {
+  try {
+    await adapter.getCache(resourceName);
+    return false; // still present
+  } catch (err) {
+    if (err?.status === 404) return true;
+    throw err;
+  }
+}
+
+/**
+ * Deletes a single owned resource, verifying full completion before ever
+ * ledgering it as deleted:
+ *   1. issue the delete through the guarded adapter boundary
+ *   2. if it returned an async operation, poll until terminal
+ *   3. only if that terminal state is 'Succeeded', verify actual absence
+ *      via a fresh GET
+ *   4. only then append 'deleted' to the ledger
+ *
+ * If the operation does not reach 'Succeeded', or the resource is somehow
+ * still present afterward, this does NOT ledger a deletion -- it returns a
+ * 'failed-pending-retry' result so the resource stays "active" for a future
+ * reconciliation/cleanup pass to retry, rather than the ledger falsely
+ * believing cleanup already succeeded. A hard/unexpected error throws
+ * CleanupError (the resource likewise stays active).
+ *
+ * @param {object} opts
+ * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
+ * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
+ * @param {string} opts.resourceName
+ * @param {object} opts.context - mutation context (see mutation-context.mjs) passed through to adapter.deleteCache.
+ * @param {typeof pollUntilTerminal} [opts.pollTerminal]
+ */
+export async function deleteOwnedResource({ ledger, adapter, resourceName, context, pollTerminal = pollUntilTerminal }) {
+  try {
+    const response = await adapter.deleteCache(resourceName, context);
+
+    let finalState = 'Succeeded';
+    if (response?.operationId) {
+      const pollResult = await pollTerminal({ adapter, operationId: response.operationId });
+      finalState = pollResult.state;
+    }
+    if (finalState !== 'Succeeded') {
+      return { resourceName, status: 'failed-pending-retry', state: finalState };
+    }
+
+    const absent = await verifyAbsent(adapter, resourceName);
+    if (!absent) {
+      return { resourceName, status: 'failed-pending-retry', reason: 'still-present-after-delete' };
+    }
+
+    ledger.append('deleted', resourceName, { via: 'deleteOwnedResource' });
+    return { resourceName, status: 'deleted' };
+  } catch (err) {
+    if (err?.status === 404) {
+      // Already gone: idempotent success, not a failure.
+      ledger.append('deleted', resourceName, { via: 'deleteOwnedResource', reason: 'already-absent' });
+      return { resourceName, status: 'already-absent' };
+    }
+    throw new CleanupError(`Failed to delete "${resourceName}": ${err.message}`);
+  }
+}
+
 /**
  * @param {object} opts
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
  * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
- * @param {string} opts.resourcePrefix
- * @param {string[]} [opts.denylist]
+ * @param {object} opts.config - runtime config (resourcePrefix, denylist, acknowledgedCustomerSubscription); required for real (non-dry-run) mutations.
  * @param {import('./kill-switch.mjs').KillSwitch} [opts.killSwitch]
  * @param {boolean} [opts.dryRun] - when true, guards run normally but nothing is actually deleted.
  * @param {number} [opts.maxDeletes] - circuit breaker cap; see DEFAULT_MAX_DELETES_PER_RUN.
@@ -55,8 +122,7 @@ export const DEFAULT_MAX_DELETES_PER_RUN = MAX_ACTIVE_LEASES;
 export async function reverseCleanup({
   ledger,
   adapter,
-  resourcePrefix,
-  denylist = [],
+  config,
   killSwitch,
   dryRun = false,
   maxDeletes = DEFAULT_MAX_DELETES_PER_RUN,
@@ -65,6 +131,8 @@ export async function reverseCleanup({
   leaseManager,
   pollTerminal = pollUntilTerminal,
 }) {
+  const resourcePrefix = config?.resourcePrefix;
+  const denylist = config?.denylist ?? [];
   const active = ledger.activeResources();
   const order = [...active].reverse(); // LIFO: most recently created goes first.
 
@@ -76,8 +144,8 @@ export async function reverseCleanup({
   }
 
   if (!dryRun) {
-    if (!lease || !leaseManager) {
-      throw new CleanupError('reverseCleanup requires an exclusive lease + leaseManager for real (non-dry-run) mutations.');
+    if (!config || !lease || !leaseManager) {
+      throw new CleanupError('reverseCleanup requires config + an exclusive lease + leaseManager for real (non-dry-run) mutations.');
     }
     assertLeaseAuthorizes(lease, 'write');
   }
@@ -97,23 +165,9 @@ export async function reverseCleanup({
     // the lease's TTL, and an expired owner must not keep mutating.
     leaseManager.assertFencingTokenValid(lease.id, lease.fencingToken);
 
-    try {
-      const response = await adapter.deleteCache(resourceName);
-      if (response?.operationId) {
-        await pollTerminal({ adapter, operationId: response.operationId });
-      }
-      ledger.append('deleted', resourceName, { via: 'reverseCleanup' });
-      results.push({ resourceName, status: 'deleted' });
-    } catch (err) {
-      if (err?.status === 404) {
-        // Already gone: idempotent success, not a failure.
-        ledger.append('deleted', resourceName, { via: 'reverseCleanup', reason: 'already-absent' });
-        results.push({ resourceName, status: 'already-absent' });
-        continue;
-      }
-      results.push({ resourceName, status: 'failed', error: err.message });
-      throw new CleanupError(`Failed to delete "${resourceName}" during reverse cleanup: ${err.message}`);
-    }
+    const context = { config, lease, leaseManager, killSwitch };
+    const result = await deleteOwnedResource({ ledger, adapter, resourceName, context, pollTerminal });
+    results.push(result);
   }
 
   return results;

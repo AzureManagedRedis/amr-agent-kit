@@ -7,12 +7,23 @@
 // scenarios require an exclusive lease, and the kill switch is checked
 // before any mutating-class lease is acquired.
 //
+// Mutual exclusion: acquiring an EXCLUSIVE lease requires that NO other
+// lease (of any class) is currently active, and while an exclusive lease is
+// active, no other lease may be acquired at all -- exclusive really means
+// exclusive. Topology leases are explicitly scoped: two topology (or a
+// topology and an exclusive) lease cannot be active for the *same*
+// resourceName at once, preventing concurrent topology mutations to one
+// cache, while topology leases for different resources may coexist.
+//
 // Leases also carry a monotonically increasing fencing token. If a lease
 // expires (or is released) and is reaped, its token is no longer recognized
 // -- so a caller that kept mutating after losing its lease (e.g. a stalled
 // worker that missed its heartbeat window) cannot continue: any mutation
 // path must present (leaseId, fencingToken) and have it validated via
-// assertFencingTokenValid before touching the RP.
+// assertFencingTokenValid before touching the RP. When `fencingStatePath` is
+// supplied, the fencing counter's high-water mark is persisted durably, so a
+// process restart can never reissue/reuse a token value a prior process
+// already handed out.
 //
 // Lease *class* additionally gates *what kind* of operation it authorizes:
 // shared leases are read-only (connectivity checks only); exclusive leases
@@ -21,6 +32,8 @@
 // nothing they "authorize" ever reaches the real adapter.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { KillSwitch } from './kill-switch.mjs';
 
 export const LEASE_CLASSES = Object.freeze(['shared', 'exclusive', 'topology', 'dry-run']);
@@ -78,6 +91,27 @@ export function assertLeaseAuthorizes(lease, operationKind) {
   }
 }
 
+function loadPersistedFencingCounter(path) {
+  if (!path || !existsSync(path)) return 0;
+  try {
+    const parsed = JSON.parse(readFileSync(path, 'utf8'));
+    return typeof parsed.lastIssuedToken === 'number' ? parsed.lastIssuedToken : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function persistFencingCounter(path, lastIssuedToken) {
+  if (!path) return;
+  const dir = dirname(path);
+  if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
+  // Write-then-rename: never leaves a torn/partial counter file behind, even
+  // if the process is killed mid-write.
+  const tmpPath = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmpPath, JSON.stringify({ lastIssuedToken }), 'utf8');
+  renameSync(tmpPath, path);
+}
+
 export class LeaseManager {
   /**
    * @param {object} [opts]
@@ -85,12 +119,14 @@ export class LeaseManager {
    * @param {number} [opts.connectionBudget] - total concurrent connections all active leases may consume.
    * @param {KillSwitch} [opts.killSwitch]
    * @param {() => number} [opts.now] - injectable clock for tests.
+   * @param {string} [opts.fencingStatePath] - durable file persisting the fencing counter's high-water mark across restarts.
    */
   constructor({
     maxActiveLeases = MAX_ACTIVE_LEASES,
     connectionBudget = MAX_ACTIVE_LEASES * 2,
     killSwitch = new KillSwitch(),
     now = () => Date.now(),
+    fencingStatePath = null,
   } = {}) {
     if (maxActiveLeases > MAX_ACTIVE_LEASES) {
       throw new LeaseError(`maxActiveLeases (${maxActiveLeases}) may not exceed the hard cap of ${MAX_ACTIVE_LEASES}.`);
@@ -101,7 +137,8 @@ export class LeaseManager {
     this.now = now;
     /** @type {Map<string, object>} */
     this.leases = new Map();
-    this.fencingCounter = 0;
+    this.fencingStatePath = fencingStatePath;
+    this.fencingCounter = loadPersistedFencingCounter(fencingStatePath);
   }
 
   #reapExpired() {
@@ -115,6 +152,12 @@ export class LeaseManager {
     let total = 0;
     for (const lease of this.leases.values()) total += lease.connections;
     return total;
+  }
+
+  #nextFencingToken() {
+    this.fencingCounter += 1;
+    persistFencingCounter(this.fencingStatePath, this.fencingCounter);
+    return this.fencingCounter;
   }
 
   /**
@@ -139,6 +182,35 @@ export class LeaseManager {
 
     this.#reapExpired();
 
+    const activeLeases = [...this.leases.values()];
+
+    // Mutual exclusion: exclusive really means exclusive, in both directions.
+    if (activeLeases.some((l) => l.class === 'exclusive')) {
+      throw new LeaseError(
+        'Cannot acquire lease: an exclusive lease is currently active; no other lease may be acquired until it is released or expires.'
+      );
+    }
+    if (leaseClass === 'exclusive' && activeLeases.length > 0) {
+      throw new LeaseError(
+        `Cannot acquire an exclusive lease while ${activeLeases.length} other lease(s) are active; exclusive requires sole occupancy.`
+      );
+    }
+
+    // Explicit topology semantics: at most one topology (or exclusive, though
+    // that case is already covered above) lease may target a given
+    // resourceName at a time, preventing concurrent topology mutations to
+    // the same cache. Topology leases for different resources may coexist.
+    if (leaseClass === 'topology' && resourceName) {
+      const conflicting = activeLeases.some(
+        (l) => l.resourceName === resourceName && (l.class === 'topology' || l.class === 'exclusive')
+      );
+      if (conflicting) {
+        throw new LeaseError(
+          `Cannot acquire a topology lease for "${resourceName}": a topology/exclusive lease is already active for this resource.`
+        );
+      }
+    }
+
     if (this.leases.size >= this.maxActiveLeases) {
       throw new LeaseError(`Cannot acquire lease: ${this.maxActiveLeases} active leases already held (max reached).`);
     }
@@ -151,7 +223,7 @@ export class LeaseManager {
 
     const id = randomUUID();
     const nowMs = this.now();
-    const fencingToken = ++this.fencingCounter;
+    const fencingToken = this.#nextFencingToken();
     const lease = {
       id,
       class: leaseClass,

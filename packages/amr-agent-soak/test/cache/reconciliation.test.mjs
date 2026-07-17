@@ -8,6 +8,7 @@ import { LocalRpHttpAdapter } from '../../src/cache/http-adapter.mjs';
 import { reconcileOnStartup, pollUntilTerminal, ReconciliationError } from '../../src/cache/reconciliation.mjs';
 import { GuardViolation } from '../../src/cache/guards.mjs';
 import { buildResourceTags } from '../../src/cache/tags.mjs';
+import { LeaseManager } from '../../src/cache/lease-manager.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
 
 async function withTempLedger(fn) {
@@ -19,16 +20,61 @@ async function withTempLedger(fn) {
   }
 }
 
-test('crash reconciliation: RP has a resource under our prefix that the ledger never recorded (adopted as orphan)', async () => {
+function testContext(overrides = {}) {
+  const leaseManager = overrides.leaseManager ?? new LeaseManager();
+  const lease = overrides.lease ?? leaseManager.acquire({ class: 'exclusive' });
+  return {
+    config: { resourcePrefix: 'dmon-run1-', denylist: [], acknowledgedCustomerSubscription: true, ...overrides.config },
+    lease,
+    leaseManager,
+  };
+}
+
+// ---- Finding #2: adoption requires durable pre-create intent/operation evidence ----
+
+test('a prefix-matching live resource with ZERO ledger evidence is unconditionally quarantined, never adopted', async () => {
   await withTempLedger(async (ledger) => {
-    // Simulate: adapter.createCache() succeeded against the RP, but the
-    // process crashed before ledger.append('created', ...) ran.
+    // Exists on the RP, matches our prefix, but this run's ledger has never
+    // heard of it at all -- no intent, no created record. A name match
+    // alone must never be treated as evidence.
     const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
     const report = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
-    assert.deepEqual(report.adoptedOrphans, ['dmon-run1-cache1']);
+    assert.deepEqual(report.confirmedIntents, []);
+    assert.deepEqual(report.quarantined, [{ resourceName: 'dmon-run1-cache1', reason: 'no-creation-intent-evidence' }]);
+    assert.deepEqual(ledger.activeResources(), []); // never adopted/tracked
+  });
+});
+
+test('a prefix-matching live resource with durable creation-intent evidence is safely confirmed (crash recovery)', async () => {
+  await withTempLedger(async (ledger) => {
+    // Simulate: the create orchestrator durably recorded intent before
+    // calling the RP, the RP call succeeded, but the process crashed before
+    // the confirming 'created' ledger append ran.
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.confirmedIntents, ['dmon-run1-cache1']);
+    assert.deepEqual(report.quarantined, []);
     assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']);
+    assert.equal(ledger.isIntentOnly('dmon-run1-cache1'), false); // now confirmed 'created'
+  });
+});
+
+test('a resource already fully confirmed created is left untouched (no duplicate ledger entries)', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    ledger.append('created', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.confirmedIntents, []);
+    assert.deepEqual(report.quarantined, []);
+    assert.equal(ledger.readAll().filter((r) => r.resourceName === 'dmon-run1-cache1').length, 2);
   });
 });
 
@@ -46,23 +92,28 @@ test('crash reconciliation: ledger believes a resource is active but the RP no l
 
 test('reconciliation is idempotent: running it twice in a row produces no further changes', async () => {
   await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
-    await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
+    const first = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(first.confirmedIntents, ['dmon-run1-cache1']);
+
     const second = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
-    assert.deepEqual(second.adoptedOrphans, []);
+    assert.deepEqual(second.confirmedIntents, []);
     assert.deepEqual(second.reconciledDeletions, []);
+    assert.deepEqual(second.quarantined, []);
   });
 });
 
 test('reconciliation never adopts/touches a live resource outside our own prefix (isolation)', async () => {
   await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const fake = createFakeRp({ initialCaches: [{ name: 'other-owner-run9-cache1' }, { name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
     const report = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
-    assert.deepEqual(report.adoptedOrphans, ['dmon-run1-cache1']);
+    assert.deepEqual(report.confirmedIntents, ['dmon-run1-cache1']);
     assert.ok(!ledger.activeResources().includes('other-owner-run9-cache1'));
   });
 });
@@ -77,8 +128,11 @@ test('reconciliation refuses (defense in depth) if it is ever asked to reconcile
   });
 });
 
-test('tag-based eligibility: a prefix-matching orphan with valid ownership tags is adopted normally', async () => {
+// ---- Tag-based eligibility layered on top of durable intent evidence ----
+
+test('tag-based eligibility: intent-evidenced resource with valid ownership tags is confirmed normally', async () => {
   await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const tags = buildResourceTags({ ownerAlias: 'dmon', runId: 'run1', expiresInMs: 3600000 });
     const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
@@ -90,13 +144,14 @@ test('tag-based eligibility: a prefix-matching orphan with valid ownership tags 
       ownerAlias: 'dmon',
       runId: 'run1',
     });
-    assert.deepEqual(report.adoptedOrphans, ['dmon-run1-cache1']);
+    assert.deepEqual(report.confirmedIntents, ['dmon-run1-cache1']);
     assert.deepEqual(report.quarantined, []);
   });
 });
 
-test('tag-based eligibility: missing CreatedOn quarantines instead of adopting (fail-closed, opposite of the buggy job)', async () => {
+test('tag-based eligibility: missing CreatedOn quarantines an intent-evidenced resource too (fail-closed)', async () => {
   await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const fake = createFakeRp({
       initialCaches: [{ name: 'dmon-run1-cache1', tags: { Owner: 'dmon', SoakRunId: 'run1' } }],
     });
@@ -109,14 +164,16 @@ test('tag-based eligibility: missing CreatedOn quarantines instead of adopting (
       ownerAlias: 'dmon',
       runId: 'run1',
     });
-    assert.deepEqual(report.adoptedOrphans, []);
+    assert.deepEqual(report.confirmedIntents, []);
     assert.deepEqual(report.quarantined, [{ resourceName: 'dmon-run1-cache1', reason: 'missing-createdon-fail-closed' }]);
-    assert.deepEqual(ledger.activeResources(), []); // never adopted/tracked
+    // Still intent-only (never confirmed 'created') -- quarantine leaves it exactly as it was.
+    assert.equal(ledger.isIntentOnly('dmon-run1-cache1'), true);
   });
 });
 
-test('tag-based eligibility: an ownership-tag mismatch (name collision) quarantines rather than adopts', async () => {
+test('tag-based eligibility: an ownership-tag mismatch quarantines even with intent evidence present', async () => {
   await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const tags = buildResourceTags({ ownerAlias: 'someone-else', runId: 'run9', expiresInMs: 3600000 });
     const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
@@ -128,13 +185,14 @@ test('tag-based eligibility: an ownership-tag mismatch (name collision) quaranti
       ownerAlias: 'dmon',
       runId: 'run1',
     });
-    assert.deepEqual(report.adoptedOrphans, []);
+    assert.deepEqual(report.confirmedIntents, []);
     assert.equal(report.quarantined[0].reason, 'ownership-tag-mismatch');
   });
 });
 
-test('tag-based eligibility: an explicitly persistent-tagged resource is never adopted, regardless of prefix match', async () => {
+test('tag-based eligibility: an explicitly persistent-tagged resource is never confirmed, regardless of intent evidence', async () => {
   await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const tags = buildResourceTags({
       ownerAlias: 'dmon',
       runId: 'run1',
@@ -151,28 +209,31 @@ test('tag-based eligibility: an explicitly persistent-tagged resource is never a
       ownerAlias: 'dmon',
       runId: 'run1',
     });
-    assert.deepEqual(report.adoptedOrphans, []);
+    assert.deepEqual(report.confirmedIntents, []);
     assert.equal(report.quarantined[0].reason, 'marked-persistent');
   });
 });
 
-test('tag-based eligibility is opt-in: without ownerAlias/runId, adoption falls back to prefix-only (backward compatible)', async () => {
+test('tag-based eligibility is opt-in: without ownerAlias/runId, intent-evidenced resources are still confirmed', async () => {
   await withTempLedger(async (ledger) => {
-    // No tags at all -- would be quarantined if tag-checking were enabled.
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] }); // no tags at all
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
     const report = await reconcileOnStartup({ ledger, adapter, resourcePrefix: 'dmon-run1-' });
-    assert.deepEqual(report.adoptedOrphans, ['dmon-run1-cache1']);
+    assert.deepEqual(report.confirmedIntents, ['dmon-run1-cache1']);
     assert.deepEqual(report.quarantined, []);
   });
 });
 
+// ---- pollUntilTerminal ----
+
 test('pollUntilTerminal polls with backoff until a terminal state is reached', async () => {
   const fake = createFakeRp({});
   const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
-  await adapter.createCache('dmon-run1-cache1', {});
-  const patchResult = await adapter.patchCacheTopology('dmon-run1-cache1', { topology: 'cluster' });
+  const context = testContext();
+  await adapter.createCache('dmon-run1-cache1', {}, context);
+  const patchResult = await adapter.patchCacheTopology('dmon-run1-cache1', { topology: 'cluster' }, context);
 
   const sleeps = [];
   const status = await pollUntilTerminal({
@@ -200,4 +261,63 @@ test('pollUntilTerminal throws ReconciliationError on timeout', async () => {
       }),
     ReconciliationError
   );
+});
+
+// ---- Finding #11: AbortController-bounded polling ----
+
+test('pollUntilTerminal bounds a single hung request so it can never let the overall poll exceed its deadline', async () => {
+  const hangingAdapter = {
+    getOperationStatus: (id, { signal } = {}) =>
+      new Promise((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+        // Never resolves on its own -- only the AbortSignal can end it.
+      }),
+  };
+  const start = Date.now();
+  await assert.rejects(
+    () =>
+      pollUntilTerminal({
+        adapter: hangingAdapter,
+        operationId: 'op-x',
+        timeoutMs: 100,
+        perRequestTimeoutMs: 25,
+        intervalMs: 5,
+        sleep: async () => {},
+      }),
+    ReconciliationError
+  );
+  assert.ok(Date.now() - start < 2000, 'a hung individual request must not make the overall poll hang indefinitely');
+});
+
+test('pollUntilTerminal recovers from a single aborted request and succeeds once a later request responds', async () => {
+  let callCount = 0;
+  const flakyAdapter = {
+    getOperationStatus: (id, { signal } = {}) => {
+      callCount += 1;
+      if (callCount === 1) {
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      }
+      return Promise.resolve({ state: 'Succeeded' });
+    },
+  };
+  const status = await pollUntilTerminal({
+    adapter: flakyAdapter,
+    operationId: 'op-y',
+    timeoutMs: 5000,
+    perRequestTimeoutMs: 20,
+    intervalMs: 5,
+    sleep: async () => {},
+  });
+  assert.equal(status.state, 'Succeeded');
+  assert.ok(callCount >= 2);
 });
