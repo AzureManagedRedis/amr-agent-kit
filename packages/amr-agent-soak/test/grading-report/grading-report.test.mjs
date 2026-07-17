@@ -16,6 +16,7 @@ import {
 import {
   assertCalibrationCanaries,
   buildBlindArmBundle,
+  createBlindArmBundles,
   gradeAnswer,
 } from '../../src/grading/grade.mjs'
 import { buildClientArtifactIndex } from '../../src/report/artifacts.mjs'
@@ -110,6 +111,26 @@ test('blind bundles shuffle actual paired members before assigning labels', () =
   }
   assert.deepEqual([...observed.get('with_skill')].sort(), ['arm-a', 'arm-b'])
   assert.deepEqual([...observed.get('without_skill')].sort(), ['arm-a', 'arm-b'])
+})
+
+test('blind bundle batches are reproducible with explicit seeds and non-degenerate', () => {
+  const pairs = Array.from({ length: 64 }, (_, index) => ({
+    with_skill: { run_id: `with-${index}`, answer: `skill-${index}` },
+    without_skill: { run_id: `without-${index}`, answer: `baseline-${index}` },
+  }))
+  const first = createBlindArmBundles(pairs, { seed: 12345 })
+  const second = createBlindArmBundles(pairs, { seed: 12345 })
+  assert.deepEqual(first, second)
+  assert.ok(new Set(first.map((bundle) => bundle.arms.find((arm) => arm.label === 'with_skill').blind_label)).size > 1)
+})
+
+test('no-seed blind bundle batches use a non-degenerate random stream', () => {
+  const pairs = Array.from({ length: 64 }, (_, index) => ({
+    with_skill: { run_id: `with-${index}` },
+    without_skill: { run_id: `without-${index}` },
+  }))
+  const bundles = createBlindArmBundles(pairs)
+  assert.ok(new Set(bundles.map((bundle) => bundle.arms.find((arm) => arm.label === 'with_skill').blind_label)).size > 1)
 })
 
 test('computes Cohen kappa for two graders', () => {

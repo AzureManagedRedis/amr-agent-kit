@@ -137,14 +137,14 @@ function pairedMembers(pair, index) {
   return { withSkill, withoutSkill }
 }
 
-export function buildBlindArmBundle(pair, { seed = 1 } = {}) {
-  const random = rng(seed)
+export function buildBlindArmBundle(pair, { seed, random } = {}) {
+  const draw = random ?? rng(seed)
   const { withSkill, withoutSkill } = pairedMembers(pair, 0)
   const arms = [
     { label: 'with_skill', payload: withSkill },
     { label: 'without_skill', payload: withoutSkill },
   ]
-  if (random() >= 0.5) [arms[0], arms[1]] = [arms[1], arms[0]]
+  if (draw() >= 0.5) [arms[0], arms[1]] = [arms[1], arms[0]]
   return {
     bundle_id: pair.bundle_id ?? pair.bundleId ?? `${withSkill.eval_id ?? withSkill.evalId}:${withSkill.run_id ?? withSkill.runId ?? withSkill.id}`,
     arms: arms.map((arm, index) => ({ ...arm, blind_label: `arm-${String.fromCharCode(97 + index)}` })),
@@ -153,10 +153,11 @@ export function buildBlindArmBundle(pair, { seed = 1 } = {}) {
 
 export function createBlindArmBundles(pairs, options = {}) {
   if (!Array.isArray(pairs)) throw new TypeError('pairs must be an array')
-  return pairs.map((pair, index) => buildBlindArmBundle({ ...pair, ...pairedMembers(pair, index) }, {
-    ...options,
-    seed: Number.isInteger(options.seed) ? options.seed + index : undefined,
-  }))
+  const random = rng(options.seed)
+  return pairs.map((pair, index) => {
+    pairedMembers(pair, index)
+    return buildBlindArmBundle(pair, { random })
+  })
 }
 
 export function unblindArmBundles(bundles) {
