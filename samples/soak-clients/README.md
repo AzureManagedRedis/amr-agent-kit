@@ -48,8 +48,9 @@ powershell -ExecutionPolicy Bypass -File .\tools\run-offline-checks.ps1
 ```
 
 The command runs only dry-run paths and standard library checks. It does not
-restore packages, contact a Redis endpoint, or create build output in the
-repository.
+install external packages or contact a Redis endpoint. It preflights a writable, ignored
+`.offline-output` directory under this corpus, directs .NET and Cargo output
+there, and removes it after the check.
 
 ## Live integration boundary
 

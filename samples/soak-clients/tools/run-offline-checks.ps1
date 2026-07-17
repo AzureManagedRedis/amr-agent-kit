@@ -3,9 +3,22 @@ param()
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("retained-soak-client-" + [Guid]::NewGuid().ToString("N"))
+$scratchRoot = Join-Path $root ".offline-output"
 $exitCode = 0
-New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
+
+function New-WritableScratchDirectory {
+    param([string]$Path)
+
+    try {
+        Remove-Item -Recurse -Force $Path -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+        $probe = Join-Path $Path ".write-probe"
+        [System.IO.File]::WriteAllText($probe, "ok")
+        Remove-Item -Force $probe
+    } catch {
+        throw "Offline scratch preflight failed for '$Path'. Verify that the worktree is writable and remove any process locking the directory. $($_.Exception.Message)"
+    }
+}
 
 function Assert-Result {
     param(
@@ -36,12 +49,13 @@ function Assert-Result {
 }
 
 try {
+    New-WritableScratchDirectory -Path $scratchRoot
     $env:SOAK_MODE = "dry-run"
     $env:PYTHONDONTWRITEBYTECODE = "1"
 
     $dotnetProject = Join-Path $root "dotnet\SoakClient.csproj"
-    $dotnetObj = "$tempRoot\dotnet\obj\"
-    $dotnetBin = "$tempRoot\dotnet\bin\"
+    $dotnetObj = "$scratchRoot\dotnet\obj\"
+    $dotnetBin = "$scratchRoot\dotnet\bin\"
     & dotnet restore $dotnetProject --ignore-failed-sources --nologo "-p:BaseIntermediateOutputPath=$dotnetObj" "-p:BaseOutputPath=$dotnetBin"
     $dotnet = & dotnet run --project $dotnetProject --no-restore --nologo --verbosity quiet `
         "-p:BaseIntermediateOutputPath=$dotnetObj" "-p:BaseOutputPath=$dotnetBin"
@@ -58,7 +72,7 @@ try {
     }
     Assert-Result -Json ($go | Select-Object -Last 1) -Library "go-redis"
 
-    $env:CARGO_TARGET_DIR = Join-Path $tempRoot "cargo-target"
+    $env:CARGO_TARGET_DIR = Join-Path $scratchRoot "cargo-target"
     New-Item -ItemType Directory -Path $env:CARGO_TARGET_DIR -Force | Out-Null
     $rust = & cargo run --manifest-path (Join-Path $root "rust\Cargo.toml") --offline --quiet
     Assert-Result -Json ($rust | Select-Object -Last 1) -Library "redis-rs"
@@ -70,7 +84,7 @@ try {
     $exitCode = $LASTEXITCODE
 } finally {
     Remove-Item -Force (Join-Path $root "rust\Cargo.lock") -ErrorAction SilentlyContinue
-    Remove-Item -Recurse -Force $tempRoot -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $scratchRoot -ErrorAction SilentlyContinue
 }
 
 exit $exitCode

@@ -62,10 +62,19 @@ class CorpusContractTests(unittest.TestCase):
         for required in ("reference-good", "bad", "with-skill", "without-skill", "hashes.json", "reproduce.ps1", "reports/"):
             self.assertIn(required, document)
 
+    def test_offline_verifier_preflights_ignored_scratch_directory(self) -> None:
+        verifier = (ROOT / "tools" / "run-offline-checks.ps1").read_text(encoding="utf-8")
+        self.assertIn(".offline-output", verifier)
+        self.assertIn("New-WritableScratchDirectory", verifier)
+        self.assertIn("Offline scratch preflight failed", verifier)
+        self.assertIn("Remove-Item -Recurse -Force $scratchRoot", verifier)
+
     def test_no_sensitive_literals_or_build_outputs_are_retained(self) -> None:
         forbidden = ("password=", "accountkey=", "sharedaccesssignature=", "authorization: bearer ")
         excluded_names = {"node_modules", "target", "bin", "obj", "__pycache__"}
         for path in ROOT.rglob("*"):
+            if ".offline-output" in path.parts:
+                continue
             if path.name == "__pycache__" and "tests" in path.parts:
                 continue
             self.assertNotIn(path.name, excluded_names, path)
