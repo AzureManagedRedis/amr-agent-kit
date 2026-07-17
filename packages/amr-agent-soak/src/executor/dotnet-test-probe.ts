@@ -9,7 +9,7 @@ import type { ProbeArtifact, ProbeContext, SoakProbe } from "../core/contracts.j
 import {
   SystemProcessManager,
   type ProcessManager,
-  type TerminationResult,
+  waitForChildTermination,
 } from "../core/process.js";
 
 export interface DotnetTestProbeConfig {
@@ -32,6 +32,7 @@ interface SelectorResult {
   readonly finishedAt: string;
   readonly stdoutFile: string;
   readonly stderrFile: string;
+  readonly terminationError?: string;
 }
 
 function safeName(value: string): string {
@@ -120,49 +121,38 @@ export class DotnetTestProbe implements SoakProbe {
       }
       const processIdentity = await this.#processManager.identify(child.pid);
       await context.onProcessStarted?.(processIdentity);
-      let terminationPromise: Promise<TerminationResult> | undefined;
-      const terminateTree = (): void => {
-        terminationPromise ??= this.#processManager
+      const terminateTree = async (): Promise<import("../core/process.js").TerminationResult> =>
+        this.#processManager
           .terminateTree(processIdentity, async (descendants) => {
             for (const descendant of descendants) {
               await context.onProcessStarted?.(descendant);
             }
           })
           .then(async (result) => {
-            for (const descendant of result.discovered) {
+            const killed = new Set(result.killed.map((identity) => identity.pid));
+            for (const descendant of result.discovered.filter((identity) => killed.has(identity.pid))) {
               await context.onProcessExited?.(descendant);
             }
             return result;
           });
-      };
-      if (localController.signal.aborted) {
-        terminateTree();
-      } else {
-        localController.signal.addEventListener("abort", terminateTree, { once: true });
-      }
       const pipeErrors: Error[] = [];
       const pipes = [
         pipeline(child.stdout, stdout).catch((error: Error) => pipeErrors.push(error)),
         pipeline(child.stderr, stderr).catch((error: Error) => pipeErrors.push(error)),
       ];
-      let exitCode: number | null = null;
-      let spawnError: Error | undefined;
-      await new Promise<void>((resolve) => {
-        child.on("error", (error) => {
-          spawnError = error;
-        });
-        child.on("close", (code) => {
-          exitCode = code;
-          resolve();
-        });
-      }).finally(() => {
-        clearTimeout(timeout);
-        context.signal.removeEventListener("abort", forwardAbort);
-      });
-      await terminationPromise?.catch((error: Error) => {
-        spawnError = error;
-      });
-      await context.onProcessExited?.(processIdentity);
+      const outcome = await waitForChildTermination(child, localController.signal, terminateTree);
+      const exitCode = outcome.exitCode;
+      let spawnError = outcome.error;
+      clearTimeout(timeout);
+      context.signal.removeEventListener("abort", forwardAbort);
+      if (outcome.closed) {
+        await context.onProcessExited?.(processIdentity);
+      } else {
+        child.stdout.destroy(outcome.error);
+        child.stderr.destroy(outcome.error);
+        stdout.destroy(outcome.error);
+        stderr.destroy(outcome.error);
+      }
       await Promise.all(pipes);
       if (pipeErrors.length > 0 && !spawnError) {
         spawnError = pipeErrors[0];
@@ -181,6 +171,7 @@ export class DotnetTestProbe implements SoakProbe {
         finishedAt: new Date().toISOString(),
         stdoutFile,
         stderrFile,
+        terminationError: outcome.error?.message,
       };
     };
 

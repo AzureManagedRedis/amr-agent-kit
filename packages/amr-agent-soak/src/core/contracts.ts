@@ -105,6 +105,7 @@ export interface ProcessTrace {
   readonly signal: NodeJS.Signals | null;
   readonly timedOut: boolean;
   readonly cancelled: boolean;
+  readonly terminationError?: string;
   readonly stdoutFile: string;
   readonly stderrFile: string;
   readonly projectHashBefore: string;

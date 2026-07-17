@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { EventEmitter } from "node:events";
 import { appendFile, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,6 +10,8 @@ import {
   planTermination,
   ProcessRegistry,
   type ProcessSnapshot,
+  type KillableChild,
+  waitForChildTermination,
 } from "../../src/core/process.js";
 
 function processSnapshot(
@@ -66,4 +69,50 @@ test("durably tracks process start and exit identities", async (context) => {
   const resumedIdentity = processSnapshot(124, 1, "2026-07-17T00:01:00.000Z");
   await registry.recordStarted("resumed", resumedIdentity);
   assert.deepEqual(await registry.readActive(), [resumedIdentity]);
+});
+
+test("abort falls back to exact direct-child escalation and has a hard deadline", async () => {
+  class FakeChild extends EventEmitter {
+    readonly pid = 321;
+    readonly exitCode = null;
+    readonly signalCode = null;
+    readonly signals: Array<NodeJS.Signals | number | undefined> = [];
+
+    kill(signal?: NodeJS.Signals | number): boolean {
+      this.signals.push(signal);
+      return true;
+    }
+  }
+
+  const child = new FakeChild();
+  const controller = new AbortController();
+  const outcomePromise = waitForChildTermination(
+    child as unknown as KillableChild,
+    controller.signal,
+    () => Promise.reject(new Error("CIM unavailable")),
+    { graceMs: 5, deadlineMs: 25 },
+  );
+  controller.abort();
+  const outcome = await outcomePromise;
+  assert.equal(outcome.closed, false);
+  assert.match(outcome.error?.message ?? "", /did not terminate/);
+  assert.deepEqual(child.signals, ["SIGTERM", "SIGKILL"]);
+});
+
+test("wait recognizes a child that closed before listeners were attached", async () => {
+  class ClosedChild extends EventEmitter {
+    readonly pid = 322;
+    readonly exitCode = 0;
+    readonly signalCode = null;
+    kill(): boolean {
+      throw new Error("closed child must not be killed");
+    }
+  }
+  const outcome = await waitForChildTermination(
+    new ClosedChild() as unknown as KillableChild,
+    new AbortController().signal,
+    () => Promise.reject(new Error("tree termination must not run")),
+  );
+  assert.equal(outcome.closed, true);
+  assert.equal(outcome.exitCode, 0);
 });

@@ -16,7 +16,7 @@ import { hashBytes, hashTree } from "../core/hash.js";
 import {
   SystemProcessManager,
   type ProcessManager,
-  type TerminationResult,
+  waitForChildTermination,
 } from "../core/process.js";
 
 interface CapturedProcess {
@@ -361,26 +361,20 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     }
     const processIdentity = await this.#processManager.identify(pid);
     await request.onProcessStarted?.(processIdentity);
-    let terminationPromise: Promise<TerminationResult> | undefined;
-    const terminateTree = (): void => {
-      terminationPromise ??= this.#processManager
+    const terminateTree = async (): Promise<import("../core/process.js").TerminationResult> =>
+      this.#processManager
         .terminateTree(processIdentity, async (descendants) => {
           for (const descendant of descendants) {
             await request.onProcessStarted?.(descendant);
           }
         })
         .then(async (result) => {
-          for (const descendant of result.discovered) {
+          const killed = new Set(result.killed.map((identity) => identity.pid));
+          for (const descendant of result.discovered.filter((identity) => killed.has(identity.pid))) {
             await request.onProcessExited?.(descendant);
           }
           return result;
         });
-    };
-    if (controller.signal.aborted) {
-      terminateTree();
-    } else {
-      controller.signal.addEventListener("abort", terminateTree, { once: true });
-    }
     const pipeErrors: Error[] = [];
     const stdoutPipeline = pipeline(child.stdout, stdout).catch((error: Error) => {
       pipeErrors.push(error);
@@ -389,25 +383,20 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       pipeErrors.push(error);
     });
 
-    let exitCode: number | null = null;
-    let exitSignal: NodeJS.Signals | null = null;
-    let spawnError: Error | undefined;
-    await new Promise<void>((resolve) => {
-      child.on("error", (error) => {
-        spawnError = error;
-      });
-      child.on("close", (code, signal) => {
-        exitCode = code;
-        exitSignal = signal;
-        resolve();
-      });
-    });
+    const outcome = await waitForChildTermination(child, controller.signal, terminateTree);
+    const exitCode = outcome.exitCode;
+    const exitSignal = outcome.signal;
+    let spawnError = outcome.error;
     clearTimeout(timeout);
     request.signal.removeEventListener("abort", forwardAbort);
-    await terminationPromise?.catch((error: Error) => {
-      spawnError = error;
-    });
-    await request.onProcessExited?.(processIdentity);
+    if (outcome.closed) {
+      await request.onProcessExited?.(processIdentity);
+    } else {
+      child.stdout.destroy(outcome.error);
+      child.stderr.destroy(outcome.error);
+      stdout.destroy(outcome.error);
+      stderr.destroy(outcome.error);
+    }
     await Promise.all([stdoutPipeline, stderrPipeline]);
     if (pipeErrors.length > 0 && !spawnError) {
       spawnError = pipeErrors[0];
@@ -459,13 +448,14 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       cwd: request.workspace.projectDir,
       pid,
       processIdentity,
-      descendants: (await terminationPromise?.catch(() => undefined))?.discovered ?? [],
+      descendants: outcome.terminationResult?.discovered ?? [],
       startedAt,
       finishedAt,
       exitCode,
       signal: exitSignal,
       timedOut,
       cancelled,
+      terminationError: outcome.error?.message,
       stdoutFile,
       stderrFile,
       projectHashBefore: request.workspace.projectHash,

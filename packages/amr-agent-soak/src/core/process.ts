@@ -23,6 +23,141 @@ export interface ProcessManager {
   ): Promise<TerminationResult>;
 }
 
+export interface KillableChild {
+  readonly pid?: number;
+  readonly exitCode: number | null;
+  readonly signalCode: NodeJS.Signals | null;
+  kill(signal?: NodeJS.Signals | number): boolean;
+  once(event: "close", listener: (code: number | null, signal: NodeJS.Signals | null) => void): this;
+  once(event: "error", listener: (error: Error) => void): this;
+}
+
+export interface ChildTerminationOutcome {
+  readonly closed: boolean;
+  readonly exitCode: number | null;
+  readonly signal: NodeJS.Signals | null;
+  readonly error?: Error;
+  readonly terminationResult?: TerminationResult;
+}
+
+export function waitForChildTermination(
+  child: KillableChild,
+  signal: AbortSignal,
+  terminateTree: () => Promise<TerminationResult>,
+  options: { graceMs?: number; deadlineMs?: number } = {},
+): Promise<ChildTerminationOutcome> {
+  const graceMs = options.graceMs ?? 5_000;
+  const deadlineMs = options.deadlineMs ?? 20_000;
+  return new Promise((resolve) => {
+    let aborted = false;
+    let closed = false;
+    let treeSettled = false;
+    let exitCode: number | null = null;
+    let exitSignal: NodeJS.Signals | null = null;
+    let error: Error | undefined;
+    let terminationResult: TerminationResult | undefined;
+    let graceTimer: NodeJS.Timeout | undefined;
+    let deadlineTimer: NodeJS.Timeout | undefined;
+    let resolved = false;
+
+    const finish = (): void => {
+      if (resolved || !closed || (aborted && !treeSettled)) {
+        return;
+      }
+      resolved = true;
+      if (graceTimer) {
+        clearTimeout(graceTimer);
+      }
+      if (deadlineTimer) {
+        clearTimeout(deadlineTimer);
+      }
+      signal.removeEventListener("abort", onAbort);
+      resolve({ closed, exitCode, signal: exitSignal, error, terminationResult });
+    };
+
+    const onAbort = (): void => {
+      if (aborted || resolved) {
+        return;
+      }
+      aborted = true;
+      try {
+        child.kill("SIGTERM");
+      } catch (killError) {
+        error = killError as Error;
+      }
+      graceTimer = setTimeout(() => {
+        if (!closed) {
+          try {
+            child.kill("SIGKILL");
+          } catch (killError) {
+            error ??= killError as Error;
+          }
+        }
+      }, graceMs);
+      deadlineTimer = setTimeout(() => {
+        if (resolved) {
+          return;
+        }
+        resolved = true;
+        if (graceTimer) {
+          clearTimeout(graceTimer);
+        }
+        signal.removeEventListener("abort", onAbort);
+        const deadlineError = new Error(
+          `Process ${child.pid ?? "unknown"} did not terminate within ${deadlineMs}ms`,
+        );
+        if (error) {
+          deadlineError.cause = error;
+        }
+        resolve({
+          closed,
+          exitCode,
+          signal: exitSignal,
+          error: deadlineError,
+          terminationResult,
+        });
+      }, deadlineMs);
+      void terminateTree()
+        .then((result) => {
+          terminationResult = result;
+        })
+        .catch((terminationError: Error) => {
+          error = terminationError;
+        })
+        .finally(() => {
+          treeSettled = true;
+          finish();
+        });
+    };
+
+    child.once("error", (childError) => {
+      error = childError;
+      closed = true;
+      treeSettled = true;
+      finish();
+    });
+    child.once("close", (code, closeSignal) => {
+      closed = true;
+      exitCode = code;
+      exitSignal = closeSignal;
+      finish();
+    });
+    if (child.exitCode !== null || child.signalCode !== null) {
+      closed = true;
+      exitCode = child.exitCode;
+      exitSignal = child.signalCode;
+      treeSettled = true;
+      finish();
+      return;
+    }
+    if (signal.aborted) {
+      onAbort();
+    } else {
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+}
+
 function identityKey(identity: ProcessIdentity): string {
   return `${identity.pid}\0${identity.startedAt}\0${identity.name.toLowerCase()}`;
 }
