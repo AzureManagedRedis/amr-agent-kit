@@ -1,0 +1,2 @@
+{ "invariant": "grader-criteria-exist", "expect": "fail", "description": "must_trigger_criteria references a criterion not in the rubric.",
+  "input": { "must": ["c1", "c9"], "rubricCriteria": ["c1", "c2"] } }

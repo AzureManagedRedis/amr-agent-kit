@@ -1,0 +1,2 @@
+{ "invariant": "cleanup-required", "expect": "pass", "description": "Mutating/destructive scenario includes the cleanup safety class.",
+  "input": { "usesMutatingOrDestructive": true, "hasCleanupSafety": true } }

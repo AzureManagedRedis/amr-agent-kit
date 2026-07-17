@@ -98,6 +98,57 @@ function validate(schema, value, pathStr, out) {
 
 function validateAgainst(schema, value) { const out = []; validate(schema, value, "$", out); return out; }
 
+// ---- Cross-registry invariants (pure functions, single source of truth) --
+// Each takes a resolved input object and returns an array of error strings
+// (empty = pass). The live registry checks and the invariant fixtures both
+// call these, so the derivations cannot drift.
+const INTERNAL_LOCATOR_KINDS = new Set(["cp-source", "dp-source", "redisinc-source", "cp-unit-test"]);
+const MUTATING_COHORT_KINDS = new Set(["mutating-crud", "mutating-module", "background-load"]);
+const INVARIANTS = {
+  // 1. Scenarios grounded in internal (CP/DP/RedisInc/CP-unit-test) facts must carry an internal-content-leak canary.
+  "internal-leak-required": (i) =>
+    i.hasInternalFact && !i.hasInternalLeakCanary ? ["scenario resolves internal-locator facts but has no internal-content-leak canary"] : [],
+  // 2. A contested block and a top-level authority:"contested" must coexist (both directions).
+  "contested-authority": (i) => {
+    const e = [];
+    if (i.hasContestedBlock && i.authority !== "contested") e.push("contested block requires authority 'contested'");
+    if (!i.hasContestedBlock && i.authority === "contested") e.push("authority 'contested' requires a contested block");
+    return e;
+  },
+  // 2b. Scenario authority must be 'contested' iff it references a contested fact.
+  "scenario-contested-authority": (i) => {
+    const e = [];
+    if (i.referencesContestedFact && i.authority !== "contested") e.push("scenario references a contested fact but authority is not 'contested'");
+    if (!i.referencesContestedFact && i.authority === "contested") e.push("scenario authority 'contested' but no referenced fact is contested");
+    return e;
+  },
+  // 3. grader must_trigger_criteria must exist in the referenced scenario's correctness rubric.
+  "grader-criteria-exist": (i) =>
+    (i.must || []).filter((c) => !(i.rubricCriteria || []).includes(c)).map((c) => `must_trigger_criteria '${c}' not a criterion of correctness rubric`),
+  // 4. Every embedded defect source_fact_ref must be in the scenario's source_facts.
+  "defect-fact-in-scope": (i) =>
+    (i.defectRefs || []).filter((r) => !(i.sourceFacts || []).includes(r)).map((r) => `embedded defect fact '${r}' not in scenario source_facts`),
+  // 5. Mutating cohort or destructive probe requires the cleanup safety class.
+  "cleanup-required": (i) =>
+    i.usesMutatingOrDestructive && !i.hasCleanupSafety ? ["scenario uses a mutating cohort or destructive probe but omits saf-shared-cleanup-reuse"] : [],
+  // 6a. Probe isolation must match its cohort's isolation.
+  "probe-cohort-isolation": (i) =>
+    i.probeIsolation && i.cohortIsolation && i.probeIsolation !== i.cohortIsolation
+      ? [`probe isolation '${i.probeIsolation}' does not match cohort isolation '${i.cohortIsolation}'`] : [],
+  // 6b. A mutating cohort can never be read-only; without namespace injection it must be exclusive.
+  "mutating-not-read-only": (i) => {
+    const e = [];
+    if (!MUTATING_COHORT_KINDS.has(i.cohortKind)) return e;
+    if (i.isolation === "read-only") e.push("mutating cohort cannot be read-only");
+    if (i.namespaceInjection === false && i.isolation !== "exclusive") e.push("mutating cohort without namespace injection must be exclusive");
+    return e;
+  },
+  // 7. Every probe cohort_ref must be declared in the scenario's probe_cohorts (no under-declaration).
+  "no-under-declared-cohort": (i) =>
+    (i.probeCohortRefs || []).filter((c) => !(i.declaredCohorts || []).includes(c)).map((c) => `probe cohort '${c}' not declared in scenario probe_cohorts`)
+};
+
+
 // ---- Load schemas ------------------------------------------------------
 const schema = {};
 for (const f of fs.readdirSync(schemasDir)) {
@@ -187,15 +238,30 @@ for (const { scn, entry } of scenarios) {
       ref("src", d.source_fact_ref, w, "source-fact(defect)");
 }
 
-// rubric criteria -> source facts; source facts -> locators; contested -> winning authority present
+// rubric criteria -> source facts; source facts -> locators; contested-authority invariant
 const rubricsData = readJson(path.join(registryDir, catalogFiles["rubric"])) || [];
-for (const r of rubricsData) for (const c of r.criteria || []) if (c.source_fact_ref) ref("src", c.source_fact_ref, `${catalogFiles["rubric"]} (${r.id})`, "source-fact");
+const rubricCriteriaById = {};
+for (const r of rubricsData) {
+  rubricCriteriaById[r.id] = (r.criteria || []).map((c) => c.id);
+  for (const c of r.criteria || []) if (c.source_fact_ref) ref("src", c.source_fact_ref, `${catalogFiles["rubric"]} (${r.id})`, "source-fact");
+}
+const locatorKindById = {};
+for (const l of readJson(path.join(registryDir, catalogFiles["source-provider-locator"])) || []) locatorKindById[l.id] = l.provider_kind;
+function inv(name, input, where) { for (const e of INVARIANTS[name](input)) fail(where, `[${name}] ${e}`); }
 for (const [id, f] of Object.entries(factById)) {
   ref("loc", f.locator_ref, `source-facts.json (${id})`, "source-provider-locator");
-  if (f.authority === "contested" && !f.contested) fail(`source-facts.json (${id})`, "authority is 'contested' but no contested block present");
+  inv("contested-authority", { hasContestedBlock: !!f.contested, authority: f.authority }, `source-facts.json (${id})`);
 }
 const canaryData = readJson(path.join(registryDir, catalogFiles["grader-canary"])) || [];
-for (const g of canaryData) { ref("scn", g.scenario_ref, `grader-canaries.json (${g.id})`, "scenario"); (g.must_trigger_safety || []).forEach((x) => ref("saf", x, `grader-canaries.json (${g.id})`, "safety-class")); }
+const scnById = {};
+for (const { scn } of scenarios) scnById[scn.id] = scn;
+for (const g of canaryData) {
+  ref("scn", g.scenario_ref, `grader-canaries.json (${g.id})`, "scenario");
+  (g.must_trigger_safety || []).forEach((x) => ref("saf", x, `grader-canaries.json (${g.id})`, "safety-class"));
+  const targetScn = scnById[g.scenario_ref];
+  if (targetScn && g.must_trigger_criteria)
+    inv("grader-criteria-exist", { must: g.must_trigger_criteria, rubricCriteria: rubricCriteriaById[targetScn.correctness_rubric_ref] || [] }, `grader-canaries.json (${g.id})`);
+}
 const blcData = readJson(path.join(registryDir, catalogFiles["baseline-leakage-canary"])) || [];
 for (const b of blcData) ref("scn", b.scenario_ref, `baseline-leakage-canaries.json (${b.id})`, "scenario");
 const mutData = readJson(path.join(registryDir, catalogFiles["mutation-selection"])) || [];
@@ -203,21 +269,53 @@ for (const m of mutData) ref("scn", m.scenario_ref, `mutation-selections.json ($
 
 // live-probe cohort refs + destructive/isolation coherence
 const probeData = readJson(path.join(registryDir, catalogFiles["live-probe"])) || [];
+const probeById = {};
 for (const p of probeData) {
+  probeById[p.id] = p;
   if (p.cohort_ref) ref("coh", p.cohort_ref, `live-probes.json (${p.id})`, "probe-cohort");
   if (p.destructive === true && p.isolation === "read-only") fail(`live-probes.json (${p.id})`, "destructive probe cannot have read-only isolation");
 }
 
-// probe-cohort semantic rules: locator ref, mutating classification, cleanup safety
+// probe-cohort semantic rules: locator ref, mutating classification, cleanup rejection, probe/cohort isolation
 const cohData = readJson(path.join(registryDir, catalogFiles["probe-cohort"])) || [];
-const mutatingKinds = new Set(["mutating-crud", "mutating-module", "background-load"]);
+const cohortById = {};
 for (const c of cohData) {
+  cohortById[c.id] = c;
   ref("loc", c.runtime_config && c.runtime_config.locator_ref, `probe-cohorts.json (${c.id})`, "source-provider-locator");
-  if (mutatingKinds.has(c.cohort_kind) && c.namespace_injection === false) {
-    if (c.isolation !== "exclusive") fail(`probe-cohorts.json (${c.id})`, "mutating cohort without namespace injection must be exclusive");
-    if (!c.lease || c.lease.required !== true || c.lease.mode !== "exclusive") fail(`probe-cohorts.json (${c.id})`, "mutating cohort without namespace injection must require an exclusive lease");
-  }
+  inv("mutating-not-read-only", { cohortKind: c.cohort_kind, isolation: c.isolation, namespaceInjection: c.namespace_injection }, `probe-cohorts.json (${c.id})`);
+  if (MUTATING_COHORT_KINDS.has(c.cohort_kind) && c.namespace_injection === false && (!c.lease || c.lease.required !== true || c.lease.mode !== "exclusive"))
+    fail(`probe-cohorts.json (${c.id})`, "mutating cohort without namespace injection must require an exclusive lease");
   if (c.cleanup && c.cleanup.forbid_subscription_wide_cleanup !== true) fail(`probe-cohorts.json (${c.id})`, "cohort must forbid subscription-wide cleanup reuse");
+}
+for (const p of probeData) {
+  if (p.cohort_ref && cohortById[p.cohort_ref])
+    inv("probe-cohort-isolation", { probeIsolation: p.isolation, cohortIsolation: cohortById[p.cohort_ref].isolation }, `live-probes.json (${p.id})`);
+}
+
+// scenario-level invariants (internal-leak, contested authority, defect scope, cleanup, no under-declared cohort)
+for (const { scn, entry } of scenarios) {
+  const w = entry.file;
+  const facts = (scn.source_facts || []).map((id) => factById[id]).filter(Boolean);
+  const hasInternalFact = facts.some((f) => INTERNAL_LOCATOR_KINDS.has(locatorKindById[f.locator_ref]));
+  const hasInternalLeakCanary = (scn.baseline_leakage_canaries || [])
+    .map((id) => (blcData.find((b) => b.id === id) || {}).canary_kind)
+    .includes("internal-content-leak");
+  inv("internal-leak-required", { hasInternalFact, hasInternalLeakCanary }, w);
+
+  const referencesContestedFact = facts.some((f) => !!f.contested);
+  inv("scenario-contested-authority", { referencesContestedFact, authority: scn.authority }, w);
+
+  const defectRefs = [];
+  for (const art of scn.input_artifacts || []) for (const d of art.embedded_defects || []) defectRefs.push(d.source_fact_ref);
+  inv("defect-fact-in-scope", { defectRefs, sourceFacts: scn.source_facts || [] }, w);
+
+  const cohortKinds = (scn.probe_cohorts || []).map((id) => (cohortById[id] || {}).cohort_kind);
+  const usesMutatingCohort = cohortKinds.some((k) => MUTATING_COHORT_KINDS.has(k));
+  const usesDestructiveProbe = (scn.live_probes || []).some((id) => (probeById[id] || {}).destructive === true);
+  inv("cleanup-required", { usesMutatingOrDestructive: usesMutatingCohort || usesDestructiveProbe, hasCleanupSafety: (scn.safety_classes || []).includes("saf-shared-cleanup-reuse") }, w);
+
+  const probeCohortRefs = (scn.live_probes || []).map((id) => (probeById[id] || {}).cohort_ref).filter(Boolean);
+  inv("no-under-declared-cohort", { probeCohortRefs, declaredCohorts: scn.probe_cohorts || [] }, w);
 }
 
 // ---- Fixtures ----------------------------------------------------------
@@ -239,9 +337,26 @@ if (fixtureManifest && Array.isArray(fixtureManifest.fixtures)) {
   }
 }
 
+// ---- Invariant fixtures ------------------------------------------------
+let invariantFixtureCount = 0;
+const invDir = path.join(fixturesDir, "invariants");
+if (fs.existsSync(invDir)) {
+  for (const f of fs.readdirSync(invDir).filter((x) => x.endsWith(".json"))) {
+    invariantFixtureCount++;
+    const c = readJson(path.join(invDir, f));
+    if (!c) continue;
+    if (!INVARIANTS[c.invariant]) { fail(`fixtures/invariants/${f}`, `unknown invariant '${c.invariant}'`); continue; }
+    const errs = INVARIANTS[c.invariant](c.input);
+    const passed = errs.length === 0;
+    if (c.expect === "pass" && !passed) fail(`fixtures/invariants/${f}`, `expected pass but invariant '${c.invariant}' reported: ${errs[0]}`);
+    if (c.expect === "fail" && passed) fail(`fixtures/invariants/${f}`, `expected fail but invariant '${c.invariant}' passed`);
+    if (c.expect === "fail" && !passed) notes.push(`fixtures/invariants/${f}: invariant '${c.invariant}' correctly reported (${errs[0]})`);
+  }
+}
+
 // ---- Report ------------------------------------------------------------
 const scenarioCount = scenarios.length;
-console.log(`soak validator: ${scenarioCount} scenarios, ${Object.values(ids).reduce((a, s) => a + s.size, 0) - ids.scn.size} catalog ids, ${fixtureCount} fixtures`);
+console.log(`soak validator: ${scenarioCount} scenarios, ${Object.values(ids).reduce((a, s) => a + s.size, 0) - ids.scn.size} catalog ids, ${fixtureCount} schema fixtures, ${invariantFixtureCount} invariant fixtures`);
 if (notes.length) { console.log("\nExpected-invalid fixtures rejected as designed:"); for (const n of notes) console.log("  - " + n); }
 if (errors.length) {
   console.error(`\nFAILED with ${errors.length} error(s):`);

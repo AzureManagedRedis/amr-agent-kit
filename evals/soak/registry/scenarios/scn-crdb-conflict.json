@@ -4,7 +4,7 @@
   "domain": "crdb",
   "mode": "correctness",
   "public_safe": true,
-  "authority": "redisinc-enterprise",
+  "authority": "contested",
   "intent": "Checks the answer describes CRDB as active-active with conflict-free replicated semantics rather than single-primary strong consistency, and keeps the CRDB on database-0 semantics.",
   "prompt": "Review this data model for an active geo-replicated (CRDB) Azure Managed Redis deployment and correct the consistency and database assumptions.",
   "input_artifacts": [

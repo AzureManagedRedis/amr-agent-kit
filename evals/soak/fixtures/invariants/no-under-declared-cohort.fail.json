@@ -1,0 +1,2 @@
+{ "invariant": "no-under-declared-cohort", "expect": "fail", "description": "A probe's cohort is not declared in the scenario probe_cohorts.",
+  "input": { "probeCohortRefs": ["coh-mutating-crud"], "declaredCohorts": ["coh-background-load"] } }

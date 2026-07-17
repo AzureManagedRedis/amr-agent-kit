@@ -1,0 +1,2 @@
+{ "invariant": "cleanup-required", "expect": "fail", "description": "Mutating/destructive scenario omits saf-shared-cleanup-reuse.",
+  "input": { "usesMutatingOrDestructive": true, "hasCleanupSafety": false } }

@@ -4,7 +4,7 @@
   "domain": "geo-active",
   "mode": "correctness",
   "public_safe": true,
-  "authority": "cp-unit-test",
+  "authority": "contested",
   "cp_unit_test_backed": true,
   "intent": "Checks the answer defers a pure geo participant-count transition (generic 5-to-6 marker) to the control-plane validation asserted by a unit test rather than assuming any change is allowed, and keeps geo participants on database-0 semantics. The concrete transition rule is resolved at runtime into eval-runs, never committed.",
   "prompt": "A team wants to change a pure geo-replicated group's participant configuration and use several databases across it. Review whether the change is valid and how to proceed safely.",

@@ -1,0 +1,2 @@
+{ "invariant": "defect-fact-in-scope", "expect": "pass", "description": "Embedded defect fact is present in the scenario source_facts.",
+  "input": { "defectRefs": ["src-conn-tls-required"], "sourceFacts": ["src-conn-tls-required", "src-conn-entra-preferred"] } }

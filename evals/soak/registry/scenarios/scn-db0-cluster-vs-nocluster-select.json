@@ -4,7 +4,7 @@
   "domain": "db0-select",
   "mode": "correctness",
   "public_safe": true,
-  "authority": "cp-unit-test",
+  "authority": "contested",
   "cp_unit_test_backed": true,
   "intent": "Checks the answer correctly separates clustered/geo/CRDB database-0-only behavior from non-clustered multi-database behavior, rejecting the blanket always-DB0 assumption, and steers to key prefixes.",
   "prompt": "A team assumed Azure Managed Redis always supports 16 logical databases and used SELECT across them. Review the design against the deployment's cluster policy and correct it.",

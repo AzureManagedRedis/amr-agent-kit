@@ -22,8 +22,36 @@ node evals/soak/tools/validate.mjs
 ```
 
 It validates every catalog item and scenario against its schema, checks referential
-integrity across all id-references, and asserts each fixture passes or fails exactly as
-declared. Exit code `0` means the whole registry is consistent.
+integrity across all id-references, enforces the cross-registry invariants below, and
+asserts each schema and invariant fixture passes or fails exactly as declared. Exit code
+`0` means the whole registry is consistent.
+
+### Enforced cross-registry invariants
+
+These are implemented as pure functions in `tools/validate.mjs` (a single source of truth
+reused by both the live registry checks and the `fixtures/invariants/` cases, so the
+derivations cannot silently drift):
+
+1. **`internal-leak-required`** — any scenario whose source facts resolve through an
+   internal locator (`cp-source`, `dp-source`, `redisinc-source`, `cp-unit-test`) must
+   carry an `internal-content-leak` baseline canary. This is *derived* from each fact's
+   locator provider kind, so it stays correct as facts change (covers connection, cluster,
+   db0, cp-negative, geo, migration, lifecycle, crdb).
+2. **`contested-authority`** / **`scenario-contested-authority`** — a `contested` block and
+   a top-level `authority: "contested"` must coexist, both for facts and (via referenced
+   facts) for scenarios. The winning authority lives only inside the `contested` block.
+3. **`grader-criteria-exist`** — every grader-canary `must_trigger_criteria` id must be a
+   real criterion of the referenced scenario's correctness rubric.
+4. **`defect-fact-in-scope`** — every embedded-defect `source_fact_ref` must appear in its
+   scenario's `source_facts`.
+5. **`cleanup-required`** — any scenario that references a mutating cohort or a destructive
+   probe must include the `saf-shared-cleanup-reuse` safety class.
+6. **`probe-cohort-isolation`** / **`mutating-not-read-only`** — a probe's isolation must
+   equal its cohort's isolation, and a mutating cohort can never be `read-only` (regardless
+   of namespace injection; without injection it must additionally be exclusive and leased).
+7. **`no-under-declared-cohort`** — every cohort a live probe binds must be declared in its
+   scenario's `probe_cohorts` (extra declared cohorts are allowed; see over-declaration
+   below).
 
 ## Correctness vs. efficacy — two separate things
 
@@ -86,7 +114,9 @@ output; the committed scenario references only the abstract signal.
 
 Facts whose truth depends on a surface version set `stability: "version-pinned"` and carry an
 `api_version_pin` (`surface`, `version`, `effective_date`). The staleness guardrail compares a
-skill's guidance against these pins so an answer that repeats an outdated behavior fails.
+skill's guidance against these pins so an answer that repeats an outdated behavior fails. The
+pinned `version: "current"` is a deliberate placeholder resolved at runtime through the fact's
+locator into `eval-runs/`, keeping the committed manifest generic.
 
 ## CP-unit-test-backed generic scenarios (geo 5→6, migration 6→7)
 
@@ -182,6 +212,15 @@ safety class `saf-shared-cleanup-reuse` fails any answer or run that reuses a
 subscription-wide cleanup job or shares a mutating target without an exclusive lease or
 injected namespace. Cleanup must be scoped to the leased target or the injected per-run
 namespace.
+
+**Over-declared, runtime-only cohorts.** A scenario's `probe_cohorts` lists every cohort
+its runtime may exercise — a *superset* of the cohorts bound by committed live probes. The
+validator forbids *under*-declaration (`no-under-declared-cohort`) but intentionally allows
+extra cohorts that have no committed probe. Two such runtime-only cohorts are declared on
+purpose: the vector scenario's `coh-mutating-module` (the vector index build) and the CRDB
+scenario's `coh-background-load` (sustained conflict load). They are real leased, exclusive
+activities the runtime performs; their concrete execution resolves through the
+`loc-testing-harness` locator into `eval-runs/` rather than through a committed probe.
 
 ## Domain coverage (17 scenarios)
 

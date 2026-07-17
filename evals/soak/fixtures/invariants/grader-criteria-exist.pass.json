@@ -1,0 +1,2 @@
+{ "invariant": "grader-criteria-exist", "expect": "pass", "description": "All must_trigger_criteria exist in the correctness rubric.",
+  "input": { "must": ["c1", "c2"], "rubricCriteria": ["c1", "c2", "c3"] } }

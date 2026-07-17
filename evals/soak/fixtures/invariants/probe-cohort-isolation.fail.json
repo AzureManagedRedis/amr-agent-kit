@@ -1,0 +1,2 @@
+{ "invariant": "probe-cohort-isolation", "expect": "fail", "description": "Read-only probe bound to an exclusive cohort.",
+  "input": { "probeIsolation": "read-only", "cohortIsolation": "exclusive" } }

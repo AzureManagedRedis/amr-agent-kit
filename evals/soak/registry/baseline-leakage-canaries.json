@@ -43,5 +43,11 @@
   { "id": "blc-cpneg-internal-leak", "scenario_ref": "scn-cp-negative-validation", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
     "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
   { "id": "blc-crdb-internal-leak", "scenario_ref": "scn-crdb-conflict", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
+    "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
+  { "id": "blc-conn-internal-leak", "scenario_ref": "scn-connection-auth-tls-entra", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
+    "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
+  { "id": "blc-cluster-internal-leak", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
+    "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
+  { "id": "blc-lifecycle-internal-leak", "scenario_ref": "scn-lifecycle-scale-upgrade", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
     "signal": "\\.(cs|cpp|h|go|py):[0-9]+" }
 ]

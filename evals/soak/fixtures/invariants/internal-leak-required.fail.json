@@ -1,0 +1,2 @@
+{ "invariant": "internal-leak-required", "expect": "fail", "description": "Internal-locator fact but no internal-content-leak canary.",
+  "input": { "hasInternalFact": true, "hasInternalLeakCanary": false } }

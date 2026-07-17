@@ -1,0 +1,2 @@
+{ "invariant": "mutating-not-read-only", "expect": "pass", "description": "Exclusive, leased mutating cohort without namespace injection.",
+  "input": { "cohortKind": "mutating-crud", "isolation": "exclusive", "namespaceInjection": false } }

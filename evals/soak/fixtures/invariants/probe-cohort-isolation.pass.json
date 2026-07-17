@@ -1,0 +1,2 @@
+{ "invariant": "probe-cohort-isolation", "expect": "pass", "description": "Probe isolation matches its cohort's isolation.",
+  "input": { "probeIsolation": "exclusive", "cohortIsolation": "exclusive" } }

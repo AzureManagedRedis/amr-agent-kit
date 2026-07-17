@@ -26,7 +26,7 @@
   "probe_cohorts": ["coh-readonly-connectivity"],
   "correctness_rubric_ref": "rub-cluster-cor",
   "actionability_rubric_ref": "rub-cluster-act",
-  "baseline_leakage_canaries": ["blc-cluster-baseline"],
+  "baseline_leakage_canaries": ["blc-cluster-baseline", "blc-cluster-internal-leak"],
   "grader_canaries": ["grc-cluster-good", "grc-cluster-bad"],
   "mutation_selection_ref": "mut-cluster",
   "acceptance_ref": "acc-strict"

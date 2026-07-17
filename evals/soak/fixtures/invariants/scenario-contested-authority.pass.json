@@ -1,0 +1,2 @@
+{ "invariant": "scenario-contested-authority", "expect": "pass", "description": "Scenario references a contested fact and declares contested authority.",
+  "input": { "referencesContestedFact": true, "authority": "contested" } }

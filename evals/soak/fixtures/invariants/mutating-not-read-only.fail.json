@@ -1,0 +1,2 @@
+{ "invariant": "mutating-not-read-only", "expect": "fail", "description": "Mutating cohort marked read-only even though a namespace is injected.",
+  "input": { "cohortKind": "mutating-crud", "isolation": "read-only", "namespaceInjection": true } }

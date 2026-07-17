@@ -23,7 +23,7 @@
   "probe_cohorts": ["coh-gen2-unit-test", "coh-reqnroll-dry-run"],
   "correctness_rubric_ref": "rub-lifecycle-cor",
   "actionability_rubric_ref": "rub-lifecycle-act",
-  "baseline_leakage_canaries": ["blc-lifecycle-baseline"],
+  "baseline_leakage_canaries": ["blc-lifecycle-baseline", "blc-lifecycle-internal-leak"],
   "grader_canaries": ["grc-lifecycle-good", "grc-lifecycle-bad"],
   "mutation_selection_ref": "mut-lifecycle",
   "acceptance_ref": "acc-standard"

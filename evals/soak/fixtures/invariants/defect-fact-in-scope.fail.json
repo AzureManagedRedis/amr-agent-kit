@@ -1,0 +1,2 @@
+{ "invariant": "defect-fact-in-scope", "expect": "fail", "description": "Embedded defect references a fact absent from the scenario source_facts.",
+  "input": { "defectRefs": ["src-orphan-fact"], "sourceFacts": ["src-conn-tls-required"] } }

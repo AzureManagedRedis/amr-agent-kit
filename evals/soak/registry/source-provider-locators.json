@@ -1,8 +1,4 @@
 [
-  { "id": "loc-cp-source", "provider_kind": "cp-source", "public_safe": true,
-    "resolution": { "query_shape": "symbol-name search within the control-plane provisioning/validation modules for the behavior under test", "expected_artifact_kind": "validation-rule" },
-    "citation_sink": { "destination": "eval-runs", "path_template": "eval-runs/citations/cp-source/{fact_id}.json" },
-    "redaction_policy": "Strip file paths, symbol names, line numbers, and any endpoint, subscription, or effective-config value before a resolved value leaves eval-runs." },
   { "id": "loc-cp-unit-test", "provider_kind": "cp-unit-test", "public_safe": true,
     "resolution": { "query_shape": "named-behavior lookup in the control-plane unit-test suite that asserts the contested topology/validation behavior", "expected_artifact_kind": "unit-test-assertion" },
     "citation_sink": { "destination": "eval-runs", "path_template": "eval-runs/citations/cp-unit-test/{fact_id}.json" },

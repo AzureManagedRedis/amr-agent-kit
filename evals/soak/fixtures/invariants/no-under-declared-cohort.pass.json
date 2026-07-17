@@ -1,0 +1,2 @@
+{ "invariant": "no-under-declared-cohort", "expect": "pass", "description": "Every probe cohort is declared in the scenario probe_cohorts (extra declared cohorts allowed).",
+  "input": { "probeCohortRefs": ["coh-mutating-crud"], "declaredCohorts": ["coh-mutating-crud", "coh-background-load"] } }

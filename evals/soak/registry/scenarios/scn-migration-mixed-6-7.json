@@ -4,7 +4,7 @@
   "domain": "migration",
   "mode": "correctness",
   "public_safe": true,
-  "authority": "cp-unit-test",
+  "authority": "contested",
   "cp_unit_test_backed": true,
   "intent": "Checks the answer restricts a mixed migration (generic 6-to-7 marker combining topology and version change) to the path the control-plane validation asserts and requires a reversible, non-destructive cutover. The concrete allowed path is resolved at runtime into eval-runs, never committed.",
   "prompt": "A team wants to change topology and engine version of an Azure Managed Redis deployment in a single in-place step. Review whether that mixed migration is valid and how to do it safely.",
