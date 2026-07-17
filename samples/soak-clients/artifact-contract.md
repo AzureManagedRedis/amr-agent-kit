@@ -25,9 +25,9 @@ eval-runs/
       <mutation-id>.patch
     hashes.json
     reproduce.ps1
-  reports/
-    <run-id>.md
-    index.json
+    reports/
+      report.md
+      index.json
 ```
 
 The `reference-good`, `bad`, `with-skill`, and `without-skill` directories are
@@ -38,9 +38,9 @@ not interchangeable. A result is invalid if it lacks any one of them.
 `run-manifest.json` must name the source revision, client language, scenario,
 mode, selected mutation IDs, and the relative paths to all retained artifacts.
 `hashes.json` must contain SHA-256 values for every source file, patch,
-transcript, result, and reproduction script. A report in `reports/` must link
-to its run manifest, both transcripts, both result files, the reference-good
-and bad trees, every patch, and `hashes.json`.
+transcript, result, and reproduction script. A report in the run-local
+`reports/` directory must link to its run manifest, both transcripts, both
+result files, the reference-good and bad trees, every patch, and `hashes.json`.
 
 Use only relative paths from the run directory. Never store a real endpoint,
 credential, access token, subscription identifier, tenant identifier, or

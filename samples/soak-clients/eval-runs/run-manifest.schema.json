@@ -62,7 +62,7 @@
     },
     "report": {
       "type": "string",
-      "pattern": "^reports/.+\\.md$"
+      "pattern": "^reports/[A-Za-z0-9][A-Za-z0-9._-]*\\.md$"
     }
   },
   "additionalProperties": false

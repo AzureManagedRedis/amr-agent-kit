@@ -61,6 +61,20 @@ class CorpusContractTests(unittest.TestCase):
         document = (ROOT / "artifact-contract.md").read_text(encoding="utf-8")
         for required in ("reference-good", "bad", "with-skill", "without-skill", "hashes.json", "reproduce.ps1", "reports/"):
             self.assertIn(required, document)
+        self.assertIn("reports/\n      report.md", document)
+        self.assertTrue((ROOT / "eval-runs" / "run-template" / "reports" / "README.md").is_file())
+        self.assertFalse((ROOT / "eval-runs" / "reports" / "README.md").exists())
+        self.assertFalse((ROOT / "eval-runs" / "reports" / "index.json").exists())
+        schema = json.loads((ROOT / "eval-runs" / "run-manifest.schema.json").read_text(encoding="utf-8"))
+        self.assertEqual("^reports/[A-Za-z0-9][A-Za-z0-9._-]*\\.md$", schema["properties"]["report"]["pattern"])
+
+    def test_go_live_seam_parses_url_and_composes_scoped_teardown(self) -> None:
+        seam = (ROOT / "go" / "live_redis.go").read_text(encoding="utf-8")
+        self.assertIn("redis.ParseURL(endpoint)", seam)
+        self.assertIn("options.TLSConfig.InsecureSkipVerify = false", seam)
+        self.assertIn('scopedKey(namespace, runID, scenario, "teardown")', seam)
+        self.assertNotIn("Addr:      endpoint", seam)
+        self.assertNotIn('key[:len(key)-len(":probe")]', seam)
 
     def test_offline_verifier_preflights_ignored_scratch_directory(self) -> None:
         verifier = (ROOT / "tools" / "run-offline-checks.ps1").read_text(encoding="utf-8")

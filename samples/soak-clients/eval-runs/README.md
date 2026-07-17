@@ -7,5 +7,6 @@ root. Start from `run-manifest.schema.json` and
 For each run, preserve the exact `reference-good` and `bad` trees, both skill
 condition outputs, every mutation patch, transcripts with environment values
 redacted, build and optional live JSON results, SHA-256 hashes, and the
-reproduction command. Add a linked report under `reports/`; do not retain
+reproduction command. Copy `run-template/` to `eval-runs/<run-id>/` and keep
+the linked report under that run's `reports/` directory; do not retain
 dependencies or build output.
