@@ -7,6 +7,18 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Test-ProcessIdentity($Identity) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($Identity.pid)" -ErrorAction SilentlyContinue
+    if (-not $process) {
+        return $false
+    }
+    $startedAt = $process.CreationDate.ToUniversalTime().ToString('o')
+    return (($startedAt -eq [string]$Identity.startedAt) -and
+        ([string]$process.Name -ieq [string]$Identity.name) -and
+        ((-not $Identity.executablePath) -or
+            ([string]$process.ExecutablePath -ieq [string]$Identity.executablePath)))
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $cliPath = Join-Path $repoRoot 'packages\amr-agent-soak\dist\src\cli\main.js'
 if (-not (Test-Path $cliPath)) {
@@ -24,21 +36,22 @@ if ($LASTEXITCODE -ne 0) {
     throw "Failed to request graceful stop for $resolvedRunDir."
 }
 for ($attempt = 0; $attempt -lt $GraceSeconds; $attempt++) {
-    if (-not (Get-Process -Id $pids.controllerPid -ErrorAction SilentlyContinue)) {
+    if (-not (Test-ProcessIdentity $pids.controller)) {
         break
     }
     Start-Sleep -Seconds 1
 }
 
-foreach ($processId in @($pids.controllerPid, $pids.janitorPid)) {
-    if ($processId -and (Get-Process -Id $processId -ErrorAction SilentlyContinue)) {
-        Stop-Process -Id $processId -Force
+if ((Test-ProcessIdentity $pids.controller) -or (Test-ProcessIdentity $pids.janitor)) {
+    & (Get-Command node).Source $cliPath terminate --run-dir $resolvedRunDir
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to terminate verified process trees for $resolvedRunDir."
     }
 }
 
 @{
     runDir = $resolvedRunDir
     stoppedAt = [DateTime]::UtcNow.ToString('o')
-    controllerPid = $pids.controllerPid
-    janitorPid = $pids.janitorPid
+    controller = $pids.controller
+    janitor = $pids.janitor
 } | ConvertTo-Json

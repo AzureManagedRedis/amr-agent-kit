@@ -37,6 +37,10 @@ test("creates identical neutral projects and physically separates the skill", as
   assert.equal(withoutSkill.projectHash, withSkill.projectHash);
   assert.notEqual(withoutSkill.profileHash, withSkill.profileHash);
   assert.equal(
+    withoutSkill.environment.LOCALAPPDATA,
+    path.join(withoutSkill.profileDir, "AppData", "Local"),
+  );
+  assert.equal(
     await readFile(path.join(withSkill.profileDir, ".copilot", "skills", "redis-code", "SKILL.md"), "utf8"),
     "# pinned\n",
   );

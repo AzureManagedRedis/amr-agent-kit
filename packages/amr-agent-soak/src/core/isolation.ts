@@ -66,6 +66,16 @@ async function assertNeutralProject(projectDir: string): Promise<void> {
   }
 }
 
+function isForbiddenProfileEntry(entry: string): boolean {
+  const normalized = entry.split(path.sep).join("/").toLowerCase();
+  if (normalized.startsWith("appdata/local/copilot/pkg/")) {
+    return false;
+  }
+  return normalized
+    .split("/")
+    .some((part) => FORBIDDEN_PARTS.has(part));
+}
+
 function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: string): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = {};
   for (const [name, value] of Object.entries(process.env)) {
@@ -82,6 +92,7 @@ function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: str
   }
 
   const appData = path.join(profileDir, "AppData", "Roaming");
+  const localAppData = path.join(profileDir, "AppData", "Local");
   const profileRoot = path.parse(profileDir).root;
   return {
     ...environment,
@@ -90,6 +101,7 @@ function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: str
     HOMEDRIVE: profileRoot.replace(/[\\/]$/, ""),
     HOMEPATH: profileDir.slice(profileRoot.length - 1),
     APPDATA: appData,
+    LOCALAPPDATA: localAppData,
     XDG_CONFIG_HOME: path.join(profileDir, ".config"),
     XDG_DATA_HOME: path.join(profileDir, ".local", "share"),
     TMP: tempDir,
@@ -145,9 +157,7 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
 
   if (options.arm === "without-skill") {
     const profileEntries = await listRelativeEntries(profileDir);
-    const violations = profileEntries.filter((entry) =>
-      entry.split(path.sep).some((part) => FORBIDDEN_PARTS.has(part.toLowerCase())),
-    );
+    const violations = profileEntries.filter(isForbiddenProfileEntry);
     if (violations.length > 0) {
       throw new Error(`Without-skill profile is contaminated: ${violations.join(", ")}`);
     }
@@ -194,7 +204,7 @@ export async function detectContamination(
 
   if (workspace.arm === "without-skill") {
     for (const entry of await listRelativeEntries(workspace.profileDir)) {
-      if (entry.split(path.sep).some((part) => FORBIDDEN_PARTS.has(part.toLowerCase()))) {
+      if (isForbiddenProfileEntry(entry)) {
         findings.add(`forbidden profile entry: ${entry}`);
       }
     }

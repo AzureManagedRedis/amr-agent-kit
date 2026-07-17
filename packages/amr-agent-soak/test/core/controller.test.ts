@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type {
@@ -9,8 +9,10 @@ import type {
   ExecutorCapabilities,
   HeadlessExecutor,
   IsolatedWorkspace,
+  ProcessIdentity,
 } from "../../src/core/contracts.js";
 import { runSoak } from "../../src/core/controller.js";
+import type { ProcessManager, TerminationResult } from "../../src/core/process.js";
 
 const capabilities: ExecutorCapabilities = {
   executablePath: process.execPath,
@@ -23,9 +25,15 @@ const capabilities: ExecutorCapabilities = {
   supportsToolApproval: true,
   supportsInstructionDisable: true,
   supportsMcpDisable: true,
+  supportsNoRemote: true,
+  supportsNoRemoteExport: true,
+  supportsNoAutoUpdate: true,
+  supportsStreamControl: true,
 };
 
 class FakeExecutor implements HeadlessExecutor {
+  executions = 0;
+
   probe(_workspaces: {
     readonly withoutSkill: IsolatedWorkspace;
     readonly withSkill: IsolatedWorkspace;
@@ -34,7 +42,14 @@ class FakeExecutor implements HeadlessExecutor {
   }
 
   execute(request: ExecutionRequest): Promise<ExecutionArtifact> {
+    this.executions += 1;
     const timestamp = new Date().toISOString();
+    const processIdentity = {
+      pid: process.pid,
+      startedAt: timestamp,
+      name: path.basename(process.execPath),
+      executablePath: process.execPath,
+    };
     return Promise.resolve({
       soakRunId: request.workspace.environment.SOAK_RUN_ID!,
       executionId: request.executionId,
@@ -51,6 +66,8 @@ class FakeExecutor implements HeadlessExecutor {
         args: [],
         cwd: request.workspace.projectDir,
         pid: process.pid,
+        processIdentity,
+        descendants: [],
         startedAt: timestamp,
         finishedAt: timestamp,
         exitCode: 0,
@@ -66,6 +83,27 @@ class FakeExecutor implements HeadlessExecutor {
         contamination: [],
       },
     });
+  }
+}
+
+class FakeProcessManager implements ProcessManager {
+  readonly identity: ProcessIdentity = {
+    pid: process.pid,
+    startedAt: "2026-07-17T00:00:00.000Z",
+    name: path.basename(process.execPath),
+    executablePath: process.execPath,
+  };
+
+  identify(): Promise<ProcessIdentity> {
+    return Promise.resolve(this.identity);
+  }
+
+  isRunning(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+
+  terminateTree(): Promise<TerminationResult> {
+    return Promise.resolve({ discovered: [], killed: [], skipped: [] });
   }
 }
 
@@ -93,18 +131,41 @@ test("completed runs resume idempotently with monotonic ledger sequences", async
         ]),
     },
     executor: new FakeExecutor(),
+    processManager: new FakeProcessManager(),
   };
 
   const first = await runSoak(config, modules);
   const statePath = path.join(config.outputRoot, config.runId, "state.json");
   const staleState = JSON.parse(await readFile(statePath, "utf8")) as {
     lastLedgerSequence: number;
+    admissionEndsAt: string;
+    pairs: Record<
+      string,
+      {
+        completedAt?: string;
+        admittedAt?: string;
+        arms: Record<"without-skill" | "with-skill", { status: string; attempts: number }>;
+      }
+    >;
   };
   staleState.lastLedgerSequence = 0;
+  staleState.admissionEndsAt = new Date(Date.now() - 60_000).toISOString();
+  const resumedPair = Object.values(staleState.pairs)[0];
+  assert.ok(resumedPair.admittedAt);
+  delete resumedPair.completedAt;
+  resumedPair.arms["with-skill"].status = "pending";
   await writeFile(statePath, `${JSON.stringify(staleState)}\n`);
+  const runDir = path.join(config.outputRoot, config.runId);
+  await writeFile(
+    path.join(runDir, "stop-request.json"),
+    `${JSON.stringify({ requestedAt: new Date(Date.now() - 60_000).toISOString() })}\n`,
+  );
   const second = await runSoak(config, modules);
   assert.equal(first.completedExecutions, 2);
   assert.equal(second.completedExecutions, 2);
+  assert.equal(modules.executor.executions, 3);
+  await assert.rejects(readFile(path.join(runDir, "stop-request.json")), /ENOENT/);
+  assert.equal((await readdir(path.join(runDir, "stop-requests"))).length, 1);
 
   const events = (
     await readFile(path.join(config.outputRoot, config.runId, "events.jsonl"), "utf8")
@@ -120,4 +181,5 @@ test("completed runs resume idempotently with monotonic ledger sequences", async
     events.filter((event) => event.type === "run.started").map((event) => event.data?.resumed),
     [false, true],
   );
+  assert.ok(events.some((event) => event.type === "pair.resumed"));
 });

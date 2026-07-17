@@ -6,6 +6,11 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { writeAtomicJson } from "../core/atomic.js";
 import type { ProbeArtifact, ProbeContext, SoakProbe } from "../core/contracts.js";
+import {
+  SystemProcessManager,
+  type ProcessManager,
+  type TerminationResult,
+} from "../core/process.js";
 
 export interface DotnetTestProbeConfig {
   readonly id: string;
@@ -38,8 +43,9 @@ export class DotnetTestProbe implements SoakProbe {
   readonly id: string;
   readonly phase: "source" | "live";
   readonly #config: DotnetTestProbeConfig;
+  readonly #processManager: ProcessManager;
 
-  constructor(config: DotnetTestProbeConfig) {
+  constructor(config: DotnetTestProbeConfig, processManager: ProcessManager = new SystemProcessManager()) {
     if (!config.id || config.selectors.length === 0) {
       throw new Error("Dotnet probe requires an id and at least one selector");
     }
@@ -50,6 +56,7 @@ export class DotnetTestProbe implements SoakProbe {
     this.id = config.id;
     this.phase = config.phase;
     this.#config = config;
+    this.#processManager = processManager;
   }
 
   async run(context: ProbeContext): Promise<ProbeArtifact> {
@@ -87,7 +94,11 @@ export class DotnetTestProbe implements SoakProbe {
       const localController = new AbortController();
       let timedOut = false;
       const forwardAbort = (): void => localController.abort(context.signal.reason);
-      context.signal.addEventListener("abort", forwardAbort, { once: true });
+      if (context.signal.aborted) {
+        forwardAbort();
+      } else {
+        context.signal.addEventListener("abort", forwardAbort, { once: true });
+      }
       const timeout = setTimeout(() => {
         timedOut = true;
         localController.abort(new Error("Dotnet probe timed out"));
@@ -103,24 +114,32 @@ export class DotnetTestProbe implements SoakProbe {
         },
         windowsHide: true,
         stdio: ["ignore", "pipe", "pipe"],
-        signal: localController.signal,
       });
       if (!child.pid) {
         throw new Error(`dotnet test did not expose a PID for selector ${selector}`);
       }
-      context.onProcessStarted?.(child.pid);
-      let forceKillTimer: NodeJS.Timeout | undefined;
-      localController.signal.addEventListener(
-        "abort",
-        () => {
-          forceKillTimer = setTimeout(() => {
-            if (child.exitCode === null && child.signalCode === null) {
-              child.kill("SIGKILL");
+      const processIdentity = await this.#processManager.identify(child.pid);
+      await context.onProcessStarted?.(processIdentity);
+      let terminationPromise: Promise<TerminationResult> | undefined;
+      const terminateTree = (): void => {
+        terminationPromise ??= this.#processManager
+          .terminateTree(processIdentity, async (descendants) => {
+            for (const descendant of descendants) {
+              await context.onProcessStarted?.(descendant);
             }
-          }, 5_000);
-        },
-        { once: true },
-      );
+          })
+          .then(async (result) => {
+            for (const descendant of result.discovered) {
+              await context.onProcessExited?.(descendant);
+            }
+            return result;
+          });
+      };
+      if (localController.signal.aborted) {
+        terminateTree();
+      } else {
+        localController.signal.addEventListener("abort", terminateTree, { once: true });
+      }
       const pipeErrors: Error[] = [];
       const pipes = [
         pipeline(child.stdout, stdout).catch((error: Error) => pipeErrors.push(error)),
@@ -138,12 +157,12 @@ export class DotnetTestProbe implements SoakProbe {
         });
       }).finally(() => {
         clearTimeout(timeout);
-        if (forceKillTimer) {
-          clearTimeout(forceKillTimer);
-        }
         context.signal.removeEventListener("abort", forwardAbort);
-        context.onProcessExited?.(child.pid!);
       });
+      await terminationPromise?.catch((error: Error) => {
+        spawnError = error;
+      });
+      await context.onProcessExited?.(processIdentity);
       await Promise.all(pipes);
       if (pipeErrors.length > 0 && !spawnError) {
         spawnError = pipeErrors[0];

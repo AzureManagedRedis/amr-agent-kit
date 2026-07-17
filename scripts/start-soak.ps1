@@ -5,6 +5,20 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Get-ProcessIdentity([int]$ProcessId) {
+    $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
+    if (-not $process) {
+        throw "Process exited before identity capture: $ProcessId"
+    }
+    @{
+        pid = [int]$process.ProcessId
+        parentPid = [int]$process.ParentProcessId
+        startedAt = $process.CreationDate.ToUniversalTime().ToString('o')
+        name = [string]$process.Name
+        executablePath = [string]$process.ExecutablePath
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $cliPath = Join-Path $repoRoot 'packages\amr-agent-soak\dist\src\cli\main.js'
 if (-not (Test-Path $cliPath)) {
@@ -36,18 +50,20 @@ $controller = Start-Process -FilePath (Get-Command node).Source `
     -ArgumentList @("`"$cliPath`"", 'controller', '--config', "`"$resolvedConfig`"") `
     -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $controllerOut -RedirectStandardError $controllerErr
+$controllerIdentity = Get-ProcessIdentity $controller.Id
 $janitor = Start-Process -FilePath (Get-Command node).Source `
-    -ArgumentList @("`"$cliPath`"", 'janitor', '--run-dir', "`"$runDir`"", '--controller-pid', $controller.Id) `
+    -ArgumentList @("`"$cliPath`"", 'janitor', '--run-dir', "`"$runDir`"") `
     -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $janitorOut -RedirectStandardError $janitorErr
+$janitorIdentity = Get-ProcessIdentity $janitor.Id
 
 $pidRecord = @{
     schemaVersion = 1
     runId = $config.runId
     runDir = $runDir
     startedAt = [DateTime]::UtcNow.ToString('o')
-    controllerPid = $controller.Id
-    janitorPid = $janitor.Id
+    controller = $controllerIdentity
+    janitor = $janitorIdentity
 }
 $pidPath = Join-Path $runDir 'pids.json'
 $pidTemp = "$pidPath.$PID.tmp"
@@ -70,7 +86,9 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
     $heartbeatPath = Join-Path $runDir 'heartbeat.json'
     if (Test-Path $heartbeatPath) {
         $heartbeat = Get-Content -Raw $heartbeatPath | ConvertFrom-Json
-        if ($heartbeat.controllerPid -eq $controller.Id) {
+        if (($heartbeat.controller.pid -eq $controllerIdentity.pid) -and
+            ($heartbeat.controller.startedAt -eq $controllerIdentity.startedAt) -and
+            ($heartbeat.controller.name -eq $controllerIdentity.name)) {
             $responsive = $true
             break
         }
@@ -79,11 +97,7 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 }
 
 if (-not $responsive) {
-    foreach ($processId in @($controller.Id, $janitor.Id)) {
-        if (Get-Process -Id $processId -ErrorAction SilentlyContinue) {
-            Stop-Process -Id $processId -Force
-        }
-    }
+    & (Get-Command node).Source $cliPath terminate --run-dir $runDir
     $errorLog = if ($exitedProcess -eq 'janitor') { $janitorErr } else { $controllerErr }
     $subject = if ($exitedProcess) { $exitedProcess } else { 'controller' }
     throw "Soak $subject did not become responsive. Inspect $errorLog"

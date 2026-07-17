@@ -50,6 +50,19 @@ export interface ExecutorCapabilities {
   readonly supportsToolApproval: boolean;
   readonly supportsInstructionDisable: boolean;
   readonly supportsMcpDisable: boolean;
+  readonly supportsNoRemote: boolean;
+  readonly supportsNoRemoteExport: boolean;
+  readonly supportsNoAutoUpdate: boolean;
+  readonly supportsStreamControl: boolean;
+}
+
+export interface ProcessIdentity {
+  readonly pid: number;
+  readonly parentPid?: number;
+  readonly startedAt: string;
+  readonly name: string;
+  readonly executablePath?: string;
+  readonly commandLineHash?: string;
 }
 
 export interface IsolatedWorkspace {
@@ -74,8 +87,8 @@ export interface ExecutionRequest {
   readonly timeoutMs: number;
   readonly model?: string;
   readonly signal: AbortSignal;
-  readonly onProcessStarted?: (pid: number) => void;
-  readonly onProcessExited?: (pid: number) => void;
+  readonly onProcessStarted?: (identity: ProcessIdentity) => Promise<void>;
+  readonly onProcessExited?: (identity: ProcessIdentity) => Promise<void>;
 }
 
 export interface ProcessTrace {
@@ -84,6 +97,8 @@ export interface ProcessTrace {
   readonly args: ReadonlyArray<string>;
   readonly cwd: string;
   readonly pid: number;
+  readonly processIdentity: ProcessIdentity;
+  readonly descendants: ReadonlyArray<ProcessIdentity>;
   readonly startedAt: string;
   readonly finishedAt: string;
   readonly exitCode: number | null;
@@ -125,8 +140,8 @@ export interface ProbeContext {
   readonly soakRunId: string;
   readonly runDir: string;
   readonly signal: AbortSignal;
-  readonly onProcessStarted?: (pid: number) => void;
-  readonly onProcessExited?: (pid: number) => void;
+  readonly onProcessStarted?: (identity: ProcessIdentity) => Promise<void>;
+  readonly onProcessExited?: (identity: ProcessIdentity) => Promise<void>;
 }
 
 export interface ProbeArtifact {
@@ -181,4 +196,5 @@ export interface SoakModules {
   readonly grader?: SoakGrader;
   readonly reporter?: SoakReporter;
   readonly probes?: ReadonlyArray<SoakProbe>;
+  readonly processManager?: import("./process.js").ProcessManager;
 }

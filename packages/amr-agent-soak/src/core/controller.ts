@@ -10,6 +10,7 @@ import type {
   SoakArm,
   SoakModules,
   SoakScenario,
+  ProcessIdentity,
 } from "./contracts.js";
 import type { NormalizedSoakConfig } from "./config.js";
 import { normalizeConfig, type SoakConfig } from "./config.js";
@@ -17,6 +18,7 @@ import { readJsonIfExists, writeAtomicJson } from "./atomic.js";
 import { hashJson, hashTree } from "./hash.js";
 import { createIsolatedWorkspace } from "./isolation.js";
 import { EventLedger, readLastLedgerSequence } from "./ledger.js";
+import { ProcessRegistry, SystemProcessManager } from "./process.js";
 
 interface ArmState {
   status: "pending" | "running" | "completed" | "failed" | "timed-out" | "cancelled" | "cached";
@@ -52,11 +54,11 @@ interface ControllerState {
 interface Heartbeat {
   schemaVersion: 1;
   runId: string;
-  controllerPid: number;
+  controller: ProcessIdentity;
   timestamp: string;
   status: RunStatus;
   activePairIds: ReadonlyArray<string>;
-  activePids: ReadonlyArray<number>;
+  activeProcesses: ReadonlyArray<ProcessIdentity>;
   completedPairs: number;
   totalPairs: number;
   admissionEndsAt: string;
@@ -104,9 +106,13 @@ async function notify(modules: SoakModules, event: LedgerEvent): Promise<void> {
 export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Promise<RunSummary> {
   const config = normalizeConfig(rawConfig);
   await mkdir(config.runDir, { recursive: true });
+  const processManager = modules.processManager ?? new SystemProcessManager();
+  const controllerIdentity = await processManager.identify(process.pid);
   const statePath = path.join(config.runDir, "state.json");
   const heartbeatPath = path.join(config.runDir, "heartbeat.json");
   const stopPath = path.join(config.runDir, "stop-request.json");
+  const staleStopAtInvocationStart =
+    await readJsonIfExists<Readonly<Record<string, unknown>>>(stopPath);
   const scenarios = [...(await modules.scenarios.listScenarios())];
   if (scenarios.length === 0) {
     throw new Error("Scenario provider returned no scenarios");
@@ -216,6 +222,23 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     ]);
   }
 
+  const currentStop = await readJsonIfExists<Readonly<Record<string, unknown>>>(stopPath);
+  if (
+    staleStopAtInvocationStart &&
+    currentStop &&
+    hashJson(staleStopAtInvocationStart) === hashJson(currentStop)
+  ) {
+    await writeAtomicJson(
+      path.join(
+        config.runDir,
+        "stop-requests",
+        `stale-${new Date().toISOString().replace(/[:.]/g, "-")}.json`,
+      ),
+      currentStop,
+    );
+    await rm(stopPath, { force: true });
+  }
+
   const ledgerPath = path.join(config.runDir, "events.jsonl");
   state.lastLedgerSequence = Math.max(
     state.lastLedgerSequence,
@@ -257,7 +280,22 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     },
   });
 
-  const activePids = new Set<number>();
+  const processRegistry = new ProcessRegistry(path.join(config.runDir, "processes.jsonl"));
+  const activeProcesses = new Map<string, ProcessIdentity>();
+  const processKey = (identity: ProcessIdentity): string =>
+    `${identity.pid}\0${identity.startedAt}\0${identity.name.toLowerCase()}`;
+  const trackProcessStarted =
+    (owner: string) =>
+    async (identity: ProcessIdentity): Promise<void> => {
+      await processRegistry.recordStarted(owner, identity);
+      activeProcesses.set(processKey(identity), identity);
+    };
+  const trackProcessExited =
+    (owner: string) =>
+    async (identity: ProcessIdentity): Promise<void> => {
+      await processRegistry.recordExited(owner, identity);
+      activeProcesses.delete(processKey(identity));
+    };
   const activePairIds = new Set<string>();
   const cancellation = new AbortController();
   let stopWatcherBusy = false;
@@ -265,11 +303,13 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     const value: Heartbeat = {
       schemaVersion: 1,
       runId: config.runId,
-      controllerPid: process.pid,
+      controller: controllerIdentity,
       timestamp: new Date().toISOString(),
       status: state.status,
       activePairIds: [...activePairIds].sort(),
-      activePids: [...activePids].sort((left, right) => left - right),
+      activeProcesses: [...activeProcesses.values()].sort(
+        (left, right) => left.pid - right.pid,
+      ),
       completedPairs: Object.values(state.pairs).filter(pairCompleted).length,
       totalPairs: Object.keys(state.pairs).length,
       admissionEndsAt: state.admissionEndsAt,
@@ -299,6 +339,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
   const scenarioById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
   const pendingPairIds = Object.entries(state.pairs)
     .filter(([, pair]) => !pairCompleted(pair))
+    .sort(([, left], [, right]) => Number(Boolean(right.admittedAt)) - Number(Boolean(left.admittedAt)))
     .map(([id]) => id);
   let nextPairIndex = 0;
 
@@ -318,8 +359,8 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
           soakRunId: config.runId,
           runDir: config.runDir,
           signal: cancellation.signal,
-          onProcessStarted: (pid) => activePids.add(pid),
-          onProcessExited: (pid) => activePids.delete(pid),
+          onProcessStarted: trackProcessStarted(`probe:${phase}:${probe.id}`),
+          onProcessExited: trackProcessExited(`probe:${phase}:${probe.id}`),
         });
         await append("probe.finished", {
           data: {
@@ -390,8 +431,8 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
         timeoutMs: config.timeoutMs,
         model: config.model,
         signal: cancellation.signal,
-        onProcessStarted: (pid) => activePids.add(pid),
-        onProcessExited: (pid) => activePids.delete(pid),
+        onProcessStarted: trackProcessStarted(`execution:${executionId}`),
+        onProcessExited: trackProcessExited(`execution:${executionId}`),
       },
       capabilities,
     );
@@ -418,10 +459,6 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
 
   const worker = async (): Promise<void> => {
     while (!cancellation.signal.aborted) {
-      if (Date.now() >= Date.parse(state.admissionEndsAt)) {
-        state.status = "draining";
-        return;
-      }
       if (await exists(stopPath)) {
         state.status = "stopping";
         cancellation.abort(new Error("Stop requested"));
@@ -434,13 +471,21 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
         return;
       }
       const pair = state.pairs[id];
+      const wasAdmitted = Boolean(pair.admittedAt);
+      if (!wasAdmitted && Date.now() >= Date.parse(state.admissionEndsAt)) {
+        state.status = "draining";
+        return;
+      }
       const scenario = scenarioById.get(pair.scenarioId);
       if (!scenario) {
         throw new Error(`Scenario disappeared during run: ${pair.scenarioId}`);
       }
       activePairIds.add(id);
       pair.admittedAt ??= new Date().toISOString();
-      await append("pair.admitted", { pairId: id, data: { armOrder: pair.armOrder } });
+      await append(wasAdmitted ? "pair.resumed" : "pair.admitted", {
+        pairId: id,
+        data: { armOrder: pair.armOrder },
+      });
       await persistState();
       try {
         for (const arm of pair.armOrder) {

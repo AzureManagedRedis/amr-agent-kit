@@ -1,5 +1,7 @@
+import { createReadStream } from "node:fs";
 import { mkdir, open } from "node:fs/promises";
 import path from "node:path";
+import { createInterface } from "node:readline";
 import type { LedgerEvent } from "./contracts.js";
 
 export class EventLedger {
@@ -32,9 +34,18 @@ export class EventLedger {
 
     this.#queue = this.#queue.then(async () => {
       await mkdir(path.dirname(this.#filePath), { recursive: true });
-      const handle = await open(this.#filePath, "a", 0o600);
+      const handle = await open(this.#filePath, "a+", 0o600);
       try {
-        await handle.writeFile(`${JSON.stringify(event)}\n`);
+        const { size } = await handle.stat();
+        let prefix = "";
+        if (size > 0) {
+          const lastByte = Buffer.alloc(1);
+          await handle.read(lastByte, 0, 1, size - 1);
+          if (lastByte[0] !== 0x0a && lastByte[0] !== 0x0d) {
+            prefix = "\n";
+          }
+        }
+        await handle.writeFile(`${prefix}${JSON.stringify(event)}\n`);
         await handle.sync();
       } finally {
         await handle.close();
@@ -50,9 +61,13 @@ export class EventLedger {
 }
 
 export async function readLastLedgerSequence(filePath: string): Promise<number> {
-  let handle;
   try {
-    handle = await open(filePath, "r");
+    const handle = await open(filePath, "r");
+    const { size } = await handle.stat();
+    await handle.close();
+    if (size === 0) {
+      return 0;
+    }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       return 0;
@@ -60,29 +75,29 @@ export async function readLastLedgerSequence(filePath: string): Promise<number> 
     throw error;
   }
 
-  try {
-    const { size } = await handle.stat();
-    if (size === 0) {
-      return 0;
+  let lastMonotonicSequence = 0;
+  const lines = createInterface({
+    input: createReadStream(filePath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+  for await (const line of lines) {
+    if (!line.trim()) {
+      continue;
     }
-    const chunkSize = Math.min(size, 64 * 1_024);
-    const buffer = Buffer.alloc(chunkSize);
-    await handle.read(buffer, 0, chunkSize, size - chunkSize);
-    const lines = buffer
-      .toString("utf8")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const lastLine = lines.at(-1);
-    if (!lastLine) {
-      return 0;
+    try {
+      const event = JSON.parse(line) as { sequence?: unknown };
+      if (
+        Number.isSafeInteger(event.sequence) &&
+        (event.sequence as number) > lastMonotonicSequence
+      ) {
+        lastMonotonicSequence = event.sequence as number;
+      }
+    } catch {
+      // A controller crash may leave one torn line. Earlier valid fsynced events remain authoritative.
     }
-    const event = JSON.parse(lastLine) as { sequence?: unknown };
-    if (!Number.isSafeInteger(event.sequence) || (event.sequence as number) < 1) {
-      throw new Error(`Ledger has invalid terminal sequence: ${filePath}`);
-    }
-    return event.sequence as number;
-  } finally {
-    await handle.close();
   }
+  if (lastMonotonicSequence === 0) {
+    throw new Error(`Ledger contains no valid monotonic event: ${filePath}`);
+  }
+  return lastMonotonicSequence;
 }

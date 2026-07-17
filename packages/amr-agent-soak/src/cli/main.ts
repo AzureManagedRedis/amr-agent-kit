@@ -8,6 +8,7 @@ import type {
   SoakGrader,
   SoakModules,
   SoakReporter,
+  ProcessIdentity,
 } from "../core/contracts.js";
 import type { SoakConfig } from "../core/config.js";
 import { createIsolatedWorkspace } from "../core/isolation.js";
@@ -17,6 +18,7 @@ import {
   DotnetTestProbe,
   type DotnetTestProbeConfig,
 } from "../executor/dotnet-test-probe.js";
+import { ProcessRegistry, SystemProcessManager } from "../core/process.js";
 
 interface ControllerFile extends SoakConfig {
   readonly scenarioModule: string;
@@ -47,9 +49,10 @@ async function importExport<T>(modulePath: string, exportName: string): Promise<
 
 async function controller(configPath: string): Promise<void> {
   const config = JSON.parse(await readFile(path.resolve(configPath), "utf8")) as ControllerFile;
+  const processManager = new SystemProcessManager();
   const modules: SoakModules = {
     scenarios: await importExport<ScenarioProvider>(config.scenarioModule, "scenarioProvider"),
-    executor: new CopilotCliExecutor(config.copilotCommand),
+    executor: new CopilotCliExecutor(config.copilotCommand, { processManager }),
     cache: config.cacheModule
       ? await importExport<SoakCache>(config.cacheModule, "cacheModule")
       : undefined,
@@ -59,7 +62,8 @@ async function controller(configPath: string): Promise<void> {
     reporter: config.reporterModule
       ? await importExport<SoakReporter>(config.reporterModule, "reporterModule")
       : undefined,
-    probes: config.dotnetProbes?.map((probe) => new DotnetTestProbe(probe)),
+    probes: config.dotnetProbes?.map((probe) => new DotnetTestProbe(probe, processManager)),
+    processManager,
   };
   const summary = await runSoak(config, modules);
   process.stdout.write(`${JSON.stringify(summary)}\n`);
@@ -96,33 +100,58 @@ async function preflight(configPath: string): Promise<void> {
   process.stdout.write(`${JSON.stringify(capabilities, null, 2)}\n`);
 }
 
-function isAlive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
+interface PidRecord {
+  readonly controller: ProcessIdentity;
+  readonly janitor: ProcessIdentity;
+}
+
+async function readPidRecord(runDir: string): Promise<PidRecord> {
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    try {
+      return JSON.parse(await readFile(path.join(runDir, "pids.json"), "utf8")) as PidRecord;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+  throw new Error(`PID record did not appear: ${runDir}`);
+}
+
+async function terminateRun(runDir: string, includeSupervisors: boolean): Promise<void> {
+  const manager = new SystemProcessManager();
+  const registry = new ProcessRegistry(path.join(runDir, "processes.jsonl"));
+  const roots = [...(await registry.readActive())];
+  if (includeSupervisors) {
+    const pids = await readPidRecord(runDir);
+    roots.push(pids.controller, pids.janitor);
+  }
+  const handled = new Set<string>();
+  for (const root of roots) {
+    const key = `${root.pid}\0${root.startedAt}`;
+    if (handled.has(key)) {
+      continue;
+    }
+    handled.add(key);
+    const result = await manager.terminateTree(root, async (identities) => {
+      for (const identity of identities) {
+        await registry.recordStarted(`termination:${root.pid}`, identity);
+      }
+    });
+    for (const identity of result.killed) {
+      await registry.recordExited(`termination:${root.pid}`, identity);
+    }
   }
 }
 
-async function janitor(runDir: string, controllerPid: number): Promise<void> {
-  while (isAlive(controllerPid)) {
+async function janitor(runDir: string): Promise<void> {
+  const manager = new SystemProcessManager();
+  const pids = await readPidRecord(runDir);
+  while (await manager.isRunning(pids.controller)) {
     await new Promise((resolve) => setTimeout(resolve, 2_000));
   }
-  const status = await readRunStatus(runDir);
-  const heartbeat = status.heartbeat as { controllerPid?: number; activePids?: number[] } | undefined;
-  if (heartbeat?.controllerPid !== controllerPid) {
-    return;
-  }
-  for (const pid of heartbeat.activePids ?? []) {
-    if (Number.isInteger(pid) && pid > 0 && isAlive(pid)) {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        // The process may exit between the liveness check and the signal.
-      }
-    }
-  }
+  await terminateRun(runDir, false);
 }
 
 async function main(): Promise<void> {
@@ -143,14 +172,14 @@ async function main(): Promise<void> {
       await requestStop(option(args, "--run-dir")!, option(args, "--reason", false));
       break;
     case "janitor":
-      await janitor(
-        option(args, "--run-dir")!,
-        Number.parseInt(option(args, "--controller-pid")!, 10),
-      );
+      await janitor(option(args, "--run-dir")!);
+      break;
+    case "terminate":
+      await terminateRun(option(args, "--run-dir")!, true);
       break;
     default:
       throw new Error(
-        "Usage: main.js <controller|preflight|status|stop|janitor> [options]",
+        "Usage: main.js <controller|preflight|status|stop|janitor|terminate> [options]",
       );
   }
 }

@@ -13,6 +13,11 @@ import type {
 import { writeAtomicJson } from "../core/atomic.js";
 import { detectContamination } from "../core/isolation.js";
 import { hashBytes, hashTree } from "../core/hash.js";
+import {
+  SystemProcessManager,
+  type ProcessManager,
+  type TerminationResult,
+} from "../core/process.js";
 
 interface CapturedProcess {
   readonly pid: number;
@@ -25,7 +30,12 @@ interface CapturedProcess {
 async function capture(
   command: string,
   args: ReadonlyArray<string>,
-  options: { cwd: string; env: NodeJS.ProcessEnv; signal?: AbortSignal },
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    timeoutMs: number;
+    processManager: ProcessManager;
+  },
 ): Promise<CapturedProcess> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -33,7 +43,6 @@ async function capture(
       env: options.env,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
-      signal: options.signal,
     });
     let stdout = "";
     let stderr = "";
@@ -45,18 +54,44 @@ async function capture(
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
     });
+    let timedOut = false;
+    const identityPromise = child.pid
+      ? options.processManager.identify(child.pid).catch(() => undefined)
+      : Promise.resolve(undefined);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      void identityPromise.then(async (identity) => {
+        if (identity) {
+          await options.processManager.terminateTree(identity);
+        } else if (child.pid) {
+          child.kill("SIGKILL");
+        }
+      }).catch(reject);
+    }, options.timeoutMs);
     child.on("error", reject);
     child.on("close", (exitCode, signal) => {
-      resolve({ pid: child.pid ?? -1, exitCode, signal, stdout, stderr });
+      clearTimeout(timeout);
+      if (timedOut) {
+        reject(new Error(`Process timed out after ${options.timeoutMs}ms: ${command}`));
+      } else {
+        resolve({ pid: child.pid ?? -1, exitCode, signal, stdout, stderr });
+      }
     });
   });
 }
 
-async function resolveExecutable(command: string, workspace: IsolatedWorkspace): Promise<string> {
+async function resolveExecutable(
+  command: string,
+  workspace: IsolatedWorkspace,
+  timeoutMs: number,
+  processManager: ProcessManager,
+): Promise<string> {
   const resolver = process.platform === "win32" ? "where.exe" : "which";
   const result = await capture(resolver, [command], {
     cwd: workspace.projectDir,
     env: workspace.environment,
+    timeoutMs,
+    processManager,
   });
   if (result.exitCode !== 0) {
     throw new Error(`Unable to resolve ${command}: ${result.stderr || result.stdout}`);
@@ -71,7 +106,27 @@ async function resolveExecutable(command: string, workspace: IsolatedWorkspace):
   return path.resolve(executablePath);
 }
 
-function requireCapabilities(capabilities: ExecutorCapabilities): void {
+async function captureSuccessful(
+  command: string,
+  args: ReadonlyArray<string>,
+  options: {
+    cwd: string;
+    env: NodeJS.ProcessEnv;
+    timeoutMs: number;
+    processManager: ProcessManager;
+  },
+): Promise<CapturedProcess> {
+  let last: CapturedProcess | undefined;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    last = await capture(command, args, options);
+    if (last.exitCode === 0) {
+      return last;
+    }
+  }
+  return last!;
+}
+
+export function assertExecutorCapabilities(capabilities: ExecutorCapabilities): void {
   const missing = Object.entries({
     prompt: capabilities.supportsPrompt,
     jsonOutput: capabilities.supportsJsonOutput,
@@ -79,6 +134,10 @@ function requireCapabilities(capabilities: ExecutorCapabilities): void {
     toolApproval: capabilities.supportsToolApproval,
     instructionDisable: capabilities.supportsInstructionDisable,
     mcpDisable: capabilities.supportsMcpDisable,
+    noRemote: capabilities.supportsNoRemote,
+    noRemoteExport: capabilities.supportsNoRemoteExport,
+    noAutoUpdate: capabilities.supportsNoAutoUpdate,
+    streamControl: capabilities.supportsStreamControl,
   })
     .filter(([, supported]) => !supported)
     .map(([name]) => name);
@@ -99,9 +158,16 @@ function skillRecords(value: unknown): ReadonlyArray<Record<string, unknown>> {
 
 export class CopilotCliExecutor implements HeadlessExecutor {
   readonly #command: string;
+  readonly #processManager: ProcessManager;
+  readonly #preflightTimeoutMs: number;
 
-  constructor(command = "copilot") {
+  constructor(
+    command = "copilot",
+    options: { processManager?: ProcessManager; preflightTimeoutMs?: number } = {},
+  ) {
     this.#command = command;
+    this.#processManager = options.processManager ?? new SystemProcessManager();
+    this.#preflightTimeoutMs = options.preflightTimeoutMs ?? 30_000;
   }
 
   async probe(workspaces: {
@@ -109,32 +175,45 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     readonly withSkill: IsolatedWorkspace;
   }): Promise<ExecutorCapabilities> {
     const workspace = workspaces.withoutSkill;
-    const executablePath = await resolveExecutable(this.#command, workspace);
+    const executablePath = await resolveExecutable(
+      this.#command,
+      workspace,
+      this.#preflightTimeoutMs,
+      this.#processManager,
+    );
     // CLI startup initializes profile state. Probe sequentially so concurrent initialization
     // cannot fall back to the operator profile while an isolated profile is being created.
     const executableBytes = await readFile(executablePath);
-    const help = await capture(executablePath, ["--help"], {
+    const help = await captureSuccessful(executablePath, ["--help"], {
       cwd: workspace.projectDir,
       env: workspace.environment,
+      timeoutMs: this.#preflightTimeoutMs,
+      processManager: this.#processManager,
     });
-    const version = await capture(executablePath, ["--version"], {
+    const version = await captureSuccessful(executablePath, ["--version"], {
       cwd: workspace.projectDir,
       env: workspace.environment,
+      timeoutMs: this.#preflightTimeoutMs,
+      processManager: this.#processManager,
     });
-    const withoutSkills = await capture(
+    const withoutSkills = await captureSuccessful(
       executablePath,
       ["--no-custom-instructions", "skill", "list", "--json"],
       {
         cwd: workspaces.withoutSkill.projectDir,
         env: workspaces.withoutSkill.environment,
+        timeoutMs: this.#preflightTimeoutMs,
+        processManager: this.#processManager,
       },
     );
-    const withSkills = await capture(
+    const withSkills = await captureSuccessful(
       executablePath,
       ["--no-custom-instructions", "skill", "list", "--json"],
       {
         cwd: workspaces.withSkill.projectDir,
         env: workspaces.withSkill.environment,
+        timeoutMs: this.#preflightTimeoutMs,
+        processManager: this.#processManager,
       },
     );
     if (
@@ -206,8 +285,12 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       supportsToolApproval: /--allow-all-tools\b/.test(text),
       supportsInstructionDisable: /--no-custom-instructions\b/.test(text),
       supportsMcpDisable: /--disable-builtin-mcps\b/.test(text),
+      supportsNoRemote: /--no-remote\b/.test(text),
+      supportsNoRemoteExport: /--no-remote-export\b/.test(text),
+      supportsNoAutoUpdate: /--no-auto-update\b/.test(text),
+      supportsStreamControl: /--stream\s+<mode>[\s\S]*(?:on|off)/.test(text),
     };
-    requireCapabilities(capabilities);
+    assertExecutorCapabilities(capabilities);
     return capabilities;
   }
 
@@ -215,7 +298,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     request: ExecutionRequest,
     capabilities: ExecutorCapabilities,
   ): Promise<ExecutionArtifact> {
-    requireCapabilities(capabilities);
+    assertExecutorCapabilities(capabilities);
     const startedAt = new Date().toISOString();
     const stdoutFile = path.join(request.workspace.root, "stdout.jsonl");
     const stderrFile = path.join(request.workspace.root, "stderr.log");
@@ -253,7 +336,11 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       cancelled = true;
       controller.abort(request.signal.reason);
     };
-    request.signal.addEventListener("abort", forwardAbort, { once: true });
+    if (request.signal.aborted) {
+      forwardAbort();
+    } else {
+      request.signal.addEventListener("abort", forwardAbort, { once: true });
+    }
     const timeout = setTimeout(() => {
       timedOut = true;
       controller.abort(new Error(`Execution timed out after ${request.timeoutMs}ms`));
@@ -266,26 +353,34 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       env: request.workspace.environment,
       windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
-      signal: controller.signal,
     });
     const pid = child.pid;
     if (!pid) {
       clearTimeout(timeout);
       throw new Error("Copilot CLI did not expose a process id");
     }
-    request.onProcessStarted?.(pid);
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    controller.signal.addEventListener(
-      "abort",
-      () => {
-        forceKillTimer = setTimeout(() => {
-          if (child.exitCode === null && child.signalCode === null) {
-            child.kill("SIGKILL");
+    const processIdentity = await this.#processManager.identify(pid);
+    await request.onProcessStarted?.(processIdentity);
+    let terminationPromise: Promise<TerminationResult> | undefined;
+    const terminateTree = (): void => {
+      terminationPromise ??= this.#processManager
+        .terminateTree(processIdentity, async (descendants) => {
+          for (const descendant of descendants) {
+            await request.onProcessStarted?.(descendant);
           }
-        }, 5_000);
-      },
-      { once: true },
-    );
+        })
+        .then(async (result) => {
+          for (const descendant of result.discovered) {
+            await request.onProcessExited?.(descendant);
+          }
+          return result;
+        });
+    };
+    if (controller.signal.aborted) {
+      terminateTree();
+    } else {
+      controller.signal.addEventListener("abort", terminateTree, { once: true });
+    }
     const pipeErrors: Error[] = [];
     const stdoutPipeline = pipeline(child.stdout, stdout).catch((error: Error) => {
       pipeErrors.push(error);
@@ -308,11 +403,11 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       });
     });
     clearTimeout(timeout);
-    if (forceKillTimer) {
-      clearTimeout(forceKillTimer);
-    }
     request.signal.removeEventListener("abort", forwardAbort);
-    request.onProcessExited?.(pid);
+    await terminationPromise?.catch((error: Error) => {
+      spawnError = error;
+    });
+    await request.onProcessExited?.(processIdentity);
     await Promise.all([stdoutPipeline, stderrPipeline]);
     if (pipeErrors.length > 0 && !spawnError) {
       spawnError = pipeErrors[0];
@@ -363,6 +458,8 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       args,
       cwd: request.workspace.projectDir,
       pid,
+      processIdentity,
+      descendants: (await terminationPromise?.catch(() => undefined))?.discovered ?? [],
       startedAt,
       finishedAt,
       exitCode,
