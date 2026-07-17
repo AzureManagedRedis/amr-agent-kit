@@ -1,0 +1,18 @@
+id: redis-reliable-order-events-004
+name: Reliable order event processing
+description: |
+  Tests that the skill distinguishes Pub/Sub from Streams and recommends durable
+  consumer groups for recoverable work queues.
+tags:
+  - redis-app
+  - streams
+  - pubsub
+  - reliable-messaging
+inputs:
+  prompt: |
+    We currently publish order-created messages with Redis Pub/Sub. If a worker is
+    offline during deployment it misses orders and downstream fulfillment never runs.
+    How should we redesign this with Redis so workers can resume safely?
+expected:
+  outcomes:
+    - type: task_completed

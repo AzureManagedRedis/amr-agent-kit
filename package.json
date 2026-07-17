@@ -1,0 +1,47 @@
+{
+  "name": "amr-agent-kit",
+  "displayName": "AMR Agent Kit",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Redis code and Azure Managed Redis infrastructure agent skills.",
+  "keywords": [
+    "redis",
+    "azure",
+    "azure-managed-redis",
+    "managed-redis",
+    "best-practices",
+    "vector-search",
+    "rag",
+    "agent-skills"
+  ],
+  "author": {
+    "name": "Microsoft",
+    "url": "https://learn.microsoft.com/azure/redis/"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/AzureManagedRedis/amr-agent-kit",
+  "homepage": "https://github.com/AzureManagedRedis/amr-agent-kit",
+  "files": [
+    "skills/",
+    "docs/",
+    "packages/amr-agent-skills-build/",
+    "plugin.json",
+    "gemini-extension.json",
+    ".claude-plugin/",
+    ".cursor-plugin/",
+    ".codex-plugin/",
+    "GEMINI.md",
+    "README.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "cd packages\\amr-agent-skills-build && npm run build",
+    "build:skill": "cd packages\\amr-agent-skills-build && npx tsx src\\build.ts",
+    "validate": "cd packages\\amr-agent-skills-build && npm run validate",
+    "validate:skill": "cd packages\\amr-agent-skills-build && npx tsx src\\validate.ts",
+    "dev": "cd packages\\amr-agent-skills-build && npm run dev",
+    "efficacy:prepare": "node scripts\\prepare-efficacy-workspace.mjs"
+  }
+}

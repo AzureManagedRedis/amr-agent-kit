@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AMR Agent Kit</title>
+    <meta name="description" content="Agent skills for Redis application and AI coding patterns plus Azure Managed Redis infrastructure.">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav" aria-label="Primary">
+        <a class="brand" href="#top" aria-label="AMR Agent Kit home">
+          <span class="brand-mark">AMR</span>
+          <span>Agent Kit</span>
+        </a>
+        <button class="nav-toggle" type="button" aria-expanded="false" aria-controls="nav-links">
+          Menu
+        </button>
+        <div class="nav-links" id="nav-links">
+          <a href="#skills">Skills</a>
+          <a href="#install">Install</a>
+          <a href="#prompts">Prompts</a>
+          <a href="#contribute">Contribute</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="top">
+      <section class="hero">
+        <div class="hero-content">
+          <p class="eyebrow">Azure Managed Redis guidance for AI agents</p>
+          <h1>Build better Redis applications with focused agent skills.</h1>
+          <p class="hero-copy">
+            AMR Agent Kit packages practical guidance for Redis application and AI coding patterns
+            plus Azure Managed Redis infrastructure so coding agents can make safer, more consistent
+            design and implementation choices.
+          </p>
+          <div class="hero-actions">
+            <a class="button primary" href="#install">Install a skill</a>
+            <a class="button secondary" href="https://github.com/AzureManagedRedis/amr-agent-kit">View repository</a>
+          </div>
+        </div>
+        <aside class="hero-card" aria-label="Repository focus">
+          <h2>Focus areas</h2>
+          <ul>
+            <li>Redis data structures, commands, keys, caching, and resilience.</li>
+            <li>Vector search, RAG, semantic caching, LLM memory, and AI agents.</li>
+            <li>Azure Managed Redis security, networking, HA, DR, persistence, and observability.</li>
+          </ul>
+        </aside>
+      </section>
+
+      <section class="section" id="skills">
+        <div class="section-heading">
+          <p class="eyebrow">Skills</p>
+          <h2>Choose the guidance your agent should load.</h2>
+        </div>
+        <div class="cards">
+          <article class="card">
+            <h3>Redis code best practices</h3>
+            <p>
+              Development patterns for Redis applications and AI workloads on Azure Managed Redis,
+              including data structures, key design, connection handling, caching, messaging,
+              vector search, RAG, semantic caching, memory, and resilience.
+            </p>
+            <a href="https://github.com/AzureManagedRedis/amr-agent-kit/tree/main/skills/redis-code">Read skill docs</a>
+          </article>
+          <article class="card">
+            <h3>Azure Managed Redis infrastructure</h3>
+            <p>
+              Infrastructure guidance for provisioning, securing, networking, monitoring, and
+              operating Azure Managed Redis with enterprise-ready defaults.
+            </p>
+            <a href="https://github.com/AzureManagedRedis/amr-agent-kit/tree/main/skills/azure-redis-infra">Read skill docs</a>
+          </article>
+        </div>
+      </section>
+
+      <section class="section split" id="install">
+        <div>
+          <p class="eyebrow">Install</p>
+          <h2>Use the skills with the agent environment you already have.</h2>
+          <p>
+            Install one skill or copy the full set, depending on how much guidance your agent needs.
+            Rebuild generated files after changing source rules.
+          </p>
+        </div>
+        <div class="command-list" aria-label="Install commands">
+          <div class="command-card">
+            <div>
+              <strong>Skills CLI</strong>
+              <code>npx skills add AzureManagedRedis/amr-agent-kit</code>
+            </div>
+            <button type="button" data-copy="npx skills add AzureManagedRedis/amr-agent-kit">Copy</button>
+          </div>
+          <div class="command-card">
+            <div>
+              <strong>GitHub Copilot or VS Code</strong>
+              <code>cp -r skills/* ~/.copilot/skills/</code>
+            </div>
+            <button type="button" data-copy="cp -r skills/* ~/.copilot/skills/">Copy</button>
+          </div>
+          <div class="command-card">
+            <div>
+              <strong>Claude Code</strong>
+              <code>cp -r skills/* ~/.claude/skills/</code>
+            </div>
+            <button type="button" data-copy="cp -r skills/* ~/.claude/skills/">Copy</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="prompts">
+        <div class="section-heading">
+          <p class="eyebrow">Example prompts</p>
+          <h2>Ask agents for specific Redis and AMR outcomes.</h2>
+        </div>
+        <div class="prompt-grid">
+          <blockquote>
+            Review this Redis caching code for key naming, TTLs, connection handling, and stampede protection on Azure Managed Redis.
+          </blockquote>
+          <blockquote>
+            Design a RAG index using Redis vectors on Azure Managed Redis. Include metadata, distance metric, chunking, and query limits.
+          </blockquote>
+          <blockquote>
+            Provision Azure Managed Redis for a private production workload with Entra authentication, TLS, diagnostics, and HA.
+          </blockquote>
+          <blockquote>
+            Refactor this session store to use Redis safely with expiration, retries, and graceful degradation.
+          </blockquote>
+        </div>
+      </section>
+
+      <section class="section callout" id="contribute">
+        <div>
+          <p class="eyebrow">Feedback and contribution</p>
+          <h2>Help keep AMR Agent Kit practical and current.</h2>
+          <p>
+            Open issues for missing Redis or Azure Managed Redis guidance. Open pull requests for
+            rule improvements, new examples, docs fixes, and eval tasks that verify agent behavior.
+          </p>
+        </div>
+        <div class="callout-actions">
+          <a class="button primary" href="https://github.com/AzureManagedRedis/amr-agent-kit/blob/main/CONTRIBUTING.md">Contribution guide</a>
+          <a class="button secondary" href="https://github.com/AzureManagedRedis/amr-agent-kit/issues">File an issue</a>
+          <a class="button secondary" href="https://github.com/AzureManagedRedis/amr-agent-kit/pulls">Open pull requests</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>AMR Agent Kit is licensed under MIT and focused on Azure Managed Redis agent guidance.</p>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

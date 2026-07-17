@@ -1,0 +1,19 @@
+id: redis-retry-jitter-policy-008
+name: Bounded retry policy with jitter
+description: |
+  Tests that the skill recommends bounded retry attempts, backoff, jitter, timeouts,
+  and idempotency caveats for transient Redis failures.
+tags:
+  - redis-app
+  - resilience
+  - retry
+  - timeout
+inputs:
+  prompt: |
+    Our Redis wrapper retries every RedisError in a while(true) loop until the
+    command succeeds. During Azure Managed Redis failovers, request latency spikes
+    and Redis gets hammered. What retry policy should replace this?
+expected:
+  outcomes:
+    - type: task_completed
+

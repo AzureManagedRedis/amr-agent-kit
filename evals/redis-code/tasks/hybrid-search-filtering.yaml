@@ -1,0 +1,19 @@
+id: redis-ai-hybrid-search-filtering-005
+name: Hybrid vector search filtering
+description: |
+  Tests that the skill recommends combining vector similarity with metadata
+  filters in Redis instead of filtering broad top-K results in application code.
+tags:
+  - redis-ai
+  - vector-search
+  - hybrid-search
+  - metadata
+inputs:
+  prompt: |
+    We have support article embeddings for multiple products, locales, and
+    entitlement tiers. How should our Redis vector query combine similarity
+    search with product, locale, status, and access filters without losing good
+    results or leaking data?
+expected:
+  outcomes:
+    - type: task_completed

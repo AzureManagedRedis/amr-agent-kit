@@ -1,0 +1,19 @@
+id: redis-ai-vector-index-schema-001
+name: Vector index schema review
+description: |
+  Tests that the skill gives vector schema guidance with embedding dimensions,
+  distance metric alignment, metadata, and AMR Enterprise module requirements.
+tags:
+  - redis-ai
+  - vector-search
+  - schema
+  - metadata
+inputs:
+  prompt: |
+    I'm building semantic search for support articles on Azure Managed Redis.
+    Embeddings are 1536-dimensional, and results need to filter by product,
+    locale, and access tier. What should the Redis vector index and document
+    metadata look like?
+expected:
+  outcomes:
+    - type: task_completed

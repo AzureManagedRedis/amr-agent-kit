@@ -1,0 +1,19 @@
+id: amr-data-access-policies-006
+name: Data access policy scoping
+description: |
+  Tests that the skill covers Entra identities, custom data access policies,
+  Redis ACL key patterns, and least-privilege access for AMR clients.
+tags:
+  - azure-managed-redis
+  - entra-id
+  - access-policy
+  - rbac
+  - security
+inputs:
+  prompt: |
+    Our Azure Managed Redis cache will be shared by checkout, profile, and admin
+    services. Each service uses a managed identity. How should we scope AMR data
+    access so services only use the commands and key prefixes they need?
+expected:
+  outcomes:
+    - type: task_completed

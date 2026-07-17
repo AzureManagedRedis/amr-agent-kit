@@ -1,0 +1,41 @@
+name: Validate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build and validate skills
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install root dependencies
+        run: npm install --package-lock=false
+
+      - name: Install build tool dependencies
+        working-directory: packages/amr-agent-skills-build
+        run: npm ci
+
+      - name: Build generated skill artifacts
+        run: npm run build
+
+      - name: Validate skill package structure
+        run: npm run validate
+
+      - name: Check generated output is current
+        run: git diff --exit-code

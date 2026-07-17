@@ -1,0 +1,19 @@
+id: amr-private-endpoint-dns-001
+name: Private endpoint and DNS plan
+description: |
+  Tests that the skill provides Azure Managed Redis Private Link, public access,
+  subnet, and private DNS guidance without requiring a live Azure deployment.
+tags:
+  - azure-managed-redis
+  - private-endpoint
+  - dns
+  - networking
+inputs:
+  prompt: |
+    Plan network access for Azure Managed Redis used by an AKS workload in a spoke
+    VNet. We want no public access, Private Link connectivity, and predictable DNS
+    resolution from the cluster and a peered management VNet. What should the
+    architecture include?
+expected:
+  outcomes:
+    - type: task_completed

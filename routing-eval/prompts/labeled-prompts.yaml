@@ -1,0 +1,111 @@
+# Local routing fixtures. A classifier should see only skill names/descriptions
+# and choose expected_skill, or "none" for out-of-scope prompts.
+prompts:
+  - id: redis-app-cache-001
+    expected_skill: redis-code
+    boundary: redis-app
+    prompt: |
+      Our web API uses Redis as a cache in front of SQL. During cache expiry the
+      database gets hammered by many concurrent requests for the same key. What
+      pattern should we use to prevent that and how should keys expire?
+
+  - id: redis-app-leaderboard-002
+    expected_skill: redis-code
+    boundary: redis-app
+    prompt: |
+      I need top-N rankings and per-player rank lookups for a weekly game
+      leaderboard in Redis. Which data structure and key strategy fit best?
+
+  - id: redis-app-streams-003
+    expected_skill: redis-code
+    boundary: redis-app
+    prompt: |
+      Workers miss Redis Pub/Sub messages during deployment. We need order events
+      to be durable and replayable by consumer groups. What should change?
+
+  - id: redis-ai-vector-001
+    expected_skill: redis-code
+    boundary: redis-code-ai
+    prompt: |
+      I am designing a vector index in Redis for 1536-dimensional embeddings and
+      need metadata filters for tenant, locale, and document type. What schema
+      choices matter?
+
+  - id: redis-ai-rag-002
+    expected_skill: redis-code
+    boundary: redis-code-ai
+    prompt: |
+      Build a RAG pipeline on Redis where every retrieved chunk must include a
+      stable source citation with page and section metadata. How should ingestion
+      store chunks and vectors?
+
+  - id: redis-ai-semantic-cache-003
+    expected_skill: redis-code
+    boundary: redis-code-ai
+    prompt: |
+      We want to reuse LLM answers for semantically similar support questions
+      using Redis. How do we set similarity thresholds, TTLs, and model-versioned
+      cache keys?
+
+  - id: amr-infra-private-link-001
+    expected_skill: azure-redis-infra
+    boundary: amr-infra
+    prompt: |
+      An AKS workload in a spoke VNet must reach Azure Managed Redis through
+      Private Link only, with public access disabled and DNS working from peered
+      VNets. What network design should we use?
+
+  - id: amr-infra-security-002
+    expected_skill: azure-redis-infra
+    boundary: amr-infra
+    prompt: |
+      The security team wants Azure Managed Redis hardened with Entra ID
+      authentication, TLS enforcement, least privilege, and no shared keys in app
+      configuration. What controls should we plan?
+
+  - id: amr-infra-ha-003
+    expected_skill: azure-redis-infra
+    boundary: amr-infra
+    prompt: |
+      Checkout depends on Azure Managed Redis and needs to survive an availability
+      zone failure. Which HA, zone redundancy, failover, and client behavior topics
+      should be reviewed?
+
+  - id: redis-code-cross-domain-001
+    expected_skill: redis-code
+    boundary: redis-code-ai
+    prompt: |
+      Review the Redis application design for product cache, sessions, vector
+      search over help articles, semantic caching for LLM answers, and agent
+      checkpoints. Focus on code, keys, indexes, retries, and data boundaries;
+      assume Azure Managed Redis is already provisioned.
+
+  - id: amr-infra-cross-domain-001
+    expected_skill: azure-redis-infra
+    boundary: amr-infra
+    prompt: |
+      Review the Azure Managed Redis deployment plan for private networking,
+      Entra ID, high availability, persistence, Azure Monitor, and cluster policy.
+      The app will use cache, sessions, and vector search, but I need the Azure
+      resource and operations checklist.
+
+  - id: negative-postgres-001
+    expected_skill: none
+    boundary: negative
+    prompt: |
+      How do I add a B-tree index to a PostgreSQL users table for faster email
+      lookups?
+
+  - id: negative-css-002
+    expected_skill: none
+    boundary: negative
+    prompt: |
+      Make this marketing page button more visually prominent with CSS and better
+      hover states.
+
+  - id: negative-aks-003
+    expected_skill: none
+    boundary: negative
+    prompt: |
+      Configure Kubernetes horizontal pod autoscaling for an nginx deployment
+      based on CPU utilization.

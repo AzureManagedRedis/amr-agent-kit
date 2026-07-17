@@ -1,0 +1,19 @@
+id: amr-diagnostics-monitoring-004
+name: Diagnostics and monitoring
+description: |
+  Tests that the skill recommends Azure Monitor metrics, diagnostic settings,
+  Log Analytics routing, and actionable alerting for AMR operations.
+tags:
+  - azure-managed-redis
+  - observability
+  - diagnostics
+  - azure-monitor
+inputs:
+  prompt: |
+    Create an observability checklist for Azure Managed Redis before launch.
+    We need metrics, diagnostic logs, alerting for connection and memory issues,
+    and enough data to troubleshoot latency without running live Azure queries
+    during this eval.
+expected:
+  outcomes:
+    - type: task_completed

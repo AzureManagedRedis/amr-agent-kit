@@ -1,0 +1,18 @@
+id: redis-leaderboard-data-structure-002
+name: Leaderboard data structure selection
+description: |
+  Tests that the skill recommends sorted sets and practical key design for a
+  ranked gaming leaderboard workload.
+tags:
+  - redis-app
+  - data-structures
+  - sorted-sets
+  - key-design
+inputs:
+  prompt: |
+    I need a real-time leaderboard for a mobile game. Players gain points during
+    each weekly season, and the API needs top 100, player rank, and score updates.
+    What Redis data structure and key layout should I use?
+expected:
+  outcomes:
+    - type: task_completed

@@ -1,0 +1,321 @@
+{
+  "skill_name": "amr-agent-kit",
+  "description": "Paired efficacy evals for measuring AMR Agent Kit value by comparing the same prompt with and without the target skill force-loaded. These prompts intentionally include plausible but unsafe Redis or Azure Managed Redis design choices so grading can measure value beyond generic Redis/Azure knowledge.",
+  "hardening_notes": [
+    "Iteration 1 baselines were strong on generic Redis and Azure guidance, so these evals use review-style prompts with AMR-specific traps and anti-pattern checks.",
+    "The cache eval now explicitly tests Azure Managed Redis client safeguards, not just cache-stampede mechanics.",
+    "The Private Link and HA/DR evals now require details that generic Azure networking or reliability answers often miss.",
+    "Azure ecosystem evals test how AMR guidance composes with AKS, managed identity, Key Vault, App Configuration, Azure Monitor, Application Insights, Log Analytics, Event Grid, Service Bus, Azure Functions, Blob Storage, and Azure AI services."
+  ],
+  "evals": [
+    {
+      "id": 1,
+      "name": "redis-cache-stampede",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Review this proposed Redis cache layer for a SQL-backed product catalog running on AKS with Azure Managed Redis. Current sketch: every HTTP request creates a new Redis client from REDIS_URL; local defaults are redis://<host>:6379 when env vars are missing; retryStrategy retries forever every 50 ms; hot SKU keys are product:{sku} with a fixed 15-minute TTL; cache misses acquire lock:{sku} with SETNX and later DEL without a token; if Redis times out, every pod immediately falls back to SQL. Rewrite the design as production-ready cache-aside guidance with key naming, expiration, stampede protection, and Azure Managed Redis client safeguards.",
+      "expected_output": "A practical cache-aside design for Azure Managed Redis that fixes unsafe client configuration, uses reusable TLS-enabled clients on port 10000 with certificate validation and startup config checks, sets explicit timeouts and bounded jittered retries, prevents hot-key stampedes with safe single-flight or stale-while-revalidate behavior, and avoids turning Redis failures into SQL overload.",
+      "expectations": [
+        "Identifies the unsafe local Redis defaults and requires Azure Managed Redis production clients to use TLS or rediss, port 10000, certificate validation, and fail-fast validation for missing host, port, username, or credential settings.",
+        "Requires a process-wide Redis client, connection multiplexer, or pool instead of creating and disconnecting clients on every HTTP request.",
+        "Specifies connection and socket timeouts plus bounded retries with exponential backoff, jitter, and an overall operation deadline; rejects infinite immediate retries.",
+        "Specifies namespaced and versioned cache keys with explicit TTLs and per-key jitter to avoid synchronized expiry.",
+        "Includes stampede protection such as single-flight refresh, stale-while-revalidate, or a Redis lock with a unique token, short TTL, and compare-and-delete release semantics.",
+        "Protects SQL during Redis incidents with request coalescing, stale serving, circuit breakers, concurrency limits, or other bulkhead behavior instead of letting every pod fall through at once.",
+        "Avoids unsafe production patterns such as KEYS, unbounded locks, no TTL, disabled TLS validation, plaintext redis:// endpoints, or unlimited retry loops."
+      ],
+      "anti_patterns": [
+        "Suggests KEYS for production key discovery.",
+        "Uses a distributed lock without a TTL or unique token.",
+        "Keeps per-request Redis connections.",
+        "Keeps redis://, port 6379, disabled TLS, or disabled certificate validation for Azure Managed Redis production clients.",
+        "Uses an infinite retry loop or immediate retry storm during Redis outages.",
+        "Lets every application instance fall back to SQL at the same time when Redis is slow or unavailable.",
+        "Omits cache expiration guidance.",
+        "Treats Redis as the source of truth for the SQL-backed catalog without explaining consistency tradeoffs."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 2,
+      "name": "redis-rag-tenant-isolation",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Critique and replace this Redis vector retrieval design for a multi-tenant support RAG system on Azure Managed Redis. Embeddings are 1536 dimensions. Each chunk has tenant, locale, product, ACL group, document id, page, section, source URI, document version, and knowledge-base version. The proposed design uses one global vector index, runs KNN across all chunks, filters tenant and ACL in application code after retrieval, stores only chunk text plus embedding in Redis, appends new chunks on every re-ingestion, and semantic-caches answers by normalized question only. Provide the corrected Redis schema, ingestion pattern, query pattern, and cache boundaries.",
+      "expected_output": "A Redis vector/RAG design that uses an AMR tier or cluster policy that supports RediSearch/vector modules, aligns the 1536-dimensional vector field and distance metric with the embedding model, stores filterable tenant/ACL/source metadata, enforces tenant and ACL filters inside every Redis vector query before context reaches the LLM, preserves stable citations, uses deterministic/idempotent ingestion, and scopes semantic cache entries by tenant, policy, model, prompt, and knowledge version.",
+      "expectations": [
+        "Calls out that the AMR deployment must use a tier, modules, and cluster policy that support RediSearch/vector workloads before designing the index.",
+        "Defines a 1536-dimensional vector field and aligns the distance metric with the embedding model.",
+        "Stores tenant, locale, product, ACL group, document id, page, section, source URI, document version, and knowledge-base version as retrievable or filterable metadata alongside each vector.",
+        "Requires tenant and ACL filters inside every Redis vector query, before KNN results are passed to reranking or the LLM; rejects post-retrieval or post-generation authorization filtering.",
+        "Preserves stable source citation metadata so generated answers can cite document id, page, section, and source URI.",
+        "Mentions deterministic chunk IDs, content hashes, idempotent upserts, and stale-chunk deletion to avoid duplicate or orphaned chunks.",
+        "Scopes semantic answer cache keys and invalidation by tenant, ACL or policy boundary, embedding model, prompt template, and knowledge-base version."
+      ],
+      "anti_patterns": [
+        "Runs vector search across all tenants and filters only after generation.",
+        "Filters tenant or ACL only in application code after Redis returns the nearest neighbors.",
+        "Drops source citation metadata from the index.",
+        "Ignores embedding dimensions or distance metric.",
+        "Caches RAG answers without tenant, policy, model, prompt, or knowledge-version boundaries.",
+        "Appends new chunks on every ingestion without deterministic IDs, idempotent upserts, or stale-chunk cleanup.",
+        "Ignores whether the selected Azure Managed Redis tier, modules, and cluster policy support vector search."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 3,
+      "name": "amr-private-link-dns",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Review this proposed network plan for Azure Managed Redis. AKS runs in a spoke VNet, operators connect from a peered management VNet, and the security goal is no public data-plane access. The draft creates one private endpoint in a hub subnet, links the private DNS zone only to the hub, configures apps to connect to <cache>.privatelink.redis.azure.net, assumes VNet peering makes DNS work everywhere, leaves publicNetworkAccess enabled for admin break-glass, and sends all egress through Azure Firewall with no Redis-specific route validation. Identify what is wrong and provide the corrected production architecture and validation checklist.",
+      "expected_output": "An Azure Managed Redis Private Link plan that disables public network access, uses the redisEnterprise private endpoint connection, keeps clients on <cache>.<region>.redis.azure.net:10000 with TLS, links *.privatelink.redis.azure.net to every client VNet or forwards custom DNS correctly, validates DNS and TLS connectivity from each subnet, and accounts for subnet network policies, NSG/UDR/firewall routing, and /32 private endpoint route behavior.",
+      "expectations": [
+        "Requires Private Link/private endpoint access and disabled publicNetworkAccess for the production data plane instead of relying on public access or IP allowlists.",
+        "Identifies Azure Managed Redis as Microsoft.Cache/redisEnterprise with private endpoint group id redisEnterprise.",
+        "Requires applications to connect to <cache>.<region>.redis.azure.net on port 10000 with TLS, and explicitly rejects configuring clients to use <cache>.privatelink.redis.azure.net directly.",
+        "Names the Azure Managed Redis private DNS zone as *.privatelink.redis.azure.net and explains that it must resolve the normal cache hostname to the private endpoint IP.",
+        "Explains that VNet peering does not automatically provide DNS resolution; links the private DNS zone to the AKS spoke VNet, management VNet, and any resolver/shared-services VNet, or configures conditional forwarding through Azure DNS Private Resolver/custom DNS.",
+        "Calls out private endpoint subnet policy, NSG, UDR, firewall, and /32 route considerations that can block or bypass intended private endpoint traffic.",
+        "Includes validation from each participating network: nslookup or dig for the normal cache hostname returns the private endpoint IP, and a TLS Redis client test reaches port 10000."
+      ],
+      "anti_patterns": [
+        "Relies on public access plus IP allowlists as the main architecture.",
+        "Leaves publicNetworkAccess enabled for routine admin access in the production architecture.",
+        "Omits private DNS zone linking for peered VNets.",
+        "Assumes private endpoint DNS works automatically from every VNet.",
+        "Configures clients to connect to a privatelink hostname directly.",
+        "Uses the legacy Azure Cache for Redis resource type or group id instead of Microsoft.Cache/redisEnterprise and redisEnterprise.",
+        "Treats this as generic Redis networking without Azure Managed Redis controls.",
+        "Omits route, firewall, or subnet network policy validation."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 4,
+      "name": "amr-ha-persistence-geo",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Review this pre-provisioning reliability proposal for an Azure Managed Redis dependency in checkout. The proposal says: start with the cheapest tier and add high availability later; enable persistence and active geo-replication on the same cache; use RDB files as point-in-time backups that can restore into a new cache in another region; add active geo-replication after launch if regional DR is required; assume geo-replication is synchronous with zero data loss; and let clients keep using a single endpoint during failover. Identify the mistakes and produce the corrected decision record for HA, zone redundancy, persistence/export backup, active geo-replication, client failover, and monitoring.",
+      "expected_output": "An AMR reliability decision record that separates HA/zone redundancy, persistence/export backup, and active geo-replication; calls out creation-time or hard-to-change choices such as tier/SKU, capacity, modules, cluster policy, networking, HA, and geo; explains that persistence requires HA, is not supported with active geo-replication, and is not a point-in-time or cross-cache restore feature; uses export to Blob for backups/migrations; treats active geo as active-active eventual consistency configured during provisioning with matching regional cache configuration; and includes client routing/failover and monitoring/runbook requirements.",
+      "expectations": [
+        "Separates HA/zone redundancy, persistence/export backup, and active geo-replication as different reliability mechanisms with different failure modes and recovery objectives.",
+        "Calls out creation-time or difficult-to-change decisions such as tier/SKU, capacity, modules, Enterprise/cluster policy, region support, networking/private endpoints/DNS, HA, and active geo-replication topology.",
+        "States that Azure Managed Redis persistence requires high availability and is not supported with active geo-replication.",
+        "Explains that persistence is for node recovery and is not point-in-time backup or a way to restore persisted files into another cache; uses scheduled export to Blob storage for backups or migrations.",
+        "Explains that active geo-replication must be planned during provisioning, requires matching configuration across instances, supports active-active multi-region DR, and has eventual consistency rather than synchronous zero-data-loss semantics.",
+        "Includes client routing and failover behavior, including endpoint selection, retry deadlines, idempotency for writes, and testing of regional failover.",
+        "Includes monitoring and operational readiness checks for persistence/export status, geo-replication health/lag, memory/evictions, private endpoint/DNS health, restore drills, failover drills, and incident runbooks."
+      ],
+      "anti_patterns": [
+        "Claims persistence alone provides regional DR.",
+        "Claims persistence provides point-in-time backups or cross-cache restore from persisted files.",
+        "Combines persistence and active geo-replication on the same Azure Managed Redis cache.",
+        "Claims active geo-replication can be bolted on after launch without provisioning-time planning.",
+        "Assumes active geo-replication is synchronous or guarantees zero data loss.",
+        "Ignores creation-time AMR choices.",
+        "Treats zone redundancy and active geo-replication as interchangeable.",
+        "Omits client behavior during failover.",
+        "Omits monitoring, restore drills, or failover drills."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 5,
+      "name": "azure-aks-entra-keyvault-client",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Review this integration plan for a .NET API running on AKS that connects to Azure Managed Redis. The draft stores the AMR primary key in a Kubernetes Secret copied from Key Vault once a month, stores REDIS_URL as redis://cache:6379 in App Configuration, creates a Redis connection per request, gets a Microsoft Entra token once at startup but never refreshes it, and grants the AKS managed identity broad subscription Contributor so it can read everything. The team wants an Azure-native production pattern using AKS workload identity, App Configuration, Key Vault, Entra authentication, and AMR data access policies. What should the corrected application and configuration design include?",
+      "expected_output": "An Azure-native AMR client design for AKS that uses workload identity or managed identity, Microsoft Entra authentication with token refresh, least-privilege AMR data access policy assignment, Key Vault/App Configuration without hardcoded secrets, TLS on port 10000, singleton or pooled Redis clients, bounded timeouts/retries, and observability for authentication and connection failures.",
+      "expectations": [
+        "Replaces static AMR access keys in Kubernetes Secrets with Microsoft Entra authentication using AKS workload identity or managed identity, keeping access keys disabled unless a documented client limitation requires them.",
+        "Specifies least-privilege AMR data-plane access through data access policies or scoped role assignment for the AKS workload identity rather than broad subscription Contributor.",
+        "Uses Azure App Configuration for non-secret endpoint/settings and Key Vault references or Key Vault only for exceptional secrets; rejects hardcoded connection strings and stale copied secrets.",
+        "Requires clients to use the normal Azure Managed Redis host on port 10000 with TLS or rediss and certificate validation, not redis://cache:6379.",
+        "Requires a singleton Redis client, connection multiplexer, or pool coordinated with token refresh instead of creating clients per request.",
+        "Explains that Entra tokens expire and must be refreshed before expiry so pooled connections reconnect or re-authenticate with fresh tokens.",
+        "Includes bounded connection/socket timeouts, bounded retries with jitter, startup config validation, and logging/metrics for auth failures, connection failures, token refresh, and Redis latency."
+      ],
+      "anti_patterns": [
+        "Keeps AMR primary keys as the normal AKS authentication path.",
+        "Grants broad subscription Contributor to the application identity.",
+        "Copies secrets from Key Vault into Kubernetes and relies on manual monthly rotation as the primary control.",
+        "Uses redis://, port 6379, plaintext traffic, disabled certificate validation, or local Redis defaults in production.",
+        "Gets an Entra token once at startup for a long-running service and never refreshes it.",
+        "Creates Redis clients per HTTP request.",
+        "Omits observability for authentication or connection failures."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 6,
+      "name": "azure-monitor-appinsights-loganalytics",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Review this observability plan for Azure Managed Redis backing an AKS checkout service and an App Service admin portal. The draft says the team will watch the Azure portal metrics manually, leave diagnostic settings off to reduce cost, rely on Application Insights request failures only, and add alerts after the first outage. They also use Private Link, Entra authentication, and active geo-replication. Create the corrected Azure Monitor, Log Analytics, Application Insights, alerting, dashboard, and runbook plan.",
+      "expected_output": "An Azure observability plan that enables AMR diagnostic settings for AllMetrics and connection logs to Log Analytics, correlates application dependency telemetry from AKS/App Service through Application Insights, defines alert baselines/action groups/runbooks before launch, covers Private Link/DNS and Entra auth failures, includes active geo-replication health where used, and uses dashboards/workbooks/KQL for investigation.",
+      "expectations": [
+        "Enables Azure Managed Redis diagnostic settings before launch and routes AllMetrics plus connection logs to a Log Analytics workspace or equivalent approved destination.",
+        "Defines actionable Azure Monitor alerts with action groups and runbook links for memory pressure, server load or CPU, latency, evictions, connected clients, connection errors, authentication failures, and availability.",
+        "Includes active geo-replication health alerts and regional dependency checks when active geo-replication is enabled.",
+        "Includes Private Link, private DNS, firewall, and resolver health signals or validation so network failures are not hidden behind generic app errors.",
+        "Uses Application Insights dependency telemetry from AKS and App Service to correlate Redis latency/errors with request failures and deployment changes.",
+        "Uses Log Analytics queries, Azure Workbooks, dashboards, or saved KQL views for historical investigation across AMR, application, network, and identity signals.",
+        "Baselines thresholds from load testing or SLOs before production and commits to tuning after launch rather than waiting for the first outage."
+      ],
+      "anti_patterns": [
+        "Relies only on manual Azure portal metric viewing.",
+        "Leaves diagnostic settings disabled for production.",
+        "Adds alerts only after an outage.",
+        "Uses Application Insights request failures without Redis dependency correlation.",
+        "Omits connection logs or authentication-failure visibility when Entra authentication is used.",
+        "Omits geo-replication health when active geo-replication is part of the architecture.",
+        "Omits action groups, owners, or runbook links."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 7,
+      "name": "azure-event-driven-cache-invalidation",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Review this Azure event-driven cache invalidation design for Azure Managed Redis. Product changes originate in Azure SQL and are published to Event Grid, then Azure Functions invalidates Redis keys. The draft handler receives an event, runs KEYS product:* and DEL for every match, ignores event version/order, has no idempotency key, uses a Redis access key in app settings, retries forever on failure, and has no dead-letter or replay plan. Some downstream consumers also need a durable stream of invalidation events. Provide a safer design using Azure Event Grid or Service Bus, Azure Functions, Redis key conventions, AMR client safety, and reliable downstream processing.",
+      "expected_output": "An Azure event-driven invalidation design that avoids broad key scans, invalidates deterministic versioned keys, handles out-of-order and duplicate events idempotently, uses Event Grid or Service Bus retry/dead-letter semantics intentionally, connects to AMR with Entra/TLS/reused clients/timeouts/bounded retries, and uses Redis Streams or Service Bus topics for durable downstream replay where needed.",
+      "expectations": [
+        "Rejects KEYS product:* and broad deletes in production; uses deterministic namespaced/versioned keys or maintains explicit per-entity index keys for targeted invalidation.",
+        "Handles duplicate, out-of-order, and replayed Azure events with idempotency keys, entity version or updated_at checks, and safe no-op behavior for stale events.",
+        "Chooses Event Grid for lightweight event notification or Service Bus topics/queues when ordering, sessions, dead-lettering, replay, or stronger delivery controls are required; explains the tradeoff.",
+        "Defines Azure Functions retry, poison-message, dead-letter, and replay behavior without infinite retry loops.",
+        "Uses Azure Managed Redis client safeguards: Entra or managed identity where supported, TLS on port 10000, singleton/pool reuse, certificate validation, timeouts, bounded retries, and secretless configuration where possible.",
+        "Uses Redis Streams with consumer groups or Azure Service Bus topics for downstream consumers that need durable replay and acknowledgments rather than Redis Pub/Sub.",
+        "Includes observability through Application Insights/Azure Monitor for event lag, handler failures, Redis latency/errors, dead-letter counts, and invalidation volume."
+      ],
+      "anti_patterns": [
+        "Uses KEYS or FLUSHDB for production invalidation.",
+        "Deletes cache entries without considering event version, ordering, duplicate delivery, or idempotency.",
+        "Uses infinite retries in Azure Functions or Redis client code.",
+        "Stores Redis access keys in function app settings as the preferred production authentication path.",
+        "Uses Redis Pub/Sub for critical invalidation events that require replay or acknowledgments.",
+        "Omits dead-letter, poison-message, or replay handling.",
+        "Omits monitoring for invalidation lag or failure rates."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 8,
+      "name": "azure-ai-blob-rag-ingestion",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Design a production RAG ingestion and retrieval pipeline on Azure using Azure Blob Storage for source documents, Event Grid for blob-change notifications, Azure Functions or Azure Container Apps jobs for chunking, Azure OpenAI or Azure AI Foundry for embeddings, and Azure Managed Redis for vector search. The draft indexes every blob event immediately with a random Redis key, stores only chunk text and embedding, mixes embedding models in the same index, caches answers by question text only, and has no tenant, document version, source URI, page, or content hash metadata. It also uses public AMR access and access keys from app settings. Provide the corrected Azure ecosystem design.",
+      "expected_output": "An Azure RAG pipeline that uses Event Grid/Blob events safely, idempotent chunking with content hashes and document versions, Azure AI embeddings with one model/dimension per Redis index, AMR vector schema with tenant/source/citation metadata, tenant/ACL filters in Redis queries, semantic cache boundaries, managed identity or Entra authentication, Private Link/TLS, and observability across Blob, Functions/ACA, Azure AI, and AMR.",
+      "expectations": [
+        "Uses Blob Storage events through Event Grid as triggers but makes ingestion idempotent with content hashes, deterministic chunk IDs, document version or ETag, and stale-chunk cleanup.",
+        "Keeps one embedding model, dimension, and distance metric contract per Redis vector index; creates a new index or re-embeds when the Azure AI embedding model changes.",
+        "Stores tenant, ACL or policy boundary, source URI, document id, document version, page, section, content hash, embedding model, and knowledge-base version with each vector for filtering and citation.",
+        "Requires tenant and ACL filters inside every Redis vector query before retrieved context reaches reranking or the LLM.",
+        "Scopes semantic answer cache entries by tenant, ACL or policy boundary, Azure AI model, prompt version, embedding model, and knowledge-base version rather than by question text only.",
+        "Uses Azure Managed Redis production connectivity: Private Link where required, normal AMR hostname on port 10000, TLS/cert validation, Entra or managed identity authentication where supported, and no public access-key-in-app-settings default.",
+        "Includes operational visibility across Azure Blob/Event Grid, Functions or Container Apps, Azure AI embedding calls, AMR indexing/query latency, failures, retries, dead letters, and cost/throughput limits."
+      ],
+      "anti_patterns": [
+        "Uses random Redis vector keys on every blob event without idempotency.",
+        "Mixes embedding models or dimensions in the same Redis vector index.",
+        "Stores only chunk text and embedding with no source/citation or authorization metadata.",
+        "Filters tenant or ACL only after retrieval or generation.",
+        "Caches RAG answers by question text only.",
+        "Uses public AMR access or Redis access keys in app settings as the default production connection pattern.",
+        "Omits dead-letter, retry, rate-limit, or observability design for Blob/Event Grid/Azure AI/AMR failures."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 9,
+      "name": "amr-sizing-from-workload-metrics",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Review this Azure Managed Redis sizing recommendation. The team wants to pick Balanced B10 because it roughly matches their old cache label and says they can resize later. They have 10 days of metrics: peak used memory 18 GB, P95 used memory 14 GB, Server Load often 78-85%, 55K connected clients at peak, high read bandwidth, and they also need RedisJSON and RediSearch. They have not checked region availability or preview status. Produce the corrected AMR tier/SKU decision process and what should be validated before provisioning.",
+      "expected_output": "A metric-based AMR sizing process that uses peak/P95 memory, Server Load, connected clients, bandwidth, module needs, regional availability, and preview status instead of source SKU labels; compares usable memory to target capacity; considers X-series for compute/client pressure, B-series for balanced load, M-series for memory-heavy workloads, and Flash only for very large tiered-storage cases; and treats modules, cluster policy, HA, networking, diagnostics, and active geo as creation-time or hard-to-change decisions.",
+      "expectations": [
+        "Rejects choosing an AMR SKU only because it resembles an older/source cache label or because it is the smallest acceptable-looking tier.",
+        "Uses peak and P95 used memory, Server Load or CPU pressure, connected clients, read/write bandwidth, latency targets, and module requirements as sizing inputs.",
+        "Compares usable memory and capacity rather than only advertised SKU size, and recommends sizing to cover peak used memory.",
+        "Considers Compute Optimized X-series when server load, command complexity, bandwidth, or client count are high relative to memory.",
+        "Explains when Memory Optimized, Balanced, Compute Optimized, and Flash Optimized tiers are appropriate.",
+        "Requires validation of region availability, preview SKU status, module support, cluster policy, HA, networking, diagnostics, and active geo needs before provisioning.",
+        "Avoids customer-facing AMR shard-count language and describes AMR scale in terms of tier, SKU, capacity, and cluster policy."
+      ],
+      "anti_patterns": [
+        "Maps directly from a source SKU label without using workload metrics.",
+        "Ignores Server Load, connected clients, or bandwidth when memory appears sufficient.",
+        "Recommends the smallest SKU while dismissing creation-time or hard-to-change choices.",
+        "Uses AMR shard count as a customer sizing control.",
+        "Omits module, cluster policy, region availability, or preview-status validation."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 10,
+      "name": "amr-native-iac-arm-bicep-terraform",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Generate guidance for a production Azure Managed Redis IaC module that must support ARM, Bicep, and Terraform. The draft creates one generic Redis resource, leaves database settings implicit, omits clusteringPolicy, uses public access by default, creates no private endpoint DNS zone group, and tells apps to infer the port. Provide the corrected native AMR IaC resource shape, required database/default-database settings, Private Link/DNS settings, and validation steps.",
+      "expected_output": "Native AMR IaC guidance that models ARM/Bicep as Microsoft.Cache/redisEnterprise plus Microsoft.Cache/redisEnterprise/databases named default, uses Terraform azurerm_managed_redis with default_database, explicitly sets port 10000/clientProtocol/clusteringPolicy/evictionPolicy/modules/persistence where applicable, disables public access for production Private Link, uses private endpoint subresource redisEnterprise and private DNS zone privatelink.redis.azure.net, and validates with what-if or terraform validate/plan.",
+      "expectations": [
+        "For ARM/Bicep, models the AMR cluster and the default database as separate resources with the database depending on the cluster.",
+        "For Terraform, uses azurerm_managed_redis with sku_name, public_network_access, high_availability_enabled, and a default_database block.",
+        "Places data-plane settings such as port 10000, clientProtocol, clusteringPolicy, evictionPolicy, modules, persistence, and geo-replication on the database/default_database configuration.",
+        "Uses Private Link for production, disables public network access, uses private endpoint group/subresource redisEnterprise, and uses private DNS zone privatelink.redis.azure.net.",
+        "Keeps clients on the normal <cache-name>.<region>.redis.azure.net hostname rather than a privatelink hostname.",
+        "Includes diagnostic settings, alerts, identity/access policy assignments, and parameterized creation-time decisions in the IaC module.",
+        "Requires preflight validation such as ARM/Bicep what-if or terraform validate and terraform plan."
+      ],
+      "anti_patterns": [
+        "Creates a single generic Redis resource without a default database configuration.",
+        "Omits clusteringPolicy or relies on provider defaults.",
+        "Leaves production public network access enabled without a justified exception.",
+        "Uses the wrong private endpoint group/subresource or private DNS zone.",
+        "Tells application clients to connect to a privatelink hostname directly.",
+        "Omits validation before deployment."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    },
+    {
+      "id": 11,
+      "name": "redis-db0-cluster-key-design",
+      "target_skill": "redis-code",
+      "skill_path": "skills/redis-code/AGENTS.md",
+      "prompt": "Review this Redis application design for Azure Managed Redis. The app was copied from an Azure Cache for Redis design that put tenants in Redis databases 0-15, uses SELECT to switch databases per request, and runs multi-key Lua scripts over keys like tenantA:user:1:cart and tenantA:user:1:totals. The infrastructure team may use OSSCluster for throughput, but the app team says the client does not need cluster mode and hash tags are optional. Provide the corrected key naming, logical separation, client/cluster-policy assumptions, and multi-key/Lua safety guidance.",
+      "expected_output": "A Redis application design for AMR that states Azure Managed Redis does not support Azure Cache for Redis-style logical database multi-tenancy with SELECT or numbered DB indexes, uses database 0/default with colon-separated tenant/workload prefixes for logical separation, refactors tenant isolation to key builders, scoped scans, access policies/key patterns, metadata filters, or separate caches for hard isolation, coordinates clusteringPolicy with client capabilities, uses NoCluster where supported for single-endpoint semantics, uses OSSCluster only with cluster-aware clients, and applies hash tags to related keys used in MGET/MSET/transactions/Lua to avoid CROSSSLOT errors.",
+      "expectations": [
+        "States that Azure Managed Redis uses the default database/database 0 pattern and does not support Azure Cache for Redis-style logical database multi-tenancy with numbered Redis DB indexes and SELECT.",
+        "Defines consistent colon-separated tenant, environment, workload, and version prefixes for logical isolation, central key building, and safe scoped scans.",
+        "Warns that OSSCluster requires Redis Cluster-aware clients and should not be chosen blindly for non-cluster-aware applications.",
+        "Mentions NoCluster as a preferred option when supported by target size and single-endpoint semantics are required.",
+        "Requires hash tags for related keys that participate in multi-key commands, transactions, or Lua scripts in clustered Redis.",
+        "Explains CROSSSLOT risk when keys used together do not share a hash slot.",
+        "Keeps AMR client assumptions aligned with TLS on port 10000 and reusable clients rather than treating it as local standalone Redis.",
+        "Provides refactor guidance for DB-index tenancy such as removing SELECT/db=N, replacing FLUSHDB cleanup with prefix-scoped SCAN plus batched deletion, using data access policies/key patterns or metadata filters, and recommending separate AMR caches for hard tenant isolation."
+      ],
+      "anti_patterns": [
+        "Uses SELECT or Redis DB indexes for tenant separation in Azure Managed Redis.",
+        "Claims hash tags are optional for clustered multi-key or Lua operations.",
+        "Chooses OSSCluster while assuming a non-cluster-aware client will work unchanged.",
+        "Ignores CROSSSLOT errors for MGET, transactions, or Lua scripts.",
+        "Uses inconsistent tenant key prefixes or broad KEYS scans for tenant management.",
+        "Claims AMR can preserve Azure Cache for Redis-style tenant separation with SELECT or numbered logical databases."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
+    }
+  ]
+}

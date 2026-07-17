@@ -1,0 +1,19 @@
+id: amr-security-entra-tls-002
+name: Entra authentication and TLS hardening
+description: |
+  Tests that the skill recommends Entra ID authentication, TLS enforcement,
+  key hygiene, and least-privilege access patterns for AMR.
+tags:
+  - azure-managed-redis
+  - security
+  - entra-id
+  - tls
+inputs:
+  prompt: |
+    Review a production Azure Managed Redis security baseline. The application is
+    moving away from shared access keys, and the security team wants TLS enforced,
+    least-privilege identities, and no accidental public exposure. What controls
+    should we put in place?
+expected:
+  outcomes:
+    - type: task_completed

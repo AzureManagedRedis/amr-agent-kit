@@ -1,0 +1,18 @@
+id: amr-alert-baselines-007
+name: Alert baselines before launch
+description: |
+  Tests that the skill recommends Azure Monitor metric alerts, action groups,
+  diagnostic routing, and runbook links for AMR production readiness.
+tags:
+  - azure-managed-redis
+  - azure-monitor
+  - alerts
+  - observability
+inputs:
+  prompt: |
+    Define a prelaunch alert baseline for a production Azure Managed Redis cache.
+    Include the metrics, diagnostic settings, notification routing, and runbook
+    expectations we should put in place before customer traffic starts.
+expected:
+  outcomes:
+    - type: task_completed

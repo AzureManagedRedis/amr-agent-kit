@@ -1,0 +1,19 @@
+id: redis-connection-resilience-003
+name: Connection resilience review
+description: |
+  Tests that the skill advises reusable TLS connections, timeouts, health checks,
+  and retry behavior instead of per-request Redis clients.
+tags:
+  - redis-app
+  - connection-management
+  - resilience
+  - azure-managed-redis
+inputs:
+  prompt: |
+    Review this Node.js Redis usage pattern for an API deployed to Azure App Service:
+    every request creates a new Redis client, connects to Azure Managed Redis, runs
+    GET, and closes the connection. During traffic spikes we see timeouts and socket
+    exhaustion. What should change?
+expected:
+  outcomes:
+    - type: task_completed

@@ -4,7 +4,7 @@
  */
 
 import { readdir, readFile, writeFile } from 'fs/promises'
-import { join } from 'path'
+import { join, relative } from 'path'
 import { Rule, Section, GuidelinesDocument, ImpactLevel } from './types.js'
 import { parseRuleFile, RuleFile } from './parser.js'
 import { SKILLS, SkillConfig, DEFAULT_SKILL } from './config.js'
@@ -13,8 +13,47 @@ import { SKILLS, SkillConfig, DEFAULT_SKILL } from './config.js'
 const args = process.argv.slice(2)
 const upgradeVersion = args.includes('--upgrade-version')
 const skillArg = args.find((arg) => arg.startsWith('--skill='))
-const skillName = skillArg ? skillArg.split('=')[1] : null
+const skillFlagIndex = args.indexOf('--skill')
+const positionalSkill = args.find((arg) => !arg.startsWith('--'))
+const envSkill = process.env.npm_config_skill
+const skillName = skillArg
+  ? skillArg.split('=')[1]
+  : skillFlagIndex >= 0
+    ? args[skillFlagIndex + 1]
+    : positionalSkill || (envSkill && envSkill !== 'true' ? envSkill : null)
 const buildAll = args.includes('--all')
+
+
+/**
+ * Write text only when content changes, preserving an existing file's line endings.
+ */
+async function writeTextFileIfChanged(
+  filePath: string,
+  content: string
+): Promise<boolean> {
+  let existing: string | null = null
+  let lineEnding = '\n'
+
+  try {
+    existing = await readFile(filePath, 'utf-8')
+    lineEnding = existing.includes('\r\n') ? '\r\n' : '\n'
+  } catch {
+    // File does not exist yet; default to LF for generated content.
+  }
+
+  const normalizedContent = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+  const nextContent =
+    lineEnding === '\n'
+      ? normalizedContent
+      : normalizedContent.replace(/\n/g, lineEnding)
+
+  if (existing === nextContent) {
+    return false
+  }
+
+  await writeFile(filePath, nextContent, 'utf-8')
+  return true
+}
 
 /**
  * Increment a semver-style version string (e.g., "0.1.0" -> "0.1.1", "1.0" -> "1.1")
@@ -129,81 +168,178 @@ function generateMarkdown(
   return md
 }
 
+interface RuleInput {
+  file: string
+  filePath: string
+  displayFile: string
+  sourceName: string
+  rulesDir: string
+  sectionMap: Record<string, number>
+}
+
+interface ParsedRuleInput {
+  input: RuleInput
+  parsed: RuleFile
+}
+
+async function readSkillMetadata(skillConfig: SkillConfig) {
+  try {
+    const metadataContent = await readFile(skillConfig.metadataFile, 'utf-8')
+    return JSON.parse(metadataContent)
+  } catch {
+    return {
+      version: '1.0.0',
+      organization: 'Microsoft',
+      date: new Date().toLocaleDateString('en-US', {
+        month: 'long',
+        year: 'numeric',
+      }),
+      abstract: `Performance optimization guide for ${skillConfig.description}, ordered by impact.`,
+    }
+  }
+}
+
+async function collectRuleInputs(skillConfig: SkillConfig): Promise<RuleInput[]> {
+  const sources =
+    skillConfig.ruleSources && skillConfig.ruleSources.length > 0
+      ? skillConfig.ruleSources
+      : [
+          {
+            name: skillConfig.name,
+            rulesDir: skillConfig.rulesDir,
+            sectionMap: skillConfig.sectionMap,
+          },
+        ]
+
+  const inputs: RuleInput[] = []
+
+  for (const source of sources) {
+    let files: string[] = []
+    try {
+      files = await readdir(source.rulesDir)
+    } catch {
+      console.log(`  No rules directory found for ${source.name}: ${source.rulesDir}`)
+      continue
+    }
+
+    inputs.push(
+      ...files
+        .filter((f) => f.endsWith('.md') && !f.startsWith('_') && f !== 'README.md')
+        .sort()
+        .map((file) => ({
+          file,
+          filePath: join(source.rulesDir, file),
+          displayFile:
+            source.name === skillConfig.name ? file : `${source.name}/${file}`,
+          sourceName: source.name,
+          rulesDir: source.rulesDir,
+          sectionMap: source.sectionMap,
+        }))
+    )
+  }
+
+  return inputs
+}
+
+async function writeRuleManifestIfConfigured(
+  skillConfig: SkillConfig,
+  ruleInputs: RuleInput[],
+  parsedRuleInputs: ParsedRuleInput[]
+): Promise<void> {
+  if (!skillConfig.manifestFile) {
+    return
+  }
+
+  const toSkillRelativePath = (path: string) =>
+    relative(skillConfig.skillDir, path).replace(/\\/g, '/')
+
+  const sourceNames = Array.from(new Set(ruleInputs.map((input) => input.sourceName)))
+  const sources = sourceNames.map((sourceName) => {
+    const sourceInputs = ruleInputs.filter((input) => input.sourceName === sourceName)
+    const parsedForSource = parsedRuleInputs.filter(
+      ({ input }) => input.sourceName === sourceName
+    )
+    const sections = Array.from(
+      new Set(parsedForSource.map(({ parsed }) => parsed.section))
+    ).sort((a, b) => a - b)
+
+    return {
+      skill: sourceName,
+      rulesDir: toSkillRelativePath(sourceInputs[0].rulesDir),
+      ruleCount: sourceInputs.length,
+      sections,
+    }
+  })
+
+  const manifest = {
+    generatedBy: 'packages/amr-agent-skills-build/src/build.ts',
+    description:
+      'Deterministic rule manifest. Rule content is sourced from configured rule files and is not copied into this manifest.',
+    skill: skillConfig.name,
+    totalRules: parsedRuleInputs.length,
+    sources,
+    rules: parsedRuleInputs
+      .map(({ input, parsed }) => ({
+        sourceSkill: input.sourceName,
+        sourceFile: toSkillRelativePath(input.filePath),
+        section: parsed.section,
+        title: parsed.rule.title,
+      }))
+      .sort((a, b) =>
+        `${a.section}:${a.sourceSkill}:${a.sourceFile}`.localeCompare(
+          `${b.section}:${b.sourceSkill}:${b.sourceFile}`,
+          'en-US',
+          { sensitivity: 'base' }
+        )
+      ),
+  }
+
+  await writeTextFileIfChanged(
+    skillConfig.manifestFile,
+    JSON.stringify(manifest, null, 2) + '\n'
+  )
+  console.log(`  ✓ Wrote rule source manifest`)
+}
+
 /**
  * Build a single skill
  */
 async function buildSkill(skillConfig: SkillConfig) {
   console.log(`\nBuilding ${skillConfig.name}...`)
-  console.log(`  Rules directory: ${skillConfig.rulesDir}`)
+  if (skillConfig.ruleSources && skillConfig.ruleSources.length > 0) {
+    console.log(
+      `  Rule sources: ${skillConfig.ruleSources
+        .map((source) => source.name)
+        .join(', ')}`
+    )
+  } else {
+    console.log(`  Rules directory: ${skillConfig.rulesDir}`)
+  }
   console.log(`  Output file: ${skillConfig.outputFile}`)
 
-  // Read all rule files (exclude files starting with _ and README.md)
-  let files: string[]
-  try {
-    files = await readdir(skillConfig.rulesDir)
-  } catch (error) {
-    console.log(`  No rules directory found. Creating empty AGENTS.md...`)
-    // Read metadata for empty build
-    let metadata
-    try {
-      const metadataContent = await readFile(skillConfig.metadataFile, 'utf-8')
-      metadata = JSON.parse(metadataContent)
-    } catch {
-      metadata = {
-        version: '1.0.0',
-        organization: 'Microsoft',
-        date: new Date().toLocaleDateString('en-US', {
-          month: 'long',
-          year: 'numeric',
-        }),
-        abstract: `Performance optimization guide for ${skillConfig.description}, ordered by impact.`,
-      }
-    }
+  const ruleInputs = await collectRuleInputs(skillConfig)
 
-    const emptyMd = `# ${skillConfig.title}\n\n**Version ${metadata.version}**  \n${metadata.organization}  \n${metadata.date}\n\n> **Note:**  \n> This document is mainly for agents and LLMs to follow when maintaining,  \n> generating, or refactoring ${skillConfig.description}.\n\n---\n\n## Abstract\n\n${metadata.abstract}\n\n---\n\n*No rules have been added yet. Add rule files to the rules/ directory and rebuild.*\n`
-    await writeFile(skillConfig.outputFile, emptyMd, 'utf-8')
-    console.log(`  ✓ Built empty AGENTS.md`)
-    return
-  }
-
-  const ruleFiles = files
-    .filter((f) => f.endsWith('.md') && !f.startsWith('_') && f !== 'README.md')
-    .sort() // Sort filenames for consistent ordering across systems
-
-  if (ruleFiles.length === 0) {
+  if (ruleInputs.length === 0) {
     console.log(`  No rule files found. Creating empty AGENTS.md...`)
-    let metadata
-    try {
-      const metadataContent = await readFile(skillConfig.metadataFile, 'utf-8')
-      metadata = JSON.parse(metadataContent)
-    } catch {
-      metadata = {
-        version: '1.0.0',
-        organization: 'Microsoft',
-        date: new Date().toLocaleDateString('en-US', {
-          month: 'long',
-          year: 'numeric',
-        }),
-        abstract: `Performance optimization guide for ${skillConfig.description}, ordered by impact.`,
-      }
-    }
-
+    const metadata = await readSkillMetadata(skillConfig)
     const emptyMd = `# ${skillConfig.title}\n\n**Version ${metadata.version}**  \n${metadata.organization}  \n${metadata.date}\n\n> **Note:**  \n> This document is mainly for agents and LLMs to follow when maintaining,  \n> generating, or refactoring ${skillConfig.description}.\n\n---\n\n## Abstract\n\n${metadata.abstract}\n\n---\n\n*No rules have been added yet. Add rule files to the rules/ directory and rebuild.*\n`
-    await writeFile(skillConfig.outputFile, emptyMd, 'utf-8')
+    await writeTextFileIfChanged(skillConfig.outputFile, emptyMd)
     console.log(`  ✓ Built empty AGENTS.md`)
     return
   }
 
   const ruleData: RuleFile[] = []
-  for (const file of ruleFiles) {
-    const filePath = join(skillConfig.rulesDir, file)
+  const parsedRuleInputs: ParsedRuleInput[] = []
+  for (const input of ruleInputs) {
     try {
-      const parsed = await parseRuleFile(filePath, skillConfig.sectionMap)
+      const parsed = await parseRuleFile(input.filePath, input.sectionMap)
       ruleData.push(parsed)
+      parsedRuleInputs.push({ input, parsed })
     } catch (error) {
-      console.error(`  Error parsing ${file}:`, error)
+      console.error(`  Error parsing ${input.displayFile}:`, error)
     }
   }
+  await writeRuleManifestIfConfigured(skillConfig, ruleInputs, parsedRuleInputs)
 
   // Group rules by section
   const sectionsMap = new Map<number, Section>()
@@ -278,22 +414,7 @@ async function buildSkill(skillConfig: SkillConfig) {
     console.warn('  Warning: Could not read _sections.md, using defaults')
   }
 
-  // Read metadata
-  let metadata
-  try {
-    const metadataContent = await readFile(skillConfig.metadataFile, 'utf-8')
-    metadata = JSON.parse(metadataContent)
-  } catch {
-    metadata = {
-      version: '1.0.0',
-      organization: 'Microsoft',
-      date: new Date().toLocaleDateString('en-US', {
-        month: 'long',
-        year: 'numeric',
-      }),
-      abstract: `Performance optimization guide for ${skillConfig.description}, ordered by impact.`,
-    }
-  }
+  const metadata = await readSkillMetadata(skillConfig)
 
   // Upgrade version if flag is passed
   if (upgradeVersion) {
@@ -302,10 +423,9 @@ async function buildSkill(skillConfig: SkillConfig) {
     console.log(`  Upgrading version: ${oldVersion} -> ${metadata.version}`)
 
     // Write updated metadata.json
-    await writeFile(
+    await writeTextFileIfChanged(
       skillConfig.metadataFile,
-      JSON.stringify(metadata, null, 2) + '\n',
-      'utf-8'
+      JSON.stringify(metadata, null, 2) + '\n'
     )
     console.log(`  ✓ Updated metadata.json`)
 
@@ -317,7 +437,7 @@ async function buildSkill(skillConfig: SkillConfig) {
         /^(---[\s\S]*?version:\s*)"[^"]*"([\s\S]*?---)$/m,
         `$1"${metadata.version}"$2`
       )
-      await writeFile(skillFile, updatedSkillContent, 'utf-8')
+      await writeTextFileIfChanged(skillFile, updatedSkillContent)
       console.log(`  ✓ Updated SKILL.md`)
     } catch {
       // SKILL.md doesn't exist, skip
@@ -328,7 +448,7 @@ async function buildSkill(skillConfig: SkillConfig) {
   const markdown = generateMarkdown(sections, metadata, skillConfig)
 
   // Write output
-  await writeFile(skillConfig.outputFile, markdown, 'utf-8')
+  await writeTextFileIfChanged(skillConfig.outputFile, markdown)
 
   console.log(
     `  ✓ Built AGENTS.md with ${sections.length} sections and ${ruleData.length} rules`
