@@ -1,0 +1,151 @@
+[
+  { "id": "src-routing-load-target-skill", "domain": "routing", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "When a prompt concerns Azure Managed Redis, the routing layer should load the AMR-specific skill rather than answering from generic Redis knowledge alone." },
+  { "id": "src-routing-infra-vs-app", "domain": "routing", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Provisioning/infrastructure prompts route to the infrastructure skill; application and data-structure prompts route to the application skill." },
+
+  { "id": "src-conn-tls-required", "domain": "connection-auth", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "version-pinned", "public_safe": true,
+    "statement": "Production Azure Managed Redis clients must connect over TLS on the SSL port with certificate validation enabled.",
+    "api_version_pin": { "surface": "amr-connection", "version": "current", "effective_date": "2025-01-01" } },
+  { "id": "src-conn-entra-preferred", "domain": "connection-auth", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Microsoft Entra authentication with data-access policies is preferred over static access keys where identity-based access is available." },
+  { "id": "src-conn-reuse-multiplexer", "domain": "connection-auth", "authority": "dp-behavior", "locator_ref": "loc-dp-source", "stability": "stable", "public_safe": true,
+    "statement": "A process-wide connection multiplexer or pool must be reused instead of creating and disposing a client per request." },
+
+  { "id": "src-stampede-single-flight", "domain": "stampede", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "Concurrent recomputation of an expired hot key must be coalesced via single-flight, stale-while-revalidate, or a guarded lock." },
+  { "id": "src-stampede-lock-token", "domain": "stampede", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "A distributed lock must use a short TTL and a unique token with compare-and-delete release semantics." },
+  { "id": "src-stampede-ttl-jitter", "domain": "stampede", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "Cache TTLs need per-key jitter to prevent synchronized expiry of many hot keys at once." },
+
+  { "id": "src-cluster-crossslot", "domain": "cluster-policy", "authority": "dp-behavior", "locator_ref": "loc-dp-source", "stability": "stable", "public_safe": true,
+    "statement": "Under a clustered cache policy, a multi-key operation whose keys map to different slots is rejected with a CROSSSLOT error." },
+  { "id": "src-cluster-hashtag", "domain": "cluster-policy", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "A hash tag colocates keys onto a single slot so multi-key and Lua operations can execute together." },
+  { "id": "src-cluster-mkms-nuance", "domain": "cluster-policy", "authority": "contested", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
+    "statement": "Whether specific multi-key, multi-slot commands are permitted is determined by what the enterprise data plane enforces, not by the generic OSS-cluster assumption.",
+    "contested": {
+      "competing_claims": [
+        { "claim": "Multi-key multi-slot commands always fail exactly as in OSS cluster mode.", "asserted_by": "common-assumption" },
+        { "claim": "The enterprise data plane defines which multi-key multi-slot behaviors are allowed under its cluster policy.", "asserted_by": "redisinc-enterprise" }
+      ],
+      "winning_authority": "redisinc-enterprise",
+      "rationale": "The observable behavior is set by the enterprise data plane the deployment runs, so its enforcement is authoritative over the generic OSS assumption." } },
+
+  { "id": "src-db0-clustered-single-db", "domain": "db0-select", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "Under a clustered cache policy (including geo/CRDB), only logical database 0 is available and SELECT to a non-zero database is unsupported." },
+  { "id": "src-db0-nocluster-select", "domain": "db0-select", "authority": "contested", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "Under a non-clustered cache policy, multiple logical databases and SELECT may be available, contrary to a blanket assumption that Azure Managed Redis is always database-0-only.",
+    "contested": {
+      "competing_claims": [
+        { "claim": "Azure Managed Redis is always database-0-only regardless of cluster policy.", "asserted_by": "common-assumption" },
+        { "claim": "Multi-database SELECT availability depends on the cluster policy; the non-clustered policy can expose multiple databases.", "asserted_by": "cp-unit-test" }
+      ],
+      "winning_authority": "cp-unit-test",
+      "rationale": "The control-plane validation asserted by unit tests distinguishes clustered database-0-only behavior from non-clustered multi-database behavior." } },
+  { "id": "src-db0-keyprefix-guidance", "domain": "db0-select", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Use key prefixes for logical separation rather than relying on multiple logical databases." },
+
+  { "id": "src-streams-consumer-groups", "domain": "streams-pubsub", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "Reliable, replayable delivery uses Streams with consumer groups, explicit acknowledgement, and pending-entry recovery." },
+  { "id": "src-pubsub-no-persistence", "domain": "streams-pubsub", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "Publish/subscribe does not persist or redeliver messages; subscribers offline at publish time miss those messages." },
+  { "id": "src-streams-trim", "domain": "streams-pubsub", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "Streams must be bounded by length or time to prevent unbounded memory growth." },
+
+  { "id": "src-mem-eviction-policy", "domain": "memory-oom", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "A maxmemory eviction policy must be chosen to match cache-versus-durable-store intent; leaving a pure cache on noeviction causes write failures at capacity." },
+  { "id": "src-mem-headroom", "domain": "memory-oom", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Memory sizing targets peak or P95 usage with headroom for fragmentation and replication, not average usage." },
+  { "id": "src-mem-bigkeys", "domain": "memory-oom", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "Unbounded large keys or collections cause latency spikes and out-of-memory risk and must be bounded or partitioned." },
+
+  { "id": "src-vec-tier-capability", "domain": "vector-rag", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "version-pinned", "public_safe": true,
+    "statement": "Vector and search workloads require a tier and cluster policy that support the search/vector module.",
+    "api_version_pin": { "surface": "search-module", "version": "current", "effective_date": "2025-01-01" } },
+  { "id": "src-vec-tenant-filter", "domain": "vector-rag", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Tenant and ACL filters must be applied inside every vector query before results reach reranking or the LLM." },
+  { "id": "src-vec-dim-metric", "domain": "vector-rag", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
+    "statement": "The vector field dimension and distance metric must match the embedding model that produced the vectors." },
+  { "id": "src-semcache-scope", "domain": "vector-rag", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Semantic answer cache entries are scoped and invalidated by tenant, embedding model, prompt template, and knowledge-base version." },
+
+  { "id": "src-sku-metric-based", "domain": "sku-sizing", "authority": "contested", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "SKU and tier selection is driven by observed peak or P95 memory, server load, connected clients, bandwidth, and module needs rather than by mapping a legacy source SKU label.",
+    "contested": {
+      "competing_claims": [
+        { "claim": "Pick the new SKU by directly mapping the previous product's SKU label.", "asserted_by": "common-assumption" },
+        { "claim": "Pick the SKU from observed workload metrics and capability requirements.", "asserted_by": "amr-docs" }
+      ],
+      "winning_authority": "amr-docs",
+      "rationale": "Azure Managed Redis sizing guidance is metric- and capability-driven; legacy SKU labels do not map one-to-one." } },
+  { "id": "src-sku-module-region", "domain": "sku-sizing", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "volatile", "public_safe": true,
+    "statement": "Module support and regional or preview availability constrain which tier can be selected." },
+
+  { "id": "src-cp-reject-invalid-name", "domain": "cp-negative", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "The control plane rejects an invalid cache name or parameter at request time with a validation error rather than provisioning an invalid resource." },
+  { "id": "src-cp-reject-incompatible-feature", "domain": "cp-negative", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "The control plane rejects incompatible feature combinations at validation time rather than silently accepting them." },
+
+  { "id": "src-ha-zone-redundancy", "domain": "ha-persistence-geo", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Zone redundancy is a creation-time choice for availability-critical workloads, and clients must handle planned failovers with reconnection." },
+  { "id": "src-persist-vs-backup", "domain": "ha-persistence-geo", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Persistence and export backup address different failure modes than zone or geo resilience and are not substitutes for one another." },
+  { "id": "src-geo-active-incompat", "domain": "ha-persistence-geo", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Active geo-replication carries feature incompatibilities and is a provisioning-time decision, not an after-the-fact toggle." },
+
+  { "id": "src-geo-5-6-topology", "domain": "geo-active", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "A pure geo participant-count transition (denoted 5 to 6 as a generic marker) is permitted only as asserted by the control-plane validation unit test; the exact allowed transition is not inferable from general assumptions.",
+    "contested": {
+      "competing_claims": [
+        { "claim": "Any geo participant-count change is freely allowed.", "asserted_by": "common-assumption" },
+        { "claim": "The permitted pure-geo transition is exactly what the control-plane unit test asserts.", "asserted_by": "cp-unit-test" }
+      ],
+      "winning_authority": "cp-unit-test",
+      "rationale": "Control-plane validation encodes the allowed geo transitions; the unit test is the authority and its concrete assertion is resolved into eval-runs, not committed." } },
+  { "id": "src-geo-5-6-db0", "domain": "geo-active", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "Geo participants operate on database-0 semantics; a multi-database SELECT is not part of a valid geo transition." },
+
+  { "id": "src-migration-6-7-mixed", "domain": "migration", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "A mixed migration transition (denoted 6 to 7 as a generic marker) that combines a topology change with a version change is permitted only along the path the control-plane validation unit test asserts.",
+    "contested": {
+      "competing_claims": [
+        { "claim": "Topology and version changes can always be combined in one step.", "asserted_by": "common-assumption" },
+        { "claim": "The allowed mixed migration path is exactly what the control-plane unit test asserts.", "asserted_by": "cp-unit-test" }
+      ],
+      "winning_authority": "cp-unit-test",
+      "rationale": "Mixed migration validity is defined by control-plane validation; the unit test is authoritative and its details are resolved into eval-runs only." } },
+  { "id": "src-migration-cutover-safety", "domain": "migration", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "A migration must preserve data and provide a reversible cutover; no destructive in-place step is acceptable." },
+
+  { "id": "src-lifecycle-scale-online", "domain": "lifecycle", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Scale and upgrade operations can cause transient reconnects, so clients must tolerate brief connection interruptions." },
+  { "id": "src-lifecycle-provision-time-only", "domain": "lifecycle", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "Some settings are creation-time only and cannot be changed after provisioning; the control plane rejects an attempt to change them later." },
+
+  { "id": "src-net-private-link-dns", "domain": "networking-identity-observability", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Private Link requires correct private DNS zone linkage; using the privatelink host directly or a hub-only DNS link breaks name resolution for spoke clients." },
+  { "id": "src-identity-workload", "domain": "networking-identity-observability", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Workload or managed identity combined with data-access policies enables secretless client configuration." },
+  { "id": "src-observability-diagnostics", "domain": "networking-identity-observability", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "Diagnostic settings, connection logs, metrics, and alerts including HA and geo-replication alerts must be configured for a production deployment." },
+
+  { "id": "src-crdb-active-active", "domain": "crdb", "authority": "redisinc-enterprise", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
+    "statement": "A CRDB is active-active and uses conflict-free replicated data-type semantics, which differ from single-primary strong consistency.",
+    "contested": {
+      "competing_claims": [
+        { "claim": "A geo-replicated cache offers strong, single-primary consistency.", "asserted_by": "common-assumption" },
+        { "claim": "A CRDB resolves concurrent writes with conflict-free replicated semantics across active participants.", "asserted_by": "redisinc-enterprise" }
+      ],
+      "winning_authority": "redisinc-enterprise",
+      "rationale": "The enterprise engine defines CRDB conflict-resolution semantics, which are active-active and not single-primary." } },
+  { "id": "src-crdb-db0", "domain": "crdb", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+    "statement": "A CRDB operates on database-0 semantics; multiple logical databases are not available across the CRDB." },
+
+  { "id": "src-skill-no-stale", "domain": "skill-harm-staleness", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "version-pinned", "public_safe": true,
+    "statement": "Skill guidance must match the pinned surface version and must not assert behavior that a version-pinned fact now contradicts.",
+    "api_version_pin": { "surface": "skill-guidance", "version": "current", "effective_date": "2025-01-01" } },
+  { "id": "src-skill-no-harm", "domain": "skill-harm-staleness", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
+    "statement": "A loaded skill must not degrade a correct baseline answer by introducing an anti-pattern or unsafe recommendation." }
+]

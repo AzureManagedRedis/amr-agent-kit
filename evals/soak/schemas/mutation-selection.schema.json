@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/mutation-selection.schema.json",
+  "title": "SoakMutationSelection",
+  "description": "Defines held-out mutations of a scenario used to guard against overfitting. Final acceptance is measured on a held-out mutation selected at runtime; the selection seed is drawn from the gitignored eval-runs tree so the held-out choice is not baked into the committed manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "scenario_ref", "mutations", "selection"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^mut-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "scenario_ref": { "type": "string", "pattern": "^scn-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "mutations": {
+      "type": "array",
+      "minItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "description", "transform", "preserves_correct_answer"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^m[0-9]+$" },
+          "description": { "type": "string", "minLength": 10 },
+          "transform": { "type": "string", "minLength": 10, "description": "Public-safe description of how the prompt/artifacts are perturbed (e.g. 'swap workload numbers and reorder defects')." },
+          "preserves_correct_answer": { "type": "boolean", "description": "True if the mutation keeps the same correct answer; false mutations must flip expected grading." },
+          "held_out": { "type": "boolean", "description": "Eligible to be chosen as the held-out acceptance mutation." }
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["strategy", "seed_source", "count"],
+      "properties": {
+        "strategy": { "type": "string", "enum": ["random-held-out", "rotate", "worst-case"] },
+        "seed_source": { "type": "string", "const": "eval-runs", "description": "The selection seed is drawn from the gitignored eval-runs tree, not committed." },
+        "count": { "type": "integer", "minimum": 1 }
+      }
+    }
+  }
+}

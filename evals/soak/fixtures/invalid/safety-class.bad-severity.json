@@ -1,0 +1,3 @@
+{ "id": "saf-fixture-bad", "name": "Bad severity", "severity": "catastrophic", "blocking": true,
+  "description": "Severity is not in the allowed enum, so this must be rejected.",
+  "harm": "Fixture that exercises the enum check." }

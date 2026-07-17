@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/cache-requirement.schema.json",
+  "title": "SoakCacheRequirement",
+  "description": "A cache-correctness requirement a scenario answer must satisfy (key design, TTL, invalidation, stampede, scoping). Public-safe and behavior-oriented.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "requirement", "category", "verification"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^cch-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "requirement": { "type": "string", "minLength": 10 },
+    "category": {
+      "type": "string",
+      "enum": ["key-design", "ttl-expiry", "invalidation", "stampede", "scoping", "consistency", "eviction"]
+    },
+    "applies_when": { "type": "string", "description": "Condition under which the requirement is in force." },
+    "verification": { "type": "string", "minLength": 10, "description": "How a grader checks the requirement is met." },
+    "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] }
+  }
+}

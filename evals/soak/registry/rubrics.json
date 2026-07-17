@@ -1,0 +1,216 @@
+[
+  { "id": "rub-routing-cor", "kind": "correctness", "description": "AMR routing correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.8 },
+    "criteria": [
+      { "id": "c1", "statement": "Recognizes the prompt is AMR-specific and loads the target AMR skill instead of answering only from generic Redis knowledge.", "weight": 0.6, "required": true, "source_fact_ref": "src-routing-load-target-skill" },
+      { "id": "c2", "statement": "Routes infrastructure/provisioning intent to the infra skill and application/data intent to the application skill.", "weight": 0.4, "required": false, "source_fact_ref": "src-routing-infra-vs-app" }
+    ] },
+  { "id": "rub-routing-act", "kind": "actionability", "description": "Routing actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "States concretely which skill to load and why for the given prompt.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-conn-cor", "kind": "correctness", "description": "Connection and auth correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Requires TLS on the SSL port with certificate validation for the production client.", "weight": 0.4, "required": true, "source_fact_ref": "src-conn-tls-required" },
+      { "id": "c2", "statement": "Prefers Entra/managed identity with data-access policies over static access keys.", "weight": 0.3, "required": true, "source_fact_ref": "src-conn-entra-preferred" },
+      { "id": "c3", "statement": "Reuses a process-wide multiplexer/pool instead of per-request connections.", "weight": 0.3, "required": false, "source_fact_ref": "src-conn-reuse-multiplexer" }
+    ] },
+  { "id": "rub-conn-act", "kind": "actionability", "description": "Connection actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Gives concrete client configuration: TLS scheme, SSL port, timeouts, and bounded retries.", "weight": 0.6, "required": true },
+      { "id": "c2", "statement": "Shows how to wire identity-based auth and secretless configuration.", "weight": 0.4, "required": false }
+    ] },
+
+  { "id": "rub-stampede-cor", "kind": "correctness", "description": "Stampede correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Coalesces concurrent recompute of the hot key via single-flight, SWR, or a guarded lock.", "weight": 0.5, "required": true, "source_fact_ref": "src-stampede-single-flight" },
+      { "id": "c2", "statement": "Uses a short-TTL, unique-token lock with compare-and-delete release if a lock is used.", "weight": 0.3, "required": true, "source_fact_ref": "src-stampede-lock-token" },
+      { "id": "c3", "statement": "Adds per-key TTL jitter to avoid synchronized expiry.", "weight": 0.2, "required": false, "source_fact_ref": "src-stampede-ttl-jitter" }
+    ] },
+  { "id": "rub-stampede-act", "kind": "actionability", "description": "Stampede actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Provides a concrete cache-aside flow with named keys, TTLs, and coalescing mechanism.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-cluster-cor", "kind": "correctness", "description": "Cluster-policy correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Explains that multi-key ops across slots fail with CROSSSLOT under a clustered policy.", "weight": 0.4, "required": true, "source_fact_ref": "src-cluster-crossslot" },
+      { "id": "c2", "statement": "Uses hash tags to colocate co-accessed keys for multi-key/Lua operations.", "weight": 0.3, "required": true, "source_fact_ref": "src-cluster-hashtag" },
+      { "id": "c3", "statement": "Defers nuanced multi-key multi-slot behavior to what the enterprise data plane enforces rather than the OSS assumption.", "weight": 0.3, "required": false, "source_fact_ref": "src-cluster-mkms-nuance" }
+    ] },
+  { "id": "rub-cluster-act", "kind": "actionability", "description": "Cluster actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Rewrites the offending keys/commands with concrete hash-tag colocation.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-db0-cor", "kind": "correctness", "description": "DB0/SELECT correctness across cluster policies.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "States that a clustered/geo/CRDB deployment is database-0-only and SELECT to non-zero is unsupported.", "weight": 0.4, "required": true, "source_fact_ref": "src-db0-clustered-single-db" },
+      { "id": "c2", "statement": "Correctly qualifies that a non-clustered policy may expose multiple databases, rejecting the blanket always-DB0 assumption.", "weight": 0.4, "required": true, "source_fact_ref": "src-db0-nocluster-select" },
+      { "id": "c3", "statement": "Recommends key prefixes for logical separation instead of relying on multiple databases.", "weight": 0.2, "required": false, "source_fact_ref": "src-db0-keyprefix-guidance" }
+    ] },
+  { "id": "rub-db0-act", "kind": "actionability", "description": "DB0 actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Gives a concrete key-prefix scheme and tells the reader how to confirm the deployment's cluster policy first.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-streams-cor", "kind": "correctness", "description": "Streams/PubSub correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Uses Streams with consumer groups, acknowledgement, and pending recovery for reliable delivery.", "weight": 0.5, "required": true, "source_fact_ref": "src-streams-consumer-groups" },
+      { "id": "c2", "statement": "Explains that PubSub does not persist or redeliver to offline subscribers.", "weight": 0.3, "required": true, "source_fact_ref": "src-pubsub-no-persistence" },
+      { "id": "c3", "statement": "Bounds stream growth with trimming by length or time.", "weight": 0.2, "required": false, "source_fact_ref": "src-streams-trim" }
+    ] },
+  { "id": "rub-streams-act", "kind": "actionability", "description": "Streams actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Provides concrete producer/consumer-group commands, ack flow, and trimming policy.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-mem-cor", "kind": "correctness", "description": "Memory/OOM correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Chooses a maxmemory eviction policy matching cache-vs-store intent and flags noeviction OOM write failures.", "weight": 0.4, "required": true, "source_fact_ref": "src-mem-eviction-policy" },
+      { "id": "c2", "statement": "Sizes to peak/P95 with headroom rather than average.", "weight": 0.3, "required": true, "source_fact_ref": "src-mem-headroom" },
+      { "id": "c3", "statement": "Identifies and bounds unbounded big keys/collections.", "weight": 0.3, "required": false, "source_fact_ref": "src-mem-bigkeys" }
+    ] },
+  { "id": "rub-mem-act", "kind": "actionability", "description": "Memory actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Names the eviction policy to set and the sizing target derived from metrics.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-vec-cor", "kind": "correctness", "description": "Vector/RAG/semcache correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "Requires a tier/cluster policy that supports the search/vector module before designing the index.", "weight": 0.25, "required": true, "source_fact_ref": "src-vec-tier-capability" },
+      { "id": "c2", "statement": "Applies tenant/ACL filters inside the vector query before results reach the LLM.", "weight": 0.35, "required": true, "source_fact_ref": "src-vec-tenant-filter" },
+      { "id": "c3", "statement": "Aligns vector dimension and distance metric with the embedding model.", "weight": 0.2, "required": true, "source_fact_ref": "src-vec-dim-metric" },
+      { "id": "c4", "statement": "Scopes semantic cache by tenant, model, prompt template, and knowledge-base version.", "weight": 0.2, "required": false, "source_fact_ref": "src-semcache-scope" }
+    ] },
+  { "id": "rub-vec-act", "kind": "actionability", "description": "Vector actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.75 },
+    "criteria": [
+      { "id": "c1", "statement": "Provides a concrete index schema, filtered query, ingestion pattern, and cache boundary.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-sku-cor", "kind": "correctness", "description": "SKU sizing correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Derives the SKU from workload metrics and capabilities, not from mapping a legacy source SKU label.", "weight": 0.6, "required": true, "source_fact_ref": "src-sku-metric-based" },
+      { "id": "c2", "statement": "Accounts for module and regional/preview availability constraints.", "weight": 0.4, "required": false, "source_fact_ref": "src-sku-module-region" }
+    ] },
+  { "id": "rub-sku-act", "kind": "actionability", "description": "SKU actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Recommends a concrete tier/size with the metric-based justification shown.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-cpneg-cor", "kind": "correctness", "description": "Control-plane negative validation correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "Predicts the control plane rejects the invalid name/parameter with a validation error.", "weight": 0.5, "required": true, "source_fact_ref": "src-cp-reject-invalid-name" },
+      { "id": "c2", "statement": "Predicts rejection of the incompatible feature combination rather than silent acceptance.", "weight": 0.5, "required": true, "source_fact_ref": "src-cp-reject-incompatible-feature" }
+    ] },
+  { "id": "rub-cpneg-act", "kind": "actionability", "description": "CP negative actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Tells the reader how to correct the request so validation passes.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-ha-cor", "kind": "correctness", "description": "HA/persistence/geo correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Chooses zone redundancy at creation and requires client failover handling.", "weight": 0.4, "required": true, "source_fact_ref": "src-ha-zone-redundancy" },
+      { "id": "c2", "statement": "Distinguishes persistence/backup from zone/geo resilience as different failure modes.", "weight": 0.3, "required": true, "source_fact_ref": "src-persist-vs-backup" },
+      { "id": "c3", "statement": "Treats active geo-replication as a provisioning-time decision with incompatibilities.", "weight": 0.3, "required": false, "source_fact_ref": "src-geo-active-incompat" }
+    ] },
+  { "id": "rub-ha-act", "kind": "actionability", "description": "HA actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Specifies concrete creation-time choices and client resilience behaviors.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-geo-cor", "kind": "correctness", "description": "Pure geo transition correctness (CP-unit-test-backed).",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "Defers the permitted pure-geo transition to the control-plane validation rather than assuming any change is allowed.", "weight": 0.6, "required": true, "source_fact_ref": "src-geo-5-6-topology" },
+      { "id": "c2", "statement": "Keeps geo participants on database-0 semantics with no multi-database SELECT.", "weight": 0.4, "required": true, "source_fact_ref": "src-geo-5-6-db0" }
+    ] },
+  { "id": "rub-geo-act", "kind": "actionability", "description": "Geo actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Tells the reader to validate the transition against the control-plane rule before acting and how to stage it safely.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-migration-cor", "kind": "correctness", "description": "Mixed migration correctness (CP-unit-test-backed).",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "Constrains the mixed topology+version migration to the path the control-plane validation asserts.", "weight": 0.5, "required": true, "source_fact_ref": "src-migration-6-7-mixed" },
+      { "id": "c2", "statement": "Requires data preservation and a reversible cutover with no destructive in-place step.", "weight": 0.5, "required": true, "source_fact_ref": "src-migration-cutover-safety" }
+    ] },
+  { "id": "rub-migration-act", "kind": "actionability", "description": "Migration actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Lays out a concrete, staged, reversible migration sequence.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-lifecycle-cor", "kind": "correctness", "description": "Lifecycle correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Notes scale/upgrade can cause transient reconnects and requires client tolerance.", "weight": 0.5, "required": true, "source_fact_ref": "src-lifecycle-scale-online" },
+      { "id": "c2", "statement": "Identifies creation-time-only settings that cannot be changed later.", "weight": 0.5, "required": true, "source_fact_ref": "src-lifecycle-provision-time-only" }
+    ] },
+  { "id": "rub-lifecycle-act", "kind": "actionability", "description": "Lifecycle actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Provides a concrete change plan separating online operations from creation-time decisions.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-net-cor", "kind": "correctness", "description": "Networking/identity/observability correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
+    "criteria": [
+      { "id": "c1", "statement": "Requires correct private DNS zone linkage and rejects direct privatelink-host or hub-only DNS assumptions.", "weight": 0.4, "required": true, "source_fact_ref": "src-net-private-link-dns" },
+      { "id": "c2", "statement": "Uses workload/managed identity with data-access policies for secretless clients.", "weight": 0.3, "required": true, "source_fact_ref": "src-identity-workload" },
+      { "id": "c3", "statement": "Configures diagnostics, logs, metrics, and HA/geo alerts.", "weight": 0.3, "required": false, "source_fact_ref": "src-observability-diagnostics" }
+    ] },
+  { "id": "rub-net-act", "kind": "actionability", "description": "Networking actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Gives concrete DNS zone linkage, identity wiring, and diagnostic settings.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-crdb-cor", "kind": "correctness", "description": "CRDB correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "Describes CRDB as active-active with conflict-free replicated semantics, not single-primary strong consistency.", "weight": 0.6, "required": true, "source_fact_ref": "src-crdb-active-active" },
+      { "id": "c2", "statement": "Keeps CRDB on database-0 semantics with no multi-database usage.", "weight": 0.4, "required": true, "source_fact_ref": "src-crdb-db0" }
+    ] },
+  { "id": "rub-crdb-act", "kind": "actionability", "description": "CRDB actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Gives concrete data-model guidance that tolerates active-active conflict resolution.", "weight": 1.0, "required": true }
+    ] },
+
+  { "id": "rub-skillharm-cor", "kind": "correctness", "description": "Skill-harm/staleness correctness.",
+    "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
+    "criteria": [
+      { "id": "c1", "statement": "Skill guidance matches the pinned surface version and asserts nothing a pinned fact contradicts.", "weight": 0.5, "required": true, "source_fact_ref": "src-skill-no-stale" },
+      { "id": "c2", "statement": "Skill output does not degrade the correct baseline by introducing an anti-pattern.", "weight": 0.5, "required": true, "source_fact_ref": "src-skill-no-harm" }
+    ] },
+  { "id": "rub-skillharm-act", "kind": "actionability", "description": "Skill-harm actionability.",
+    "scoring": { "method": "weighted", "pass_threshold": 0.7 },
+    "criteria": [
+      { "id": "c1", "statement": "Identifies the stale/harmful element and states the corrected, version-current guidance.", "weight": 1.0, "required": true }
+    ] }
+]

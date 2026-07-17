@@ -1,0 +1,29 @@
+{
+  "id": "scn-sku-workload-sizing",
+  "title": "Recommend an AMR SKU from workload metrics",
+  "domain": "sku-sizing",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "contested",
+  "intent": "Checks the answer derives the tier from observed workload metrics and capability needs rather than mapping a legacy source SKU label, and accounts for module and region/preview constraints.",
+  "prompt": "Recommend an Azure Managed Redis tier for this workload and justify the choice.",
+  "input_artifacts": [
+    {
+      "name": "workload.txt",
+      "kind": "workload-metrics",
+      "content": "current: legacy product 'C3' cache; ask: 'just pick the equivalent AMR SKU by mapping C3'; metrics available but ignored: P95 memory 40 GB, peak server load high, ~20k connected clients, sustained 800 Mbps, requires the search module, target region has limited preview availability",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Requests a direct legacy-SKU-label mapping instead of metric-based sizing.", "source_fact_ref": "src-sku-metric-based" },
+        { "id": "d2", "defect": "Ignores module requirement and regional/preview availability constraints.", "source_fact_ref": "src-sku-module-region" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-cost-overrun"],
+  "source_facts": ["src-sku-metric-based", "src-sku-module-region"],
+  "correctness_rubric_ref": "rub-sku-cor",
+  "actionability_rubric_ref": "rub-sku-act",
+  "baseline_leakage_canaries": ["blc-sku-baseline"],
+  "grader_canaries": ["grc-sku-good", "grc-sku-bad"],
+  "mutation_selection_ref": "mut-sku",
+  "acceptance_ref": "acc-standard"
+}

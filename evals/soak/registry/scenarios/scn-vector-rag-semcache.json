@@ -1,0 +1,33 @@
+{
+  "id": "scn-vector-rag-semcache",
+  "title": "Correct a multi-tenant RAG vector and semantic-cache design",
+  "domain": "vector-rag",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks the answer requires a search-capable tier, filters tenant/ACL inside the vector query, aligns dimension/metric, and scopes the semantic cache by identity and version.",
+  "prompt": "Critique and replace this multi-tenant RAG vector design on Azure Managed Redis, giving the corrected schema, query, ingestion, and cache boundaries.",
+  "input_artifacts": [
+    {
+      "name": "rag-design.txt",
+      "kind": "code",
+      "content": "index: one global vector index for all tenants; embeddings: 1536-dim, metric assumed default; query: KNN across all chunks then filter tenant and ACL in app code after generation; ingestion: append chunks on every re-ingest; semantic cache: keyed by normalized question only; no check that the tier supports the search/vector module",
+      "embedded_defects": [
+        { "id": "d1", "defect": "No verification that the tier and cluster policy support the search/vector module.", "source_fact_ref": "src-vec-tier-capability" },
+        { "id": "d2", "defect": "Tenant/ACL filtered in app code after generation instead of inside the vector query.", "source_fact_ref": "src-vec-tenant-filter" },
+        { "id": "d3", "defect": "Distance metric not aligned to the embedding model.", "source_fact_ref": "src-vec-dim-metric" },
+        { "id": "d4", "defect": "Semantic cache keyed only by question, ignoring tenant, model, prompt, and KB version.", "source_fact_ref": "src-semcache-scope" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-cross-tenant-leak"],
+  "cache_requirements": ["cch-semcache-scoping"],
+  "source_facts": ["src-vec-tier-capability", "src-vec-tenant-filter", "src-vec-dim-metric", "src-semcache-scope"],
+  "live_probes": ["prb-module-search"],
+  "correctness_rubric_ref": "rub-vec-cor",
+  "actionability_rubric_ref": "rub-vec-act",
+  "baseline_leakage_canaries": ["blc-vec-baseline"],
+  "grader_canaries": ["grc-vec-good", "grc-vec-bad"],
+  "mutation_selection_ref": "mut-vec",
+  "acceptance_ref": "acc-strict"
+}

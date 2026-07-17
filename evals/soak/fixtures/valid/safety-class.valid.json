@@ -1,0 +1,4 @@
+{ "id": "saf-fixture-ok", "name": "Fixture safety class", "severity": "high", "blocking": true,
+  "description": "A valid safety class used only for schema-fixture validation.",
+  "harm": "Demonstrates a schema-conformant safety-class object.",
+  "detection_hint": "Never triggers in real grading; fixture only." }

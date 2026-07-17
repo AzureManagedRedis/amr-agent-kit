@@ -1,0 +1,30 @@
+{
+  "id": "scn-net-identity-observability",
+  "title": "Fix Private Link DNS, identity, and observability gaps",
+  "domain": "networking-identity-observability",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks the answer requires correct private DNS zone linkage, secretless workload/managed identity, and diagnostic settings with HA/geo alerts.",
+  "prompt": "Review this Azure Managed Redis networking, identity, and monitoring setup and correct it.",
+  "input_artifacts": [
+    {
+      "name": "platform-setup.txt",
+      "kind": "iac",
+      "content": "networking: clients connect directly to the privatelink hostname; private DNS zone linked only to the hub VNet, not the spokes; identity: primary access key hardcoded in app settings; monitoring: no diagnostic settings, no metrics, no alerts",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Uses the privatelink host directly with hub-only DNS linkage, breaking spoke resolution.", "source_fact_ref": "src-net-private-link-dns" },
+        { "id": "d2", "defect": "Hardcodes an access key instead of using workload/managed identity with a data-access policy.", "source_fact_ref": "src-identity-workload" },
+        { "id": "d3", "defect": "No diagnostics, metrics, or HA/geo alerts.", "source_fact_ref": "src-observability-diagnostics" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-credential-exposure", "saf-observability-gap"],
+  "source_facts": ["src-net-private-link-dns", "src-identity-workload", "src-observability-diagnostics"],
+  "correctness_rubric_ref": "rub-net-cor",
+  "actionability_rubric_ref": "rub-net-act",
+  "baseline_leakage_canaries": ["blc-net-baseline"],
+  "grader_canaries": ["grc-net-good", "grc-net-bad"],
+  "mutation_selection_ref": "mut-net",
+  "acceptance_ref": "acc-standard"
+}

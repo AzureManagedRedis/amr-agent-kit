@@ -1,0 +1,17 @@
+{
+  "id": "scn-fixture-nofacts",
+  "title": "Scenario missing required source_facts",
+  "domain": "connection-auth",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "source_facts is required and has minItems 1; omitting it must fail.",
+  "prompt": "Review the fixture artifact.",
+  "input_artifacts": [ { "name": "a.txt", "kind": "config", "content": "x" } ],
+  "safety_classes": [],
+  "correctness_rubric_ref": "rub-fixture-cor",
+  "actionability_rubric_ref": "rub-fixture-act",
+  "baseline_leakage_canaries": [],
+  "mutation_selection_ref": "mut-fixture-ok",
+  "acceptance_ref": "acc-fixture-ok"
+}

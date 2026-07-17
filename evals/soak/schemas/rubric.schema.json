@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/rubric.schema.json",
+  "title": "SoakRubric",
+  "description": "An independent scoring rubric. Correctness rubrics grade factual anchoring to source facts; actionability rubrics grade whether the answer is concretely usable. The two kinds are scored and reported separately.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "kind", "criteria", "scoring"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^rub-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "kind": { "type": "string", "enum": ["correctness", "actionability"] },
+    "description": { "type": "string" },
+    "criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "statement", "weight", "required"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^c[0-9]+$" },
+          "statement": { "type": "string", "minLength": 10 },
+          "weight": { "type": "number", "minimum": 0, "maximum": 1 },
+          "required": { "type": "boolean", "description": "A required criterion must pass for the rubric to pass, regardless of weighted score." },
+          "source_fact_ref": {
+            "type": "string",
+            "pattern": "^src-[a-z0-9]+(-[a-z0-9]+)*$",
+            "description": "Correctness criteria anchor to a source fact id. Omit for actionability criteria."
+          }
+        }
+      }
+    },
+    "scoring": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "pass_threshold"],
+      "properties": {
+        "method": { "type": "string", "enum": ["weighted", "all-required", "weighted-with-required-gate"] },
+        "pass_threshold": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

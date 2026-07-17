@@ -1,0 +1,30 @@
+{
+  "id": "scn-cp-negative-validation",
+  "title": "Predict control-plane rejection of an invalid request",
+  "domain": "cp-negative",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "cp-unit-test",
+  "cp_unit_test_backed": true,
+  "intent": "Checks the answer predicts the control plane rejects an invalid name/parameter and an incompatible feature combination at validation time, and shows how to correct the request.",
+  "prompt": "A team submitted this Azure Managed Redis create request and expected it to succeed. Predict what the control plane does and how to fix it.",
+  "input_artifacts": [
+    {
+      "name": "create-request.txt",
+      "kind": "iac",
+      "content": "name: 'My Cache!!' (spaces and illegal characters); features: enables a capability that is not supported with the chosen cluster policy and tier; expectation: 'the platform will accept and provision it as-is'",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Invalid resource name is expected to provision instead of being rejected by validation.", "source_fact_ref": "src-cp-reject-invalid-name" },
+        { "id": "d2", "defect": "Incompatible feature/cluster-policy combination is expected to be silently accepted.", "source_fact_ref": "src-cp-reject-incompatible-feature" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-stale-guidance"],
+  "source_facts": ["src-cp-reject-invalid-name", "src-cp-reject-incompatible-feature"],
+  "correctness_rubric_ref": "rub-cpneg-cor",
+  "actionability_rubric_ref": "rub-cpneg-act",
+  "baseline_leakage_canaries": ["blc-cpneg-baseline", "blc-cpneg-internal-leak"],
+  "grader_canaries": ["grc-cpneg-good", "grc-cpneg-bad"],
+  "mutation_selection_ref": "mut-cpneg",
+  "acceptance_ref": "acc-strict"
+}

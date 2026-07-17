@@ -1,0 +1,29 @@
+{
+  "id": "scn-skill-harm-staleness",
+  "title": "Detect stale or harmful skill guidance against a correct baseline",
+  "domain": "skill-harm-staleness",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks that loaded-skill output matches the pinned surface version and does not degrade an already-correct baseline by introducing an anti-pattern. This is the guardrail that a skill must not make answers worse.",
+  "prompt": "Compare the baseline answer and the skill-influenced answer below. Decide whether the skill guidance is current and non-harmful, and correct it if not.",
+  "input_artifacts": [
+    {
+      "name": "answer-pair.txt",
+      "kind": "policy",
+      "content": "baseline answer: recommends TLS on the SSL port, identity-based auth, and pooled connections (correct). skill-influenced answer: repeats an older claim that contradicts the current pinned connection guidance and additionally reintroduces a per-request-connection anti-pattern the baseline did not have; pinned surface version has since advanced",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Skill asserts behavior that the version-pinned connection fact now contradicts.", "source_fact_ref": "src-skill-no-stale" },
+        { "id": "d2", "defect": "Skill degrades a correct baseline by reintroducing an anti-pattern.", "source_fact_ref": "src-skill-no-harm" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-stale-guidance", "saf-resource-exhaustion"],
+  "source_facts": ["src-skill-no-stale", "src-skill-no-harm"],
+  "correctness_rubric_ref": "rub-skillharm-cor",
+  "actionability_rubric_ref": "rub-skillharm-act",
+  "baseline_leakage_canaries": ["blc-skillharm-baseline"],
+  "grader_canaries": ["grc-skillharm-good", "grc-skillharm-bad"],
+  "mutation_selection_ref": "mut-skillharm",
+  "acceptance_ref": "acc-strict"
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/source-provider-locator.schema.json",
+  "title": "SoakSourceProviderLocator",
+  "description": "A runtime contract that tells a source-provider HOW to resolve a fact to a concrete citation, WITHOUT committing the citation. The committed contract is public-safe: it names an abstract provider and query shape only. Resolved citations, proprietary paths/symbols/lines, and effective config are written to the gitignored eval-runs/ tree, never into this manifest.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "provider_kind", "resolution", "citation_sink", "public_safe"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^loc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "provider_kind": {
+      "type": "string",
+      "enum": ["cp-source", "dp-source", "redisinc-source", "cp-unit-test", "amr-docs", "redis-oss-docs", "live-probe"],
+      "description": "Abstract class of the private/external provider. No provider endpoints or paths are encoded here."
+    },
+    "resolution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query_shape", "expected_artifact_kind"],
+      "properties": {
+        "query_shape": {
+          "type": "string",
+          "minLength": 5,
+          "description": "Public-safe description of the lookup the provider performs (e.g. 'symbol-name search in control-plane validation module'). MUST NOT contain a concrete path, symbol, or line."
+        },
+        "expected_artifact_kind": {
+          "type": "string",
+          "enum": ["unit-test-assertion", "validation-rule", "command-behavior", "config-default", "doc-section", "probe-signal"]
+        }
+      }
+    },
+    "citation_sink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["destination", "path_template"],
+      "properties": {
+        "destination": { "type": "string", "const": "eval-runs", "description": "Resolved citations MUST land in the gitignored eval-runs tree only." },
+        "path_template": {
+          "type": "string",
+          "pattern": "^eval-runs/",
+          "description": "Template for where the runtime writes the resolved citation. Relative to repo root under the gitignored eval-runs/ tree."
+        }
+      }
+    },
+    "redaction_policy": {
+      "type": "string",
+      "description": "Public-safe statement of what the provider must strip before any value leaves eval-runs (paths, symbols, lines, endpoints, subscriptions, effective config)."
+    },
+    "public_safe": {
+      "type": "boolean",
+      "const": true,
+      "description": "Asserts this committed contract contains no proprietary source, paths, symbols, lines, endpoints, or effective config."
+    }
+  }
+}

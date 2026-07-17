@@ -1,0 +1,4 @@
+{ "id": "loc-fixture-bad", "provider_kind": "cp-unit-test", "public_safe": true,
+  "resolution": { "query_shape": "named-behavior lookup", "expected_artifact_kind": "unit-test-assertion" },
+  "citation_sink": { "destination": "repo", "path_template": "docs/citations/{fact_id}.json" },
+  "redaction_policy": "Sink destination must be eval-runs and path_template must start with eval-runs/; both violated here." }

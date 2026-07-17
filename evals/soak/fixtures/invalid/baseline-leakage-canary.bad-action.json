@@ -1,0 +1,2 @@
+{ "id": "blc-fixture-bad", "scenario_ref": "scn-fixture-ok", "canary_kind": "baseline-already-correct",
+  "match": "substring", "action": "escalate", "signal": "action value is not in the allowed enum" }

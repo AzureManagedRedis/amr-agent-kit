@@ -1,0 +1,32 @@
+{
+  "id": "scn-db0-cluster-vs-nocluster-select",
+  "title": "Resolve DB0-only vs multi-database SELECT by cluster policy",
+  "domain": "db0-select",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "cp-unit-test",
+  "cp_unit_test_backed": true,
+  "intent": "Checks the answer correctly separates clustered/geo/CRDB database-0-only behavior from non-clustered multi-database behavior, rejecting the blanket always-DB0 assumption, and steers to key prefixes.",
+  "prompt": "A team assumed Azure Managed Redis always supports 16 logical databases and used SELECT across them. Review the design against the deployment's cluster policy and correct it.",
+  "input_artifacts": [
+    {
+      "name": "db-usage.txt",
+      "kind": "code",
+      "content": "deployment: two environments, one clustered (also used for geo), one non-clustered; app calls SELECT 3 for sessions and SELECT 7 for jobs on both; assumption: 'AMR always has 16 databases everywhere'",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Uses SELECT to non-zero databases on the clustered/geo deployment where only database 0 exists.", "source_fact_ref": "src-db0-clustered-single-db" },
+        { "id": "d2", "defect": "Applies a blanket always-DB0 or always-16-DB assumption instead of distinguishing the non-clustered policy that can expose multiple databases.", "source_fact_ref": "src-db0-nocluster-select" },
+        { "id": "d3", "defect": "Relies on multiple databases instead of key prefixes for logical separation.", "source_fact_ref": "src-db0-keyprefix-guidance" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-db-semantics"],
+  "source_facts": ["src-db0-clustered-single-db", "src-db0-nocluster-select", "src-db0-keyprefix-guidance"],
+  "live_probes": ["prb-select-support", "prb-cluster-enabled"],
+  "correctness_rubric_ref": "rub-db0-cor",
+  "actionability_rubric_ref": "rub-db0-act",
+  "baseline_leakage_canaries": ["blc-db0-baseline", "blc-db0-internal-leak"],
+  "grader_canaries": ["grc-db0-good", "grc-db0-bad"],
+  "mutation_selection_ref": "mut-db0",
+  "acceptance_ref": "acc-strict"
+}

@@ -1,0 +1,29 @@
+{
+  "id": "scn-lifecycle-scale-upgrade",
+  "title": "Separate online scale operations from creation-time-only settings",
+  "domain": "lifecycle",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks the answer expects transient reconnects during scale/upgrade and requires client tolerance, and identifies creation-time-only settings that cannot be changed later.",
+  "prompt": "Review this Azure Managed Redis change plan for scaling and upgrading a running service and correct the assumptions.",
+  "input_artifacts": [
+    {
+      "name": "change-plan.txt",
+      "kind": "policy",
+      "content": "assumption: 'scaling and upgrades never drop connections so clients need no retry logic'; plan: change a creation-time-only setting on the live resource and expect it to apply; no reconnect handling",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Assumes scale/upgrade never causes reconnects and omits client retry tolerance.", "source_fact_ref": "src-lifecycle-scale-online" },
+        { "id": "d2", "defect": "Plans to change a creation-time-only setting after provisioning.", "source_fact_ref": "src-lifecycle-provision-time-only" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-availability-regression"],
+  "source_facts": ["src-lifecycle-scale-online", "src-lifecycle-provision-time-only"],
+  "correctness_rubric_ref": "rub-lifecycle-cor",
+  "actionability_rubric_ref": "rub-lifecycle-act",
+  "baseline_leakage_canaries": ["blc-lifecycle-baseline"],
+  "grader_canaries": ["grc-lifecycle-good", "grc-lifecycle-bad"],
+  "mutation_selection_ref": "mut-lifecycle",
+  "acceptance_ref": "acc-standard"
+}

@@ -1,0 +1,4 @@
+{ "id": "rub-fixture-bad", "kind": "correctness", "description": "Missing the required scoring object.",
+  "criteria": [
+    { "id": "c1", "statement": "A criterion with no scoring block on the rubric.", "weight": 1.0, "required": true }
+  ] }

@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/grader-canary.schema.json",
+  "title": "SoakGraderCanary",
+  "description": "A known-good or known-bad synthetic answer used to validate the grader itself. Known-good answers MUST grade pass; known-bad answers MUST grade fail. Answers are public-safe synthetic text authored for grader calibration, not real model output.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "scenario_ref", "answer_kind", "answer_excerpt", "expected_grade"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^grc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "scenario_ref": { "type": "string", "pattern": "^scn-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "answer_kind": { "type": "string", "enum": ["known-good", "known-bad"] },
+    "answer_excerpt": { "type": "string", "minLength": 20, "description": "Public-safe synthetic answer text the grader must score deterministically." },
+    "expected_grade": { "type": "string", "enum": ["pass", "fail"] },
+    "must_trigger_criteria": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^c[0-9]+$" },
+      "description": "Rubric criterion ids this canary is expected to satisfy (known-good) or miss (known-bad)."
+    },
+    "must_trigger_safety": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^saf-[a-z0-9]+(-[a-z0-9]+)*$" },
+      "description": "Safety-class ids a known-bad answer is expected to violate."
+    }
+  }
+}

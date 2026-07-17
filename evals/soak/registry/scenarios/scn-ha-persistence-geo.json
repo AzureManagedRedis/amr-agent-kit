@@ -1,0 +1,30 @@
+{
+  "id": "scn-ha-persistence-geo",
+  "title": "Design HA, persistence, and geo for a critical service",
+  "domain": "ha-persistence-geo",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks the answer selects zone redundancy at creation with client failover handling, distinguishes persistence/backup from zone/geo resilience, and treats active geo-replication as a provisioning-time decision.",
+  "prompt": "Review this reliability plan for a revenue-critical Azure Managed Redis deployment and correct it.",
+  "input_artifacts": [
+    {
+      "name": "reliability-plan.txt",
+      "kind": "policy",
+      "content": "topology: single zone; backups: periodic export considered equivalent to zone resilience; failover: clients assume the endpoint never drops; geo: 'we will enable active geo-replication later if needed'",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Single-zone topology with no failover handling for an availability-critical workload.", "source_fact_ref": "src-ha-zone-redundancy" },
+        { "id": "d2", "defect": "Treats export backup as a substitute for zone/geo resilience.", "source_fact_ref": "src-persist-vs-backup" },
+        { "id": "d3", "defect": "Assumes active geo-replication can be toggled on later rather than decided at provisioning.", "source_fact_ref": "src-geo-active-incompat" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-availability-regression"],
+  "source_facts": ["src-ha-zone-redundancy", "src-persist-vs-backup", "src-geo-active-incompat"],
+  "correctness_rubric_ref": "rub-ha-cor",
+  "actionability_rubric_ref": "rub-ha-act",
+  "baseline_leakage_canaries": ["blc-ha-baseline"],
+  "grader_canaries": ["grc-ha-good", "grc-ha-bad"],
+  "mutation_selection_ref": "mut-ha",
+  "acceptance_ref": "acc-strict"
+}

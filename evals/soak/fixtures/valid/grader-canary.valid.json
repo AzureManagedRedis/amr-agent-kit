@@ -1,0 +1,3 @@
+{ "id": "grc-fixture-ok", "scenario_ref": "scn-fixture-ok", "answer_kind": "known-good", "expected_grade": "pass",
+  "must_trigger_criteria": ["c1"],
+  "answer_excerpt": "A public-safe synthetic answer that satisfies the fixture rubric's required criterion." }

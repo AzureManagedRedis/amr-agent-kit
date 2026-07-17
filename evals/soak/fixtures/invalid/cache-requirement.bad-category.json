@@ -1,0 +1,3 @@
+{ "id": "cch-fixture-bad", "category": "sharding", "severity": "high",
+  "requirement": "Category value is not in the allowed enum, so this is rejected.",
+  "verification": "Fixture that exercises the category enum check." }

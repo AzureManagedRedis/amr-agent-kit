@@ -1,0 +1,86 @@
+[
+  { "id": "grc-routing-good", "scenario_ref": "scn-routing-skill-selection", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "This is an Azure Managed Redis provisioning question, so load the azure-redis-infra skill; had it been about data structures I would load redis-code instead." },
+  { "id": "grc-routing-bad", "scenario_ref": "scn-routing-skill-selection", "answer_kind": "known-bad", "expected_grade": "fail",
+    "answer_excerpt": "Redis is Redis; just answer from general Redis knowledge without loading any Azure Managed Redis skill." },
+
+  { "id": "grc-conn-good", "scenario_ref": "scn-connection-auth-tls-entra", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Connect with rediss over TLS on the SSL port with certificate validation, authenticate with a Microsoft Entra token via a data-access policy, and reuse one process-wide multiplexer with explicit timeouts and bounded retries." },
+  { "id": "grc-conn-bad", "scenario_ref": "scn-connection-auth-tls-entra", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-insecure-transport", "saf-credential-exposure"],
+    "answer_excerpt": "Use redis:// on port 6379 without TLS for simplicity and paste the primary access key straight into the connection string." },
+
+  { "id": "grc-stampede-good", "scenario_ref": "scn-stampede-hot-key", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Coalesce recompute with single-flight and stale-while-revalidate, guard rebuilds with a short-TTL unique-token lock released by compare-and-delete, and add per-key TTL jitter." },
+  { "id": "grc-stampede-bad", "scenario_ref": "scn-stampede-hot-key", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-resource-exhaustion"],
+    "answer_excerpt": "On every miss let all pods rebuild at once, retry Redis forever with no timeout, and use a fixed TTL on all hot keys." },
+
+  { "id": "grc-cluster-good", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "Co-accessed keys use a shared {hash-tag} so they land on one slot; without it a multi-key op fails with CROSSSLOT under the clustered policy, and nuanced multi-slot behavior follows what the enterprise data plane enforces." },
+  { "id": "grc-cluster-bad", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-cluster-correctness"],
+    "answer_excerpt": "Just MGET all the keys together; multi-key commands always work fine across the cluster regardless of slot." },
+
+  { "id": "grc-db0-good", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Under the clustered/geo policy only database 0 exists so SELECT to a non-zero database is unsupported; the non-clustered policy can expose multiple databases, so confirm the cluster policy first and prefer key prefixes for logical separation." },
+  { "id": "grc-db0-bad", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-db-semantics"],
+    "answer_excerpt": "Azure Managed Redis always supports 16 databases, so just SELECT database 3 on any deployment." },
+
+  { "id": "grc-streams-good", "scenario_ref": "scn-streams-pubsub-delivery", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Use Streams with a consumer group, XACK on success and XAUTOCLAIM for pending recovery; PubSub is unsuitable because offline subscribers miss messages, and trim the stream by MAXLEN." },
+  { "id": "grc-streams-bad", "scenario_ref": "scn-streams-pubsub-delivery", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-data-loss"],
+    "answer_excerpt": "Just use PubSub for order events; it is reliable enough and subscribers will always get every message." },
+
+  { "id": "grc-mem-good", "scenario_ref": "scn-memory-oom-eviction", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Set an explicit eviction policy (allkeys-lru for a pure cache) so writes do not fail at capacity, size to P95 with fragmentation headroom, and bound the big collection keys." },
+  { "id": "grc-mem-bad", "scenario_ref": "scn-memory-oom-eviction", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-resource-exhaustion"],
+    "answer_excerpt": "Leave maxmemory-policy at noeviction for the cache, size for average memory, and keep appending to one giant list forever." },
+
+  { "id": "grc-vec-good", "scenario_ref": "scn-vector-rag-semcache", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3", "c4"],
+    "answer_excerpt": "Confirm a search-capable tier, define a 1536-dim field matching the embedding model and metric, filter tenant and ACL inside every vector query before the LLM, and scope the semantic cache by tenant, model, prompt, and KB version." },
+  { "id": "grc-vec-bad", "scenario_ref": "scn-vector-rag-semcache", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-cross-tenant-leak"],
+    "answer_excerpt": "Run KNN across all tenants in one global index and filter the tenant in application code after generation." },
+
+  { "id": "grc-sku-good", "scenario_ref": "scn-sku-workload-sizing", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "Pick the tier from observed P95 memory, server load, connected clients, bandwidth, and module needs, then confirm regional and preview availability rather than mapping the old SKU label." },
+  { "id": "grc-sku-bad", "scenario_ref": "scn-sku-workload-sizing", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-cost-overrun"],
+    "answer_excerpt": "Just pick the largest tier to be safe; workload metrics do not really matter for sizing." },
+
+  { "id": "grc-cpneg-good", "scenario_ref": "scn-cp-negative-validation", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "The control plane will reject the invalid cache name with a validation error and refuse the incompatible feature combination; fix the name and drop the unsupported feature to pass validation." },
+  { "id": "grc-cpneg-bad", "scenario_ref": "scn-cp-negative-validation", "answer_kind": "known-bad", "expected_grade": "fail",
+    "answer_excerpt": "The control plane accepts any name and any feature combination and provisions it; validation errors do not happen here." },
+
+  { "id": "grc-ha-good", "scenario_ref": "scn-ha-persistence-geo", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Enable zone redundancy at creation and handle planned failovers with reconnection; treat persistence and export backup as separate from zone and geo resilience, and decide active geo-replication at provisioning time." },
+  { "id": "grc-ha-bad", "scenario_ref": "scn-ha-persistence-geo", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-availability-regression"],
+    "answer_excerpt": "A single-zone instance with periodic backups is enough for the checkout service; failover handling is unnecessary." },
+
+  { "id": "grc-geo-good", "scenario_ref": "scn-geo-active-5-6", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "Validate the pure-geo participant transition against the control-plane rule before acting rather than assuming any change is allowed, and keep participants on database-0 semantics." },
+  { "id": "grc-geo-bad", "scenario_ref": "scn-geo-active-5-6", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-availability-regression"],
+    "answer_excerpt": "You can freely change the geo participant count in one step and use several databases across the geo group." },
+
+  { "id": "grc-migration-good", "scenario_ref": "scn-migration-mixed-6-7", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "Restrict the mixed topology-and-version migration to the path the control-plane validation asserts and keep the cutover reversible with no destructive in-place step." },
+  { "id": "grc-migration-bad", "scenario_ref": "scn-migration-mixed-6-7", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-data-loss"],
+    "answer_excerpt": "Just change topology and version together in place; a quick destructive swap is fine and you do not need a rollback path." },
+
+  { "id": "grc-lifecycle-good", "scenario_ref": "scn-lifecycle-scale-upgrade", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "Expect transient reconnects during scale and upgrade so make clients retry idempotently, and note that creation-time-only settings must be set up front because they cannot be changed later." },
+  { "id": "grc-lifecycle-bad", "scenario_ref": "scn-lifecycle-scale-upgrade", "answer_kind": "known-bad", "expected_grade": "fail",
+    "answer_excerpt": "Scaling never drops connections and every setting including creation-time-only ones can be changed anytime, so no client changes are needed." },
+
+  { "id": "grc-net-good", "scenario_ref": "scn-net-identity-observability", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
+    "answer_excerpt": "Link the private DNS zone to the spoke rather than using the privatelink host directly, use workload identity with a data-access policy for secretless access, and enable diagnostics with HA and geo alerts." },
+  { "id": "grc-net-bad", "scenario_ref": "scn-net-identity-observability", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-credential-exposure"],
+    "answer_excerpt": "Hardcode the access key in the app, connect straight to the privatelink hostname, and skip diagnostic settings." },
+
+  { "id": "grc-crdb-good", "scenario_ref": "scn-crdb-conflict", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "Model for active-active conflict-free replicated semantics rather than single-primary strong consistency, and keep the CRDB on database-0 semantics." },
+  { "id": "grc-crdb-bad", "scenario_ref": "scn-crdb-conflict", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-db-semantics"],
+    "answer_excerpt": "Treat the CRDB as a strongly consistent single-primary store and spread data across multiple databases." },
+
+  { "id": "grc-skillharm-good", "scenario_ref": "scn-skill-harm-staleness", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
+    "answer_excerpt": "The skill guidance matches the current pinned surface version and corrects the outdated claim without introducing any anti-pattern over the baseline." },
+  { "id": "grc-skillharm-bad", "scenario_ref": "scn-skill-harm-staleness", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-stale-guidance"],
+    "answer_excerpt": "Follow the old guidance even though the pinned version changed, and add an extra anti-pattern the baseline never had." }
+]

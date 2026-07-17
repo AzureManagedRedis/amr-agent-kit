@@ -1,0 +1,32 @@
+{
+  "id": "scn-cluster-policy-crossslot-mkms",
+  "title": "Fix CROSSSLOT and nuanced multi-key behavior under a clustered policy",
+  "domain": "cluster-policy",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "contested",
+  "intent": "Checks the answer explains CROSSSLOT under a clustered policy, applies hash-tag colocation, and defers nuanced multi-key multi-slot behavior to the enterprise data plane rather than the OSS assumption.",
+  "prompt": "Review this clustered Azure Managed Redis access pattern and correct the multi-key operations.",
+  "input_artifacts": [
+    {
+      "name": "access-pattern.txt",
+      "kind": "code",
+      "content": "policy=clustered; keys: cart:{userA}, coupon:{promoX}, inventory:{skuY}; op: MGET across all three; also a Lua script mutating all three atomically; assumption: 'multi-key commands always work across the cluster'",
+      "embedded_defects": [
+        { "id": "d1", "defect": "MGET and a Lua script span keys on different slots and will hit CROSSSLOT.", "source_fact_ref": "src-cluster-crossslot" },
+        { "id": "d2", "defect": "No shared hash tag colocates the co-accessed keys.", "source_fact_ref": "src-cluster-hashtag" },
+        { "id": "d3", "defect": "Assumes generic OSS multi-key behavior instead of what the enterprise data plane enforces.", "source_fact_ref": "src-cluster-mkms-nuance" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-cluster-correctness"],
+  "cache_requirements": ["cch-hashtag-colocation"],
+  "source_facts": ["src-cluster-crossslot", "src-cluster-hashtag", "src-cluster-mkms-nuance"],
+  "live_probes": ["prb-cluster-enabled", "prb-crossslot-error"],
+  "correctness_rubric_ref": "rub-cluster-cor",
+  "actionability_rubric_ref": "rub-cluster-act",
+  "baseline_leakage_canaries": ["blc-cluster-baseline"],
+  "grader_canaries": ["grc-cluster-good", "grc-cluster-bad"],
+  "mutation_selection_ref": "mut-cluster",
+  "acceptance_ref": "acc-strict"
+}

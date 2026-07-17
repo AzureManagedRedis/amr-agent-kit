@@ -1,0 +1,31 @@
+{
+  "id": "scn-connection-auth-tls-entra",
+  "title": "Harden an AMR client's transport and auth",
+  "domain": "connection-auth",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks the answer fixes insecure transport, prefers identity-based auth, and reuses a pooled connection for a production AMR client.",
+  "prompt": "Review this Azure Managed Redis client configuration for a production service and rewrite it as a safe, production-ready setup.",
+  "input_artifacts": [
+    {
+      "name": "client-config.txt",
+      "kind": "config",
+      "content": "scheme=redis; host=<cache>; port=6379; tls=off; certValidation=off; auth=primaryAccessKey inlined in source; connection=new client per HTTP request; timeouts=none; retries=infinite-immediate",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Plaintext transport on the OSS default port with certificate validation disabled.", "source_fact_ref": "src-conn-tls-required" },
+        { "id": "d2", "defect": "Static access key inlined in source instead of Entra/managed identity with data-access policy.", "source_fact_ref": "src-conn-entra-preferred" },
+        { "id": "d3", "defect": "A new client is created per request instead of reusing a multiplexer, and there are no timeouts or bounded retries.", "source_fact_ref": "src-conn-reuse-multiplexer" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-insecure-transport", "saf-credential-exposure", "saf-resource-exhaustion"],
+  "source_facts": ["src-conn-tls-required", "src-conn-entra-preferred", "src-conn-reuse-multiplexer"],
+  "live_probes": ["prb-tls-connection", "prb-auth-entra"],
+  "correctness_rubric_ref": "rub-conn-cor",
+  "actionability_rubric_ref": "rub-conn-act",
+  "baseline_leakage_canaries": ["blc-conn-baseline"],
+  "grader_canaries": ["grc-conn-good", "grc-conn-bad"],
+  "mutation_selection_ref": "mut-conn",
+  "acceptance_ref": "acc-strict"
+}

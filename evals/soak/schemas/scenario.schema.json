@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/scenario.schema.json",
+  "title": "SoakScenario",
+  "description": "A public-safe soak scenario. Defects live inside input_artifacts rather than being narrated in prose. Every governance concern (safety, cache, source facts, probes, rubrics, canaries, mutations, acceptance) is attached by id-reference into the shared catalogs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id", "title", "domain", "intent", "prompt", "input_artifacts",
+    "authority", "safety_classes", "source_facts",
+    "correctness_rubric_ref", "actionability_rubric_ref",
+    "baseline_leakage_canaries", "mutation_selection_ref", "acceptance_ref",
+    "mode", "public_safe"
+  ],
+  "properties": {
+    "id": { "type": "string", "pattern": "^scn-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "title": { "type": "string", "minLength": 5 },
+    "domain": {
+      "type": "string",
+      "enum": ["routing", "connection-auth", "stampede", "cluster-policy", "db0-select", "streams-pubsub", "memory-oom", "vector-rag", "sku-sizing", "cp-negative", "ha-persistence-geo", "geo-active", "migration", "lifecycle", "networking-identity-observability", "crdb", "skill-harm-staleness"]
+    },
+    "intent": { "type": "string", "minLength": 10, "description": "What the scenario probes and why it is discriminating." },
+    "prompt": { "type": "string", "minLength": 20, "description": "Public-safe user prompt. Keep flaws in input_artifacts; the prompt asks for review/design without listing every defect." },
+    "input_artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Artifacts (config sketches, code, IaC, topology) whose embedded defects the answer must find/fix. Public-safe synthetic content only.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "kind", "content"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "enum": ["config", "code", "iac", "topology", "cli", "policy", "workload-metrics", "query"] },
+          "content": { "type": "string", "minLength": 1, "description": "Inline public-safe artifact text carrying the embedded defects." },
+          "embedded_defects": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "defect", "source_fact_ref"],
+              "properties": {
+                "id": { "type": "string", "pattern": "^d[0-9]+$" },
+                "defect": { "type": "string", "minLength": 5 },
+                "source_fact_ref": { "type": "string", "pattern": "^src-[a-z0-9]+(-[a-z0-9]+)*$" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "authority": {
+      "type": "string",
+      "enum": ["cp-unit-test", "dp-behavior", "redisinc-enterprise", "amr-docs", "redis-oss-docs", "live-probe", "contested"],
+      "description": "The governing authority for the scenario's contested facts."
+    },
+    "safety_classes": { "type": "array", "items": { "type": "string", "pattern": "^saf-[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "cache_requirements": { "type": "array", "items": { "type": "string", "pattern": "^cch-[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "source_facts": { "type": "array", "minItems": 1, "items": { "type": "string", "pattern": "^src-[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "live_probes": { "type": "array", "items": { "type": "string", "pattern": "^prb-[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "correctness_rubric_ref": { "type": "string", "pattern": "^rub-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "actionability_rubric_ref": { "type": "string", "pattern": "^rub-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "baseline_leakage_canaries": { "type": "array", "items": { "type": "string", "pattern": "^blc-[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "grader_canaries": { "type": "array", "items": { "type": "string", "pattern": "^grc-[a-z0-9]+(-[a-z0-9]+)*$" } },
+    "mutation_selection_ref": { "type": "string", "pattern": "^mut-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "acceptance_ref": { "type": "string", "pattern": "^acc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "mode": {
+      "type": "string",
+      "enum": ["correctness", "efficacy-regression"],
+      "description": "correctness: fact-anchored soak scenario. efficacy-regression: an existing efficacy prompt retained only for regression, not for correctness authoring."
+    },
+    "cp_unit_test_backed": {
+      "type": "boolean",
+      "description": "True when the scenario's contested behavior is anchored to a control-plane unit test (resolved abstractly via a cp-unit-test locator)."
+    },
+    "regression_ref": { "type": "string", "description": "Optional pointer (public-safe id/name) to the existing efficacy eval this regression scenario mirrors." },
+    "public_safe": { "type": "boolean", "const": true }
+  }
+}

@@ -1,0 +1,4 @@
+{ "id": "cch-fixture-ok", "category": "stampede", "severity": "high",
+  "requirement": "Coalesce recompute of a hot key with single-flight.",
+  "applies_when": "Fixture-only cache-aside path.",
+  "verification": "Answer shows a single-flight or SWR mechanism." }

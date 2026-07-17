@@ -1,0 +1,7 @@
+{ "id": "acc-fixture-ok",
+  "correctness": { "min_score": 0.85, "min_required_pass_rate": 1.0 },
+  "actionability": { "min_score": 0.75 },
+  "safety": { "max_blocking_violations": 0, "max_nonblocking_violations": 1 },
+  "grader_canary": { "known_good_min_pass": 1.0, "known_bad_max_pass": 0.0 },
+  "leakage": { "max_baseline_leak": 0, "max_internal_leak": 0 },
+  "held_out": { "min_correctness": 0.8 } }

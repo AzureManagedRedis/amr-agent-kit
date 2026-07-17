@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/live-probe.schema.json",
+  "title": "SoakLiveProbe",
+  "description": "A public-safe description of an optional runtime check against a live Redis/AMR instance used to confirm a source fact empirically. Encodes the abstract command/check and expected signal only. The concrete endpoint, credentials, and effective config are resolved via a source-provider-locator into the gitignored eval-runs tree.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "probe_kind", "check", "expected_signal", "locator_ref", "public_safe"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^prb-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "probe_kind": {
+      "type": "string",
+      "enum": ["connection", "auth", "command-behavior", "cluster-policy", "memory", "crdb-replication", "keyspace", "module-capability"]
+    },
+    "check": { "type": "string", "minLength": 3, "description": "Public-safe command or inspection performed (e.g. 'CLUSTER INFO', 'CONFIG GET maxmemory-policy'). No endpoints or credentials." },
+    "expected_signal": { "type": "string", "minLength": 5, "description": "Abstract expectation the probe verifies (e.g. 'cluster_enabled:1', 'CROSSSLOT error on multi-key op across slots')." },
+    "locator_ref": { "type": "string", "pattern": "^loc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "destructive": { "type": "boolean", "description": "True if the probe mutates state; runners must gate destructive probes." },
+    "public_safe": { "type": "boolean", "const": true }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "scn-fixture-ok",
+  "title": "Schema-fixture scenario",
+  "domain": "connection-auth",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "A minimal but complete scenario used to validate the scenario schema in isolation.",
+  "prompt": "Review the fixture artifact and correct the embedded defect.",
+  "input_artifacts": [
+    { "name": "artifact.txt", "kind": "config", "content": "tls=off",
+      "embedded_defects": [ { "id": "d1", "defect": "TLS disabled.", "source_fact_ref": "src-fixture-ok" } ] }
+  ],
+  "safety_classes": ["saf-fixture-ok"],
+  "source_facts": ["src-fixture-ok"],
+  "correctness_rubric_ref": "rub-fixture-cor",
+  "actionability_rubric_ref": "rub-fixture-act",
+  "baseline_leakage_canaries": ["blc-fixture-ok"],
+  "mutation_selection_ref": "mut-fixture-ok",
+  "acceptance_ref": "acc-fixture-ok"
+}

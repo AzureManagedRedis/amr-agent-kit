@@ -1,0 +1,30 @@
+{
+  "id": "scn-migration-mixed-6-7",
+  "title": "Constrain a mixed topology-and-version migration to the validated path",
+  "domain": "migration",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "cp-unit-test",
+  "cp_unit_test_backed": true,
+  "intent": "Checks the answer restricts a mixed migration (generic 6-to-7 marker combining topology and version change) to the path the control-plane validation asserts and requires a reversible, non-destructive cutover. The concrete allowed path is resolved at runtime into eval-runs, never committed.",
+  "prompt": "A team wants to change topology and engine version of an Azure Managed Redis deployment in a single in-place step. Review whether that mixed migration is valid and how to do it safely.",
+  "input_artifacts": [
+    {
+      "name": "migration-plan.txt",
+      "kind": "topology",
+      "content": "current deployment state marked generically as 6; target state marked generically as 7, combining a topology change and a version change; plan: perform both in one destructive in-place swap with no rollback; assumption: 'topology and version can always be combined in one step'",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Assumes a combined topology+version step is always allowed instead of following the control-plane validated path.", "source_fact_ref": "src-migration-6-7-mixed" },
+        { "id": "d2", "defect": "Uses a destructive in-place swap with no reversible cutover, risking data loss.", "source_fact_ref": "src-migration-cutover-safety" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-data-loss"],
+  "source_facts": ["src-migration-6-7-mixed", "src-migration-cutover-safety"],
+  "correctness_rubric_ref": "rub-migration-cor",
+  "actionability_rubric_ref": "rub-migration-act",
+  "baseline_leakage_canaries": ["blc-migration-baseline", "blc-migration-internal-leak"],
+  "grader_canaries": ["grc-migration-good", "grc-migration-bad"],
+  "mutation_selection_ref": "mut-migration",
+  "acceptance_ref": "acc-strict"
+}

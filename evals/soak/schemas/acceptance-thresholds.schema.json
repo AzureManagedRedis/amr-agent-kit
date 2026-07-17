@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/acceptance-thresholds.schema.json",
+  "title": "SoakAcceptanceThresholds",
+  "description": "Named acceptance gate. A scenario passes only when correctness, actionability, safety, grader-canary, leakage, and held-out gates are all satisfied. Correctness and efficacy/uplift are tracked as separate gates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "correctness", "actionability", "safety", "grader_canary", "leakage", "held_out"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^acc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "correctness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_score", "min_required_pass_rate"],
+      "properties": {
+        "min_score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "min_required_pass_rate": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "actionability": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_score"],
+      "properties": { "min_score": { "type": "number", "minimum": 0, "maximum": 1 } }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_blocking_violations"],
+      "properties": {
+        "max_blocking_violations": { "type": "integer", "minimum": 0, "maximum": 0, "description": "Blocking safety-class violations are never tolerated." },
+        "max_nonblocking_violations": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "uplift": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Optional efficacy gate. Only meaningful for scenarios also run in the paired with/without-skill mode; correctness gates do not depend on it.",
+      "required": ["min_uplift_over_baseline"],
+      "properties": { "min_uplift_over_baseline": { "type": "number", "minimum": 0, "maximum": 1 } }
+    },
+    "grader_canary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["known_good_min_pass", "known_bad_max_pass"],
+      "properties": {
+        "known_good_min_pass": { "type": "number", "minimum": 0, "maximum": 1 },
+        "known_bad_max_pass": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "leakage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_baseline_leak", "max_internal_leak"],
+      "properties": {
+        "max_baseline_leak": { "type": "integer", "minimum": 0 },
+        "max_internal_leak": { "type": "integer", "minimum": 0, "maximum": 0, "description": "Internal-content leaks are never tolerated." }
+      }
+    },
+    "held_out": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_correctness"],
+      "properties": { "min_correctness": { "type": "number", "minimum": 0, "maximum": 1 } }
+    }
+  }
+}

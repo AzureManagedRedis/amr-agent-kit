@@ -1,0 +1,29 @@
+{
+  "description": "Maps each fixture to the schema it exercises and whether it must validate (valid) or be rejected (invalid). The dependency-free validator asserts each fixture grades exactly as declared, proving both that good manifests pass and that malformed ones are caught.",
+  "fixtures": [
+    { "file": "valid/safety-class.valid.json", "schema": "safety-class", "expect": "valid" },
+    { "file": "invalid/safety-class.bad-severity.json", "schema": "safety-class", "expect": "invalid" },
+    { "file": "valid/cache-requirement.valid.json", "schema": "cache-requirement", "expect": "valid" },
+    { "file": "invalid/cache-requirement.bad-category.json", "schema": "cache-requirement", "expect": "invalid" },
+    { "file": "valid/rubric.valid.json", "schema": "rubric", "expect": "valid" },
+    { "file": "invalid/rubric.missing-scoring.json", "schema": "rubric", "expect": "invalid" },
+    { "file": "valid/source-fact.valid.json", "schema": "source-fact", "expect": "valid" },
+    { "file": "invalid/source-fact.not-public-safe.json", "schema": "source-fact", "expect": "invalid" },
+    { "file": "invalid/source-fact.bad-id.json", "schema": "source-fact", "expect": "invalid" },
+    { "file": "valid/source-provider-locator.valid.json", "schema": "source-provider-locator", "expect": "valid" },
+    { "file": "invalid/source-provider-locator.sink-not-eval-runs.json", "schema": "source-provider-locator", "expect": "invalid" },
+    { "file": "valid/live-probe.valid.json", "schema": "live-probe", "expect": "valid" },
+    { "file": "invalid/live-probe.bad-kind.json", "schema": "live-probe", "expect": "invalid" },
+    { "file": "valid/baseline-leakage-canary.valid.json", "schema": "baseline-leakage-canary", "expect": "valid" },
+    { "file": "invalid/baseline-leakage-canary.bad-action.json", "schema": "baseline-leakage-canary", "expect": "invalid" },
+    { "file": "valid/grader-canary.valid.json", "schema": "grader-canary", "expect": "valid" },
+    { "file": "invalid/grader-canary.bad-grade.json", "schema": "grader-canary", "expect": "invalid" },
+    { "file": "valid/mutation-selection.valid.json", "schema": "mutation-selection", "expect": "valid" },
+    { "file": "invalid/mutation-selection.seed-not-eval-runs.json", "schema": "mutation-selection", "expect": "invalid" },
+    { "file": "valid/acceptance-thresholds.valid.json", "schema": "acceptance-thresholds", "expect": "valid" },
+    { "file": "invalid/acceptance-thresholds.nonzero-blocking.json", "schema": "acceptance-thresholds", "expect": "invalid" },
+    { "file": "valid/scenario.valid.json", "schema": "scenario", "expect": "valid" },
+    { "file": "invalid/scenario.additional-prop.json", "schema": "scenario", "expect": "invalid" },
+    { "file": "invalid/scenario.missing-source-facts.json", "schema": "scenario", "expect": "invalid" }
+  ]
+}

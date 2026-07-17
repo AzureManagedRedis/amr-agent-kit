@@ -1,0 +1,5 @@
+{ "id": "mut-fixture-bad", "scenario_ref": "scn-fixture-ok",
+  "selection": { "strategy": "random-held-out", "seed_source": "committed-manifest", "count": 1 },
+  "mutations": [
+    { "id": "m1", "description": "seed_source must be the const eval-runs; committed-manifest is rejected.", "transform": "n/a", "preserves_correct_answer": true }
+  ] }

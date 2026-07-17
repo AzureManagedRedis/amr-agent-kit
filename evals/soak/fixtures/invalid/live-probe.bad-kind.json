@@ -1,0 +1,2 @@
+{ "id": "prb-fixture-bad", "probe_kind": "teleport", "public_safe": true,
+  "check": "CLUSTER INFO", "expected_signal": "probe_kind is not in the allowed enum.", "locator_ref": "loc-live-probe" }

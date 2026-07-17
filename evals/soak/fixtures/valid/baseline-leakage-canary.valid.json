@@ -1,0 +1,2 @@
+{ "id": "blc-fixture-ok", "scenario_ref": "scn-fixture-ok", "canary_kind": "baseline-already-correct",
+  "match": "substring", "action": "harden", "signal": "already correct baseline phrase" }

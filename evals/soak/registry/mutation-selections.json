@@ -1,0 +1,87 @@
+[
+  { "id": "mut-routing", "scenario_ref": "scn-routing-skill-selection", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Swap the prompt from an infra intent to an application intent.", "transform": "Reframe the request as a data-structure design question while keeping AMR context.", "preserves_correct_answer": false, "held_out": true },
+      { "id": "m2", "description": "Reword the prompt without changing intent.", "transform": "Paraphrase the ask and reorder sentences without changing the routing target.", "preserves_correct_answer": true, "held_out": true }
+    ] },
+  { "id": "mut-conn", "scenario_ref": "scn-connection-auth-tls-entra", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the language/SDK in the artifact.", "transform": "Rewrite the client sketch in a different SDK keeping the same defects.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Remove the TLS defect but keep the per-request-connection defect.", "transform": "Fix transport in the artifact so only the connection-reuse defect remains.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-stampede", "scenario_ref": "scn-stampede-hot-key", "selection": { "strategy": "worst-case", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Increase concurrency and key hotness.", "transform": "Raise the request rate and reduce hot-key count in the workload sketch.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Change TTL numbers only.", "transform": "Adjust the fixed TTL value without changing the missing coalescing.", "preserves_correct_answer": true, "held_out": false }
+    ] },
+  { "id": "mut-cluster", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Rename keys so they no longer share a slot.", "transform": "Rename co-accessed keys while keeping the multi-key operation.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Switch to a non-clustered policy where CROSSSLOT does not apply.", "transform": "Change the deployment cluster policy so the CROSSSLOT concern is moot.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-db0", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Flip the deployment from clustered to non-clustered.", "transform": "Change the stated cluster policy so multi-database availability flips.", "preserves_correct_answer": false, "held_out": true },
+      { "id": "m2", "description": "Change the SELECT target database number.", "transform": "Use a different non-zero database index in the artifact.", "preserves_correct_answer": true, "held_out": true }
+    ] },
+  { "id": "mut-streams", "scenario_ref": "scn-streams-pubsub-delivery", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Rename the event type and payload.", "transform": "Change domain nouns while keeping the PubSub misuse.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "State subscribers are always online.", "transform": "Add an assumption that removes the offline-subscriber failure mode.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-mem", "scenario_ref": "scn-memory-oom-eviction", "selection": { "strategy": "worst-case", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change workload memory numbers.", "transform": "Scale the P95/peak memory values while keeping noeviction defect.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Reframe as a durable store rather than a cache.", "transform": "Change intent so an eviction policy would be wrong.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-vec", "scenario_ref": "scn-vector-rag-semcache", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change embedding dimension and metric.", "transform": "Use a different dimension/metric pair consistently in the artifact.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Make the system single-tenant.", "transform": "Remove tenants so cross-tenant filtering is not required.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-sku", "scenario_ref": "scn-sku-workload-sizing", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change workload metric values.", "transform": "Alter memory/throughput/client numbers to shift the recommended tier.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Add a module requirement that constrains tier.", "transform": "Introduce a module need that changes the valid tier set.", "preserves_correct_answer": true, "held_out": false }
+    ] },
+  { "id": "mut-cpneg", "scenario_ref": "scn-cp-negative-validation", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change which field is invalid.", "transform": "Move the invalid value to a different request field.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Make the request valid.", "transform": "Correct the artifact so validation should pass.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-ha", "scenario_ref": "scn-ha-persistence-geo", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the criticality framing.", "transform": "Reword the workload while keeping it availability-critical.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Make the workload non-critical dev/test.", "transform": "Downgrade the workload so single-zone becomes acceptable.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-geo", "scenario_ref": "scn-geo-active-5-6", "selection": { "strategy": "worst-case", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the generic participant-count markers.", "transform": "Use different generic transition markers while keeping the validation dependency.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Assert the transition is unconditionally allowed.", "transform": "Add an assumption that removes the control-plane validation gate.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-migration", "scenario_ref": "scn-migration-mixed-6-7", "selection": { "strategy": "worst-case", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the generic transition markers.", "transform": "Use different generic mixed-migration markers keeping the validation dependency.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Split into an already-validated two-step path.", "transform": "Reframe so the mixed step is decomposed into validated single steps.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-lifecycle", "scenario_ref": "scn-lifecycle-scale-upgrade", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change which setting is creation-time-only.", "transform": "Point at a different creation-time-only setting in the artifact.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Use only runtime-changeable settings.", "transform": "Remove the creation-time-only setting so the reject prediction no longer applies.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-net", "scenario_ref": "scn-net-identity-observability", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the network topology names.", "transform": "Rename hub/spoke resources while keeping the DNS defect.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Use public access instead of Private Link.", "transform": "Switch the artifact to public networking so the DNS-zone concern changes.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-crdb", "scenario_ref": "scn-crdb-conflict", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the data model nouns.", "transform": "Rename entities while keeping the strong-consistency assumption defect.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Use a single-region non-CRDB cache.", "transform": "Remove active-active so conflict-resolution reasoning no longer applies.", "preserves_correct_answer": false, "held_out": true }
+    ] },
+  { "id": "mut-skillharm", "scenario_ref": "scn-skill-harm-staleness", "selection": { "strategy": "worst-case", "seed_source": "eval-runs", "count": 1 },
+    "mutations": [
+      { "id": "m1", "description": "Change the pinned surface version.", "transform": "Advance the pinned version so the stale claim becomes clearly wrong.", "preserves_correct_answer": true, "held_out": true },
+      { "id": "m2", "description": "Make the baseline already flawed.", "transform": "Start from a baseline that already contains the anti-pattern so no skill harm is measurable.", "preserves_correct_answer": false, "held_out": true }
+    ] }
+]

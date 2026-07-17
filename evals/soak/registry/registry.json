@@ -1,0 +1,36 @@
+{
+  "registry_version": "1.0.0",
+  "public_safe": true,
+  "description": "Public-safe soak source-oracle registry for AMR Agent Kit. Correctness scenarios are anchored to public-safe source facts whose authoritative citations resolve at runtime into the gitignored eval-runs tree. Existing efficacy prompts under evals/efficacy remain regression-only and are not duplicated here.",
+  "catalogs": {
+    "safety_classes": "safety-classes.json",
+    "cache_requirements": "cache-requirements.json",
+    "rubrics": "rubrics.json",
+    "source_facts": "source-facts.json",
+    "source_provider_locators": "source-provider-locators.json",
+    "live_probes": "live-probes.json",
+    "baseline_leakage_canaries": "baseline-leakage-canaries.json",
+    "grader_canaries": "grader-canaries.json",
+    "mutation_selections": "mutation-selections.json",
+    "acceptance_thresholds": "acceptance-thresholds.json"
+  },
+  "scenarios": [
+    { "id": "scn-routing-skill-selection", "domain": "routing", "file": "scenarios/scn-routing-skill-selection.json" },
+    { "id": "scn-connection-auth-tls-entra", "domain": "connection-auth", "file": "scenarios/scn-connection-auth-tls-entra.json" },
+    { "id": "scn-stampede-hot-key", "domain": "stampede", "file": "scenarios/scn-stampede-hot-key.json" },
+    { "id": "scn-cluster-policy-crossslot-mkms", "domain": "cluster-policy", "file": "scenarios/scn-cluster-policy-crossslot-mkms.json" },
+    { "id": "scn-db0-cluster-vs-nocluster-select", "domain": "db0-select", "file": "scenarios/scn-db0-cluster-vs-nocluster-select.json" },
+    { "id": "scn-streams-pubsub-delivery", "domain": "streams-pubsub", "file": "scenarios/scn-streams-pubsub-delivery.json" },
+    { "id": "scn-memory-oom-eviction", "domain": "memory-oom", "file": "scenarios/scn-memory-oom-eviction.json" },
+    { "id": "scn-vector-rag-semcache", "domain": "vector-rag", "file": "scenarios/scn-vector-rag-semcache.json" },
+    { "id": "scn-sku-workload-sizing", "domain": "sku-sizing", "file": "scenarios/scn-sku-workload-sizing.json" },
+    { "id": "scn-cp-negative-validation", "domain": "cp-negative", "file": "scenarios/scn-cp-negative-validation.json" },
+    { "id": "scn-ha-persistence-geo", "domain": "ha-persistence-geo", "file": "scenarios/scn-ha-persistence-geo.json" },
+    { "id": "scn-geo-active-5-6", "domain": "geo-active", "file": "scenarios/scn-geo-active-5-6.json" },
+    { "id": "scn-migration-mixed-6-7", "domain": "migration", "file": "scenarios/scn-migration-mixed-6-7.json" },
+    { "id": "scn-lifecycle-scale-upgrade", "domain": "lifecycle", "file": "scenarios/scn-lifecycle-scale-upgrade.json" },
+    { "id": "scn-net-identity-observability", "domain": "networking-identity-observability", "file": "scenarios/scn-net-identity-observability.json" },
+    { "id": "scn-crdb-conflict", "domain": "crdb", "file": "scenarios/scn-crdb-conflict.json" },
+    { "id": "scn-skill-harm-staleness", "domain": "skill-harm-staleness", "file": "scenarios/scn-skill-harm-staleness.json" }
+  ]
+}

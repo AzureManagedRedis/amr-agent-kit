@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/safety-class.schema.json",
+  "title": "SoakSafetyClass",
+  "description": "A named class of unsafe outcome. A blocking safety-class violation fails a scenario outright, independent of rubric score.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "severity", "description", "harm", "blocking"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^saf-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "name": { "type": "string", "minLength": 3 },
+    "severity": { "type": "string", "enum": ["info", "low", "medium", "high", "critical"] },
+    "description": { "type": "string", "minLength": 10 },
+    "harm": { "type": "string", "minLength": 10, "description": "Real-world harm if a model answer violates this class." },
+    "blocking": { "type": "boolean", "description": "When true, any violation is an automatic scenario failure regardless of rubric score." },
+    "detection_hint": { "type": "string", "description": "Public-safe, non-proprietary hint describing how a grader recognizes a violation." }
+  }
+}

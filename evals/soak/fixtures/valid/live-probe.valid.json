@@ -1,0 +1,2 @@
+{ "id": "prb-fixture-ok", "probe_kind": "cluster-policy", "public_safe": true, "destructive": false,
+  "check": "CLUSTER INFO", "expected_signal": "cluster_enabled reflects the deployment policy.", "locator_ref": "loc-live-probe" }

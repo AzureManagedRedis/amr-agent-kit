@@ -1,0 +1,3 @@
+{ "id": "SRC_FixtureBadId", "domain": "connection-auth", "authority": "amr-docs", "locator_ref": "loc-fixture-ok",
+  "stability": "stable", "public_safe": true,
+  "statement": "The id does not match the required src- kebab-case pattern, so this is rejected." }

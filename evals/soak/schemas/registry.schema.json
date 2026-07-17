@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/registry.schema.json",
+  "title": "SoakRegistry",
+  "description": "Top-level index of the soak source-oracle. Lists every catalog file and scenario file so a runner can load the registry deterministically. Referential integrity across ids is enforced by the validator.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["registry_version", "public_safe", "catalogs", "scenarios"],
+  "properties": {
+    "registry_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "public_safe": { "type": "boolean", "const": true },
+    "description": { "type": "string" },
+    "catalogs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "safety_classes", "cache_requirements", "rubrics", "source_facts",
+        "source_provider_locators", "live_probes", "baseline_leakage_canaries",
+        "grader_canaries", "mutation_selections", "acceptance_thresholds"
+      ],
+      "properties": {
+        "safety_classes": { "type": "string", "pattern": "\\.json$" },
+        "cache_requirements": { "type": "string", "pattern": "\\.json$" },
+        "rubrics": { "type": "string", "pattern": "\\.json$" },
+        "source_facts": { "type": "string", "pattern": "\\.json$" },
+        "source_provider_locators": { "type": "string", "pattern": "\\.json$" },
+        "live_probes": { "type": "string", "pattern": "\\.json$" },
+        "baseline_leakage_canaries": { "type": "string", "pattern": "\\.json$" },
+        "grader_canaries": { "type": "string", "pattern": "\\.json$" },
+        "mutation_selections": { "type": "string", "pattern": "\\.json$" },
+        "acceptance_thresholds": { "type": "string", "pattern": "\\.json$" }
+      }
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "domain", "file"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^scn-[a-z0-9]+(-[a-z0-9]+)*$" },
+          "domain": { "type": "string" },
+          "file": { "type": "string", "pattern": "\\.json$" }
+        }
+      }
+    }
+  }
+}

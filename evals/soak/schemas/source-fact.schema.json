@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/source-fact.schema.json",
+  "title": "SoakSourceFact",
+  "description": "A public-safe, citeable assertion that anchors a correctness criterion. The fact TEXT is safe to publish; its authoritative citation is resolved at runtime through a source-provider-locator into the gitignored eval-runs tree. Contested facts declare the competing claims and the authority that wins.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "statement", "domain", "authority", "locator_ref", "stability", "public_safe"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^src-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "statement": { "type": "string", "minLength": 10, "description": "Public-safe factual assertion. Must be free of proprietary source, paths, symbols, lines, endpoints, subscriptions, or effective config." },
+    "domain": {
+      "type": "string",
+      "enum": ["routing", "connection-auth", "stampede", "cluster-policy", "db0-select", "streams-pubsub", "memory-oom", "vector-rag", "sku-sizing", "cp-negative", "ha-persistence-geo", "geo-active", "migration", "lifecycle", "networking-identity-observability", "crdb", "skill-harm-staleness"]
+    },
+    "authority": {
+      "type": "string",
+      "enum": ["cp-unit-test", "dp-behavior", "redisinc-enterprise", "amr-docs", "redis-oss-docs", "live-probe", "contested"],
+      "description": "Which source of truth governs this fact. 'contested' requires a contested block naming the winning authority."
+    },
+    "locator_ref": { "type": "string", "pattern": "^loc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "stability": { "type": "string", "enum": ["stable", "version-pinned", "volatile"] },
+    "api_version_pin": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["surface", "version"],
+      "properties": {
+        "surface": { "type": "string", "description": "Public-safe name of the pinned surface (e.g. 'management-api', 'redis-server', 'redis-search-module')." },
+        "version": { "type": "string", "description": "Version or api-version the fact is pinned to." },
+        "effective_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }
+      }
+    },
+    "contested": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["competing_claims", "winning_authority", "rationale"],
+      "properties": {
+        "competing_claims": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["claim", "asserted_by"],
+            "properties": {
+              "claim": { "type": "string", "minLength": 5 },
+              "asserted_by": { "type": "string", "enum": ["cp-unit-test", "dp-behavior", "redisinc-enterprise", "amr-docs", "redis-oss-docs", "live-probe", "common-assumption"] }
+            }
+          }
+        },
+        "winning_authority": { "type": "string", "enum": ["cp-unit-test", "dp-behavior", "redisinc-enterprise", "amr-docs", "redis-oss-docs", "live-probe"] },
+        "rationale": { "type": "string", "minLength": 10 }
+      }
+    },
+    "public_safe": { "type": "boolean", "const": true }
+  }
+}

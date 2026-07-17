@@ -1,0 +1,32 @@
+{
+  "id": "scn-memory-oom-eviction",
+  "title": "Prevent OOM with the right eviction policy and sizing",
+  "domain": "memory-oom",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "redis-oss-docs",
+  "intent": "Checks the answer sets a deliberate eviction policy, sizes to peak/P95 with headroom, and bounds big keys.",
+  "prompt": "Review this Azure Managed Redis cache that is hitting out-of-memory write failures and fix the configuration.",
+  "input_artifacts": [
+    {
+      "name": "cache-sizing.txt",
+      "kind": "workload-metrics",
+      "content": "role: pure cache; maxmemory-policy: noeviction; sized for average memory only; one key is an ever-growing list appended on every event; P95 memory ~85% of average-based size; symptom: OOM command errors under load",
+      "embedded_defects": [
+        { "id": "d1", "defect": "noeviction on a pure cache causes write failures at capacity.", "source_fact_ref": "src-mem-eviction-policy" },
+        { "id": "d2", "defect": "Sized for average memory instead of peak/P95 with headroom.", "source_fact_ref": "src-mem-headroom" },
+        { "id": "d3", "defect": "An unbounded big-key list keeps growing.", "source_fact_ref": "src-mem-bigkeys" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-resource-exhaustion"],
+  "cache_requirements": ["cch-eviction-policy"],
+  "source_facts": ["src-mem-eviction-policy", "src-mem-headroom", "src-mem-bigkeys"],
+  "live_probes": ["prb-maxmemory-policy"],
+  "correctness_rubric_ref": "rub-mem-cor",
+  "actionability_rubric_ref": "rub-mem-act",
+  "baseline_leakage_canaries": ["blc-mem-baseline"],
+  "grader_canaries": ["grc-mem-good", "grc-mem-bad"],
+  "mutation_selection_ref": "mut-mem",
+  "acceptance_ref": "acc-standard"
+}

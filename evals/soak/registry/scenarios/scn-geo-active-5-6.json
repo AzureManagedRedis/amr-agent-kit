@@ -1,0 +1,30 @@
+{
+  "id": "scn-geo-active-5-6",
+  "title": "Validate a pure geo participant transition against control-plane rules",
+  "domain": "geo-active",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "cp-unit-test",
+  "cp_unit_test_backed": true,
+  "intent": "Checks the answer defers a pure geo participant-count transition (generic 5-to-6 marker) to the control-plane validation asserted by a unit test rather than assuming any change is allowed, and keeps geo participants on database-0 semantics. The concrete transition rule is resolved at runtime into eval-runs, never committed.",
+  "prompt": "A team wants to change a pure geo-replicated group's participant configuration and use several databases across it. Review whether the change is valid and how to proceed safely.",
+  "input_artifacts": [
+    {
+      "name": "geo-change.txt",
+      "kind": "topology",
+      "content": "current geo group participant configuration marked generically as state 5; proposed target marked generically as state 6; plan: apply the change directly assuming any participant-count change is allowed; also plan to use databases 0 through 3 across the geo group",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Assumes any pure-geo participant transition is allowed instead of validating against the control-plane rule.", "source_fact_ref": "src-geo-5-6-topology" },
+        { "id": "d2", "defect": "Plans multi-database use across a geo group that operates on database-0 semantics.", "source_fact_ref": "src-geo-5-6-db0" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-availability-regression", "saf-db-semantics"],
+  "source_facts": ["src-geo-5-6-topology", "src-geo-5-6-db0"],
+  "correctness_rubric_ref": "rub-geo-cor",
+  "actionability_rubric_ref": "rub-geo-act",
+  "baseline_leakage_canaries": ["blc-geo-baseline", "blc-geo-internal-leak"],
+  "grader_canaries": ["grc-geo-good", "grc-geo-bad"],
+  "mutation_selection_ref": "mut-geo",
+  "acceptance_ref": "acc-strict"
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://amr-agent-kit/soak/schemas/baseline-leakage-canary.schema.json",
+  "title": "SoakBaselineLeakageCanary",
+  "description": "A canary that flags when a scenario stops discriminating: either the no-skill baseline already produces the correct answer (leaky/non-discriminating scenario needing hardening), or an answer leaks internal/proprietary content it should never contain. Signals are public-safe phrases/patterns only.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "scenario_ref", "canary_kind", "signal", "action"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^blc-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "scenario_ref": { "type": "string", "pattern": "^scn-[a-z0-9]+(-[a-z0-9]+)*$" },
+    "canary_kind": {
+      "type": "string",
+      "enum": ["baseline-already-correct", "internal-content-leak"],
+      "description": "baseline-already-correct: the no-skill run hitting this signal means the scenario is not discriminating. internal-content-leak: any run hitting this signal exposed content that must never appear."
+    },
+    "signal": { "type": "string", "minLength": 3, "description": "Public-safe phrase or regex fragment whose presence trips the canary." },
+    "match": { "type": "string", "enum": ["substring", "regex"] },
+    "action": { "type": "string", "enum": ["harden", "reject", "flag"], "description": "harden: strengthen the scenario. reject: fail the run. flag: surface for review." }
+  }
+}

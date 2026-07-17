@@ -1,0 +1,4 @@
+{ "id": "loc-fixture-ok", "provider_kind": "cp-unit-test", "public_safe": true,
+  "resolution": { "query_shape": "named-behavior lookup in the control-plane unit-test suite", "expected_artifact_kind": "unit-test-assertion" },
+  "citation_sink": { "destination": "eval-runs", "path_template": "eval-runs/citations/fixture/{fact_id}.json" },
+  "redaction_policy": "Strip paths, symbols, lines, endpoints, and effective config." }

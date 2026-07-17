@@ -1,0 +1,2 @@
+{ "id": "grc-fixture-bad", "scenario_ref": "scn-fixture-ok", "answer_kind": "known-good", "expected_grade": "maybe",
+  "answer_excerpt": "expected_grade must be pass or fail; maybe is not allowed." }

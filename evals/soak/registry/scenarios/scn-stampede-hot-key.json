@@ -1,0 +1,31 @@
+{
+  "id": "scn-stampede-hot-key",
+  "title": "Add stampede protection to a hot-key cache path",
+  "domain": "stampede",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "redis-oss-docs",
+  "intent": "Checks the answer coalesces concurrent recompute, uses a safe token lock, and adds TTL jitter for a hot read path on AMR.",
+  "prompt": "Review this cache-aside read path for a few extremely hot SKUs and make it safe under load.",
+  "input_artifacts": [
+    {
+      "name": "cache-aside.txt",
+      "kind": "code",
+      "content": "on miss: every pod reads SQL and repopulates; key=product:{sku}; ttl=900s fixed for all keys; lock: SETNX lock:{sku} then DEL later without a token; on redis timeout every pod falls back to SQL simultaneously",
+      "embedded_defects": [
+        { "id": "d1", "defect": "No coalescing: all pods recompute the same expired hot key at once.", "source_fact_ref": "src-stampede-single-flight" },
+        { "id": "d2", "defect": "Lock has no token and is deleted unconditionally, allowing release of another holder's lock.", "source_fact_ref": "src-stampede-lock-token" },
+        { "id": "d3", "defect": "Fixed uniform TTL causes synchronized expiry.", "source_fact_ref": "src-stampede-ttl-jitter" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-resource-exhaustion"],
+  "cache_requirements": ["cch-namespaced-keys", "cch-explicit-ttl-jitter", "cch-single-flight"],
+  "source_facts": ["src-stampede-single-flight", "src-stampede-lock-token", "src-stampede-ttl-jitter"],
+  "correctness_rubric_ref": "rub-stampede-cor",
+  "actionability_rubric_ref": "rub-stampede-act",
+  "baseline_leakage_canaries": ["blc-stampede-baseline"],
+  "grader_canaries": ["grc-stampede-good", "grc-stampede-bad"],
+  "mutation_selection_ref": "mut-stampede",
+  "acceptance_ref": "acc-standard"
+}

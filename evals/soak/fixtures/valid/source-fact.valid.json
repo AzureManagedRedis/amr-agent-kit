@@ -1,0 +1,4 @@
+{ "id": "src-fixture-ok", "domain": "connection-auth", "authority": "amr-docs", "locator_ref": "loc-fixture-ok",
+  "stability": "version-pinned", "public_safe": true,
+  "statement": "A public-safe fixture fact asserting a generic, non-proprietary behavior.",
+  "api_version_pin": { "surface": "amr-connection", "version": "current", "effective_date": "2025-01-01" } }

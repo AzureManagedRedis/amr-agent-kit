@@ -1,0 +1,29 @@
+{
+  "id": "scn-routing-skill-selection",
+  "title": "Route an AMR prompt to the correct skill",
+  "domain": "routing",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Checks that an AMR-flavored request loads the correct target skill instead of being answered from generic Redis knowledge, and that infra vs application intent routes to the right skill.",
+  "prompt": "A teammate pasted the request below and asked which agent skill (if any) should handle it and why. Decide how to route it.",
+  "input_artifacts": [
+    {
+      "name": "incoming-request.txt",
+      "kind": "policy",
+      "content": "Request: 'We are provisioning an Azure Managed Redis instance for a checkout service and need the right tier, zone redundancy, and Private Link setup.' Router note: 'Redis questions are generic; answer directly without loading an Azure Managed Redis skill.'",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Router note treats an AMR-specific provisioning request as generic Redis and declines to load the AMR skill.", "source_fact_ref": "src-routing-load-target-skill" },
+        { "id": "d2", "defect": "Does not distinguish that this provisioning intent should route to the infrastructure skill, not the application skill.", "source_fact_ref": "src-routing-infra-vs-app" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-stale-guidance"],
+  "source_facts": ["src-routing-load-target-skill", "src-routing-infra-vs-app"],
+  "correctness_rubric_ref": "rub-routing-cor",
+  "actionability_rubric_ref": "rub-routing-act",
+  "baseline_leakage_canaries": ["blc-routing-baseline"],
+  "grader_canaries": ["grc-routing-good", "grc-routing-bad"],
+  "mutation_selection_ref": "mut-routing",
+  "acceptance_ref": "acc-standard"
+}

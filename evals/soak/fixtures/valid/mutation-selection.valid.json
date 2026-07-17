@@ -1,0 +1,6 @@
+{ "id": "mut-fixture-ok", "scenario_ref": "scn-fixture-ok",
+  "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+  "mutations": [
+    { "id": "m1", "description": "A held-out mutation that preserves the correct answer.", "transform": "Paraphrase the prompt without changing intent.", "preserves_correct_answer": true, "held_out": true },
+    { "id": "m2", "description": "A mutation that flips the expected answer.", "transform": "Remove the defect so the correct answer changes.", "preserves_correct_answer": false, "held_out": true }
+  ] }

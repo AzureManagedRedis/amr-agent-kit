@@ -1,0 +1,30 @@
+{
+  "id": "scn-streams-pubsub-delivery",
+  "title": "Choose reliable delivery over fire-and-forget PubSub",
+  "domain": "streams-pubsub",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "redis-oss-docs",
+  "intent": "Checks the answer replaces PubSub with Streams consumer groups for reliable delivery, explains PubSub non-persistence, and bounds stream growth.",
+  "prompt": "Review this order-event delivery design and make delivery reliable.",
+  "input_artifacts": [
+    {
+      "name": "events.txt",
+      "kind": "code",
+      "content": "transport: PUBLISH order.events; consumers: subscribers that may be offline during deploys; assumption: 'PubSub is reliable, every consumer gets every message'; no acknowledgement; no retention bound",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Uses PubSub for delivery that must be reliable and replayable.", "source_fact_ref": "src-streams-consumer-groups" },
+        { "id": "d2", "defect": "Assumes PubSub persists and redelivers to offline subscribers.", "source_fact_ref": "src-pubsub-no-persistence" },
+        { "id": "d3", "defect": "No stream/retention bound if switched to Streams.", "source_fact_ref": "src-streams-trim" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-data-loss"],
+  "source_facts": ["src-streams-consumer-groups", "src-pubsub-no-persistence", "src-streams-trim"],
+  "correctness_rubric_ref": "rub-streams-cor",
+  "actionability_rubric_ref": "rub-streams-act",
+  "baseline_leakage_canaries": ["blc-streams-baseline"],
+  "grader_canaries": ["grc-streams-good", "grc-streams-bad"],
+  "mutation_selection_ref": "mut-streams",
+  "acceptance_ref": "acc-standard"
+}

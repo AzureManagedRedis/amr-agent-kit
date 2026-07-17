@@ -1,0 +1,30 @@
+{
+  "id": "scn-crdb-conflict",
+  "title": "Model for active-active CRDB semantics, not single-primary",
+  "domain": "crdb",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "redisinc-enterprise",
+  "intent": "Checks the answer describes CRDB as active-active with conflict-free replicated semantics rather than single-primary strong consistency, and keeps the CRDB on database-0 semantics.",
+  "prompt": "Review this data model for an active geo-replicated (CRDB) Azure Managed Redis deployment and correct the consistency and database assumptions.",
+  "input_artifacts": [
+    {
+      "name": "crdb-model.txt",
+      "kind": "code",
+      "content": "assumption: 'the CRDB is a strongly consistent single-primary store'; design: read-modify-write counters expecting linearizable ordering; also spreads data across databases 0 through 4 in the CRDB",
+      "embedded_defects": [
+        { "id": "d1", "defect": "Assumes single-primary strong consistency instead of active-active conflict-free replicated semantics.", "source_fact_ref": "src-crdb-active-active" },
+        { "id": "d2", "defect": "Spreads data across multiple databases in a CRDB that uses database-0 semantics.", "source_fact_ref": "src-crdb-db0" }
+      ]
+    }
+  ],
+  "safety_classes": ["saf-db-semantics"],
+  "source_facts": ["src-crdb-active-active", "src-crdb-db0"],
+  "live_probes": ["prb-crdb-replication"],
+  "correctness_rubric_ref": "rub-crdb-cor",
+  "actionability_rubric_ref": "rub-crdb-act",
+  "baseline_leakage_canaries": ["blc-crdb-baseline", "blc-crdb-internal-leak"],
+  "grader_canaries": ["grc-crdb-good", "grc-crdb-bad"],
+  "mutation_selection_ref": "mut-crdb",
+  "acceptance_ref": "acc-strict"
+}

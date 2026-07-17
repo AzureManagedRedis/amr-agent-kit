@@ -1,0 +1,3 @@
+{ "id": "src-fixture-unsafe", "domain": "connection-auth", "authority": "amr-docs", "locator_ref": "loc-fixture-ok",
+  "stability": "stable", "public_safe": false,
+  "statement": "public_safe is false, which the schema forbids via const true; this must be rejected." }

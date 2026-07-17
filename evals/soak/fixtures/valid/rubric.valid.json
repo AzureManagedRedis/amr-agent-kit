@@ -1,0 +1,5 @@
+{ "id": "rub-fixture-ok", "kind": "correctness", "description": "Fixture rubric.",
+  "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.8 },
+  "criteria": [
+    { "id": "c1", "statement": "A required, fact-anchored criterion for the fixture.", "weight": 1.0, "required": true, "source_fact_ref": "src-fixture-ok" }
+  ] }

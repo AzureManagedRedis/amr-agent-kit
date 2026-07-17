@@ -1,0 +1,19 @@
+{
+  "id": "scn-fixture-additional",
+  "title": "Scenario with a disallowed extra property",
+  "domain": "connection-auth",
+  "mode": "correctness",
+  "public_safe": true,
+  "authority": "amr-docs",
+  "intent": "Has an additional property not allowed by the schema.",
+  "prompt": "Review the fixture artifact.",
+  "input_artifacts": [ { "name": "a.txt", "kind": "config", "content": "x" } ],
+  "safety_classes": [],
+  "source_facts": ["src-fixture-ok"],
+  "correctness_rubric_ref": "rub-fixture-cor",
+  "actionability_rubric_ref": "rub-fixture-act",
+  "baseline_leakage_canaries": [],
+  "mutation_selection_ref": "mut-fixture-ok",
+  "acceptance_ref": "acc-fixture-ok",
+  "unexpected_field": "not allowed"
+}
