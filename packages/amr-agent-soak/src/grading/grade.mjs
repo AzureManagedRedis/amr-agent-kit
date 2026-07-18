@@ -111,6 +111,7 @@ export function adjudicateTwoGraders(first, second) {
   })
   const score = assertions.length === 0 ? 0 : assertions.filter((item) => item.passed).length / assertions.length
   const disagreements = assertions.filter((item) => !item.agreement).map((item) => item.id)
+  const alignedGraderPairs = assertions.map((item) => item.graders)
   return {
     ...left,
     assertions,
@@ -121,8 +122,8 @@ export function adjudicateTwoGraders(first, second) {
     passed: Boolean(left.passed && right.passed && disagreements.length === 0),
     disagreements,
     kappa: cohensKappa(
-      left.assertions.map((item) => Boolean(item.pass ?? item.passed)),
-      right.assertions.map((item) => Boolean(item.pass ?? item.passed)),
+      alignedGraderPairs.map((pair) => pair[0]),
+      alignedGraderPairs.map((pair) => pair[1]),
     ),
     adjudicated: true,
   }

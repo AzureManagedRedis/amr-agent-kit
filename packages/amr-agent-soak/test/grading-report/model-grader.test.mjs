@@ -204,14 +204,18 @@ test('surfaces disagreements as contested claims when the threshold permits them
 test('aligns reordered assertion IDs before kappa and adjudication', async () => {
   const setup = grader({
     modelExecutor: async (request, context) => {
-      const canary = request.arms.some((arm) => arm.output.includes('canary'))
-      if (canary) return response(request, (arm) => !arm.output.includes('bad canary output'))
       const reverse = context.modelId === 'grader-b'
       const assertions = reverse
         ? [{ id: 'c2', statement: 'second', passed: false }, { id: 'c1', statement: 'first', passed: true }]
         : [{ id: 'c1', statement: 'first', passed: true }, { id: 'c2', statement: 'second', passed: false }]
+      const grades = Object.fromEntries(request.arms.map((arm) => [
+        arm.label,
+        arm.output.includes('canary')
+          ? grade(!arm.output.includes('bad canary output'))
+          : { assertions, score: 0.5, passed: false },
+      ]))
       return JSON.stringify({
-        grades: Object.fromEntries(request.arms.map((arm) => [arm.label, { assertions, score: 0.5, passed: false }])),
+        grades,
       })
     },
   })
@@ -224,6 +228,25 @@ test('aligns reordered assertion IDs before kappa and adjudication', async () =>
   })
   assert.equal(result.kappa, 1)
   assert.ok(result.adjudicated.every((item) => item.disagreements.length === 0))
+})
+
+test('fails closed when reordered IDs contain opposite pass values', async () => {
+  await assert.rejects(() => runGrader({
+    modelExecutor: async (request, context) => {
+      const assertions = context.modelId === 'grader-b'
+        ? [{ id: 'c2', statement: 'second', passed: true }, { id: 'c1', statement: 'first', passed: false }]
+        : [{ id: 'c1', statement: 'first', passed: true }, { id: 'c2', statement: 'second', passed: false }]
+      const grades = Object.fromEntries(request.arms.map((arm) => [
+        arm.label,
+        arm.output.includes('canary')
+          ? grade(!arm.output.includes('bad canary output'))
+          : { assertions, score: 0.5, passed: false },
+      ]))
+      return JSON.stringify({
+        grades,
+      })
+    },
+  }), AgreementError)
 })
 
 test('rejects custom identity fields and unknown rubric fields', async () => {

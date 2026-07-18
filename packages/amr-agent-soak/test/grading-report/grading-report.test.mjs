@@ -14,6 +14,7 @@ import {
   pairedStatistics,
 } from '../../src/grading/statistics.mjs'
 import {
+  adjudicateTwoGraders,
   assertCalibrationCanaries,
   buildBlindArmBundle,
   createBlindArmBundles,
@@ -136,6 +137,27 @@ test('no-seed blind bundle batches use a non-degenerate random stream', () => {
 test('computes Cohen kappa for two graders', () => {
   assert.equal(cohensKappa([true, true, false, false], [true, true, false, false]), 1)
   assert.equal(cohensKappa([true, false], [false, true]), -1)
+})
+
+test('shared adjudication computes kappa from canonical ID-aligned pairs', () => {
+  const result = adjudicateTwoGraders(
+    {
+      assertions: [
+        { id: 'c1', statement: 'first', passed: true },
+        { id: 'c2', statement: 'second', passed: false },
+      ],
+      score: 0.5,
+    },
+    {
+      assertions: [
+        { id: 'c2', statement: 'second', passed: true },
+        { id: 'c1', statement: 'first', passed: false },
+      ],
+      score: 0.5,
+    },
+  )
+  assert.equal(result.kappa, -1)
+  assert.deepEqual(result.disagreements, ['c1', 'c2'])
 })
 
 test('fails calibration canaries instead of silently accepting drift', () => {
