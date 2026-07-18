@@ -104,7 +104,7 @@
       ],
       "winning_authority": "cp-unit-test",
       "rationale": "Control-plane validation encodes the allowed geo transitions; the unit test is the authority and its concrete assertion is resolved into eval-runs, not committed." } },
-  { "id": "src-geo-5-6-db0", "domain": "geo-active", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+  { "id": "src-geo-5-6-db0", "domain": "geo-active", "authority": "redisinc-enterprise", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
     "statement": "Geo participants operate on database-0 semantics; a multi-database SELECT is not part of a valid geo transition." },
 
   { "id": "src-migration-6-7-mixed", "domain": "migration", "authority": "contested", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
@@ -140,7 +140,7 @@
       ],
       "winning_authority": "redisinc-enterprise",
       "rationale": "The enterprise engine defines CRDB conflict-resolution semantics, which are active-active and not single-primary." } },
-  { "id": "src-crdb-db0", "domain": "crdb", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
+  { "id": "src-crdb-db0", "domain": "crdb", "authority": "redisinc-enterprise", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
     "statement": "A CRDB operates on database-0 semantics; multiple logical databases are not available across the CRDB." },
 
   { "id": "src-skill-no-stale", "domain": "skill-harm-staleness", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "version-pinned", "public_safe": true,
