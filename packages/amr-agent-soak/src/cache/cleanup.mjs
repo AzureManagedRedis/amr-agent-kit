@@ -22,6 +22,7 @@
 import { assertSafeToMutate } from './guards.mjs';
 import { pollUntilTerminal, buildDeletionCheck } from './reconciliation.mjs';
 import { assertLeaseAuthorizes, MAX_ACTIVE_LEASES } from './lease-manager.mjs';
+import { DEFAULT_DELETE_POLL_TIMEOUT_MS } from './config.mjs';
 
 export class CleanupError extends Error {
   constructor(message) {
@@ -63,10 +64,18 @@ export const DEFAULT_MAX_DELETES_PER_RUN = MAX_ACTIVE_LEASES;
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
  * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
  * @param {string} opts.resourceName
- * @param {object} opts.context - mutation context (see mutation-context.mjs); context.config must carry subscriptionId/resourceGroup.
+ * @param {object} opts.context - mutation context (see mutation-context.mjs); context.config must carry subscriptionId/resourceGroup, optionally deletePollTimeoutMs.
+ * @param {number} [opts.deletePollTimeoutMs] - overall deadline for polling the delete to terminal absence; defaults to context.config.deletePollTimeoutMs, then DEFAULT_DELETE_POLL_TIMEOUT_MS. Real local RP deletes are bounded but not instant.
  * @param {typeof pollUntilTerminal} [opts.pollTerminal]
  */
-export async function deleteOwnedResource({ ledger, adapter, resourceName, context, pollTerminal = pollUntilTerminal }) {
+export async function deleteOwnedResource({
+  ledger,
+  adapter,
+  resourceName,
+  context,
+  deletePollTimeoutMs = context?.config?.deletePollTimeoutMs ?? DEFAULT_DELETE_POLL_TIMEOUT_MS,
+  pollTerminal = pollUntilTerminal,
+}) {
   const coords = {
     subscriptionId: context?.config?.subscriptionId,
     resourceGroup: context?.config?.resourceGroup,
@@ -78,6 +87,7 @@ export async function deleteOwnedResource({ ledger, adapter, resourceName, conte
     const status = await pollTerminal({
       checkStatus: buildDeletionCheck((signal) => adapter.getCluster(coords, { signal })),
       label: `deletion of "${resourceName}"`,
+      timeoutMs: deletePollTimeoutMs,
     });
 
     if (status.state !== 'Deleted') {

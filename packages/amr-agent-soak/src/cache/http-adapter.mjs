@@ -33,6 +33,14 @@
 // There is deliberately no SKU-catalog method here: SKU data comes from an
 // injected catalog provider (see catalog-provider.mjs), never from a fake
 // RP endpoint.
+//
+// listClusters follows ARM nextLink-style pagination so owned resources are
+// never missed among other subscription/resource-group caches spread
+// across multiple pages -- every followed nextLink is origin-locked
+// (refused if it points outside this adapter's base origin, exactly like
+// Location/Azure-AsyncOperation follow-ups) and bounded by a max-page
+// guard so an accidental or malicious nextLink cycle can never loop
+// forever.
 
 import { LOCAL_RP_HOST, LOCAL_RP_PORT, DEFAULT_API_VERSION } from './config.mjs';
 import { redactForLog } from './redact.mjs';
@@ -54,6 +62,11 @@ const FORBIDDEN_FALLBACK_PORTS = new Set([8444]);
 /** Default per-request timeout applied via AbortController when the caller
  * does not specify one. Bounds every single fetch, not just polling loops. */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 10000;
+
+/** Default cap on how many nextLink pages listClusters will follow before
+ * refusing to continue. Guards against an accidental or malicious nextLink
+ * cycle spinning the pagination loop forever. */
+export const DEFAULT_MAX_LIST_PAGES = 50;
 
 async function withAbortTimeout(timeoutMs, externalSignal, fn) {
   const controller = new AbortController();
@@ -209,9 +222,42 @@ export class LocalRpHttpAdapter {
     return body;
   }
 
-  async listClusters({ subscriptionId, resourceGroup }, { signal, timeoutMs } = {}) {
-    const { body } = await this.#request('GET', buildClusterPath({ subscriptionId, resourceGroup }), { signal, timeoutMs });
-    return body;
+  /**
+   * Lists clusters, following ARM `nextLink`-style pagination so that
+   * owned resources are never missed among other subscription/RG caches
+   * spread across multiple pages. Every followed `nextLink` is
+   * origin-locked (via the same same-origin check `#request` already
+   * applies to any absolute URL, exactly like Location/Azure-
+   * AsyncOperation follow-ups) -- a malicious or buggy `nextLink` pointing
+   * outside this adapter's base origin is refused rather than followed.
+   * Bounded by `maxPages` so a `nextLink` cycle (accidental or malicious)
+   * can never spin this loop forever.
+   */
+  async listClusters({ subscriptionId, resourceGroup }, { signal, timeoutMs, maxPages = DEFAULT_MAX_LIST_PAGES } = {}) {
+    const items = [];
+    let requestTarget = buildClusterPath({ subscriptionId, resourceGroup });
+    let appendApiVersion = true;
+    let page = 0;
+    for (;;) {
+      page += 1;
+      if (page > maxPages) {
+        throw new AdapterError(
+          `listClusters exceeded the maximum page count (${maxPages}) while following nextLink -- refusing to loop indefinitely (possible nextLink cycle).`
+        );
+      }
+      const { body } = await this.#request('GET', requestTarget, { signal, timeoutMs, appendApiVersion });
+      const pageItems = Array.isArray(body) ? body : (body?.value ?? []);
+      items.push(...pageItems);
+
+      const nextLink = typeof body?.nextLink === 'string' && body.nextLink.length > 0 ? body.nextLink : null;
+      if (!nextLink) break;
+      // #request already origin-locks any absolute URL against this
+      // adapter's base origin -- a cross-origin nextLink throws
+      // AdapterError there before any request to it is ever issued.
+      requestTarget = nextLink;
+      appendApiVersion = false; // nextLink is already fully qualified by the RP.
+    }
+    return { value: items };
   }
 
   async getDatabase({ subscriptionId, resourceGroup, clusterName }, { signal, timeoutMs } = {}) {

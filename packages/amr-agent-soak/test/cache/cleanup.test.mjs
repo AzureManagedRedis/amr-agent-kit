@@ -304,3 +304,60 @@ test('deleteOwnedResource can be used standalone (e.g. by the janitor) with the 
     assert.deepEqual(ledger.activeResources(), []);
   });
 });
+
+// ---- Review finding #2: the delete poll timeout must be configurable (not
+// hard-coded to a short generic default), sourced from context.config ----
+
+test('deleteOwnedResource forwards context.config.deletePollTimeoutMs as the overall polling deadline', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+    const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');
+
+    let capturedTimeoutMs;
+    const pollTerminal = async (opts) => {
+      capturedTimeoutMs = opts.timeoutMs;
+      const { pollUntilTerminal } = await import('../../src/cache/reconciliation.mjs');
+      return pollUntilTerminal({ ...opts, intervalMs: 1, sleep: async () => {} });
+    };
+
+    await deleteOwnedResource({
+      ledger,
+      adapter,
+      resourceName: 'dmon-run1-cache1',
+      context: { config: testConfig({ deletePollTimeoutMs: 777000 }), lease, leaseManager },
+      pollTerminal,
+    });
+
+    assert.equal(capturedTimeoutMs, 777000);
+  });
+});
+
+test('deleteOwnedResource falls back to DEFAULT_DELETE_POLL_TIMEOUT_MS when config does not specify one', async () => {
+  await withTempLedger(async (ledger) => {
+    const { DEFAULT_DELETE_POLL_TIMEOUT_MS } = await import('../../src/cache/config.mjs');
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+    const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');
+
+    let capturedTimeoutMs;
+    const pollTerminal = async (opts) => {
+      capturedTimeoutMs = opts.timeoutMs;
+      const { pollUntilTerminal } = await import('../../src/cache/reconciliation.mjs');
+      return pollUntilTerminal({ ...opts, intervalMs: 1, sleep: async () => {} });
+    };
+
+    await deleteOwnedResource({
+      ledger,
+      adapter,
+      resourceName: 'dmon-run1-cache1',
+      context: { config: testConfig(), lease, leaseManager }, // no deletePollTimeoutMs override
+      pollTerminal,
+    });
+
+    assert.equal(capturedTimeoutMs, DEFAULT_DELETE_POLL_TIMEOUT_MS);
+  });
+});
+

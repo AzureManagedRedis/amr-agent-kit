@@ -10,6 +10,14 @@
 // `pollsUntilDeleteComplete` subsequent GETs before flipping to terminal
 // (Succeeded, or actually removed/404 for deletes). This lets tests exercise
 // real polling behavior deterministically without real timers.
+//
+// `clusterCreateOutcomes`/`databaseCreateOutcomes` let a test force a
+// specific resource's create to land on "Failed"/"Canceled" instead of the
+// default "Succeeded" (either immediately, or only after `pollsUntilCreate
+// Succeeded` polls), so createOwnedCache's terminal-state enforcement can be
+// exercised deterministically. `listPageSize`, when set, paginates cluster
+// list GETs into chunks via a synthetic `_page` query param + `nextLink`, so
+// listClusters' nextLink-following can be exercised deterministically too.
 
 const CLUSTER_LIST_RE = /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise$/;
 const CLUSTER_RE = /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise\/([^/]+)$/;
@@ -23,6 +31,9 @@ export function createFakeRp({
   initialClusters = [],
   pollsUntilCreateSucceeded = 0,
   pollsUntilDeleteComplete = 0,
+  clusterCreateOutcomes = {}, // { [clusterName]: 'Failed' | 'Canceled' } -- overrides the normal 'Succeeded' terminal state.
+  databaseCreateOutcomes = {}, // { [clusterName]: 'Failed' | 'Canceled' }
+  listPageSize, // when set, cluster list GETs are paginated into chunks of this size via a synthetic `_page` query param + nextLink.
 } = {}) {
   const clusters = new Map(
     initialClusters.map((c) => [
@@ -54,7 +65,7 @@ export function createFakeRp({
   }
 
   function sanitizeCluster(record) {
-    const { _createPollsRemaining, _deletePollsRemaining, ...rest } = record;
+    const { _createPollsRemaining, _deletePollsRemaining, _createTerminalState, ...rest } = record;
     return JSON.parse(JSON.stringify(rest));
   }
 
@@ -112,9 +123,9 @@ export function createFakeRp({
         if (!db) return jsonResponse(404, { error: { code: 'NotFound' } });
         if (db._pollsRemaining > 0) {
           db._pollsRemaining -= 1;
-          if (db._pollsRemaining === 0) db.properties.provisioningState = 'Succeeded';
+          if (db._pollsRemaining === 0) db.properties.provisioningState = db._terminalState ?? 'Succeeded';
         }
-        const { _pollsRemaining, ...rest } = db;
+        const { _pollsRemaining, _terminalState, ...rest } = db;
         return jsonResponse(200, JSON.parse(JSON.stringify(rest)));
       }
       if (method === 'PUT') {
@@ -122,21 +133,36 @@ export function createFakeRp({
         if (databases.has(clusterName)) {
           return jsonResponse(409, { error: { code: 'DatabaseAlreadyExists' } });
         }
+        const terminalState = databaseCreateOutcomes[clusterName] ?? 'Succeeded';
         const record = {
           name: 'default',
-          properties: { ...(body?.properties ?? {}), provisioningState: pollsUntilCreateSucceeded > 0 ? 'Creating' : 'Succeeded' },
+          properties: { ...(body?.properties ?? {}), provisioningState: pollsUntilCreateSucceeded > 0 ? 'Creating' : terminalState },
           _pollsRemaining: pollsUntilCreateSucceeded,
+          _terminalState: terminalState,
         };
         databases.set(clusterName, record);
-        const { _pollsRemaining, ...rest } = record;
+        const { _pollsRemaining, _terminalState: _t, ...rest } = record;
         return jsonResponse(pollsUntilCreateSucceeded > 0 ? 202 : 201, JSON.parse(JSON.stringify(rest)));
       }
     }
 
-    // ---- cluster list ----
+    // ---- cluster list (paginated via a synthetic _page query param when
+    // listPageSize is configured, so tests can exercise nextLink-following
+    // deterministically) ----
     const listMatch = u.pathname.match(CLUSTER_LIST_RE);
     if (listMatch && method === 'GET') {
-      return jsonResponse(200, { value: [...clusters.values()].map(sanitizeCluster) });
+      const allItems = [...clusters.values()].map(sanitizeCluster);
+      if (!listPageSize || allItems.length <= listPageSize) {
+        return jsonResponse(200, { value: allItems });
+      }
+      const pageIndex = Number(u.searchParams.get('_page') ?? 0);
+      const start = pageIndex * listPageSize;
+      const pageItems = allItems.slice(start, start + listPageSize);
+      const hasMore = start + listPageSize < allItems.length;
+      if (!hasMore) return jsonResponse(200, { value: pageItems });
+      const apiVersion = u.searchParams.get('api-version');
+      const nextLink = `http://localhost:8443${u.pathname}?api-version=${encodeURIComponent(apiVersion)}&_page=${pageIndex + 1}`;
+      return jsonResponse(200, { value: pageItems, nextLink });
     }
 
     // ---- cluster (single) ----
@@ -158,7 +184,7 @@ export function createFakeRp({
         }
         if (record._createPollsRemaining > 0) {
           record._createPollsRemaining -= 1;
-          if (record._createPollsRemaining === 0) record.properties.provisioningState = 'Succeeded';
+          if (record._createPollsRemaining === 0) record.properties.provisioningState = record._createTerminalState ?? 'Succeeded';
         }
         return jsonResponse(200, sanitizeCluster(record));
       }
@@ -168,13 +194,15 @@ export function createFakeRp({
           return jsonResponse(409, { error: { code: 'AlreadyExists', message: 'A cluster with this name already exists.' } });
         }
         const useAsyncHeaders = Boolean(body?._testUseAsyncHeaders);
+        const terminalState = clusterCreateOutcomes[name] ?? 'Succeeded';
         const record = {
           name,
           location: body?.location,
           tags: body?.tags ?? {},
           sku: body?.sku,
-          properties: { ...(body?.properties ?? {}), provisioningState: pollsUntilCreateSucceeded > 0 ? 'Creating' : 'Succeeded' },
+          properties: { ...(body?.properties ?? {}), provisioningState: pollsUntilCreateSucceeded > 0 ? 'Creating' : terminalState },
           _createPollsRemaining: pollsUntilCreateSucceeded,
+          _createTerminalState: terminalState,
           _deletePollsRemaining: 0,
         };
         clusters.set(name, record);
@@ -185,7 +213,7 @@ export function createFakeRp({
           operations.set(opId, {
             pollsRemaining: pollsUntilCreateSucceeded,
             onSucceed: () => {
-              record.properties.provisioningState = 'Succeeded';
+              record.properties.provisioningState = terminalState;
               record._createPollsRemaining = 0;
             },
           });

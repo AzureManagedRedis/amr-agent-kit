@@ -1,6 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { loadRuntimeConfig, ConfigError, describeConfig, LOCAL_RP_HOST, LOCAL_RP_PORT } from '../../src/cache/config.mjs';
+import {
+  loadRuntimeConfig,
+  ConfigError,
+  describeConfig,
+  LOCAL_RP_HOST,
+  LOCAL_RP_PORT,
+  DEFAULT_CREATE_POLL_TIMEOUT_MS,
+  DEFAULT_DELETE_POLL_TIMEOUT_MS,
+} from '../../src/cache/config.mjs';
 
 const BASE_ENV = {
   AMR_SOAK_SUBSCRIPTION_ID: '11111111-2222-3333-4444-555555555555',
@@ -36,6 +44,36 @@ test('loadRuntimeConfig requires explicit customer-subscription acknowledgement'
   const env = { ...BASE_ENV };
   delete env.AMR_SOAK_ACK_CUSTOMER_SUBSCRIPTION;
   assert.throws(() => loadRuntimeConfig(env), ConfigError);
+});
+
+// ---- Review finding #2: real local-RP provisioning is multi-minute; poll
+// timeouts must be configurable, with safe multi-minute defaults ----
+
+test('loadRuntimeConfig defaults create/delete poll timeouts to multi-minute constants, not a short generic default', () => {
+  const config = loadRuntimeConfig(BASE_ENV);
+  assert.equal(config.createPollTimeoutMs, DEFAULT_CREATE_POLL_TIMEOUT_MS);
+  assert.equal(config.deletePollTimeoutMs, DEFAULT_DELETE_POLL_TIMEOUT_MS);
+  // Sanity: these must be far larger than reconciliation's ~60s generic
+  // default -- real B0/E1-stage creates are multi-minute.
+  assert.ok(DEFAULT_CREATE_POLL_TIMEOUT_MS >= 30 * 60 * 1000);
+  assert.ok(DEFAULT_DELETE_POLL_TIMEOUT_MS >= 10 * 60 * 1000);
+});
+
+test('loadRuntimeConfig honors AMR_SOAK_CREATE_POLL_TIMEOUT_MS / AMR_SOAK_DELETE_POLL_TIMEOUT_MS env overrides', () => {
+  const config = loadRuntimeConfig({
+    ...BASE_ENV,
+    AMR_SOAK_CREATE_POLL_TIMEOUT_MS: '900000',
+    AMR_SOAK_DELETE_POLL_TIMEOUT_MS: '450000',
+  });
+  assert.equal(config.createPollTimeoutMs, 900000);
+  assert.equal(config.deletePollTimeoutMs, 450000);
+});
+
+test('loadRuntimeConfig honors createPollTimeoutMs/deletePollTimeoutMs from the runtime file config', () => {
+  const fileReader = () => ({ createPollTimeoutMs: 123000, deletePollTimeoutMs: 45000 });
+  const config = loadRuntimeConfig(BASE_ENV, fileReader);
+  assert.equal(config.createPollTimeoutMs, 123000);
+  assert.equal(config.deletePollTimeoutMs, 45000);
 });
 
 test('loadRuntimeConfig rejects a falsy/typo ack value (e.g. "yes")', () => {

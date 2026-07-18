@@ -27,11 +27,31 @@
 import { buildResourceTags } from './tags.mjs';
 import { buildArmSkuBody } from './sku-catalog.mjs';
 import { pollUntilTerminal, buildResourceProvisioningStateCheck } from './reconciliation.mjs';
+import { DEFAULT_CREATE_POLL_TIMEOUT_MS } from './config.mjs';
 
 export class ProvisioningError extends Error {
   constructor(message) {
     super(message);
     this.name = 'ProvisioningError';
+  }
+}
+
+/**
+ * A more specific ProvisioningError: the RP gave a DEFINITIVE answer (an
+ * immediate PUT response, or a polled-to-terminal result, reporting
+ * "Failed"/"Canceled" provisioningState) that creation did NOT succeed --
+ * as opposed to an ambiguous/transient failure (network error, guard
+ * rejection, etc.) where we cannot be sure whether the RP actually created
+ * something server-side. Only this confirmed case frees the six-live-
+ * resource admission slot (see createOwnedCache's catch block); an
+ * ambiguous failure leaves the creation-intent reserved so a future
+ * reconciliation pass can safely determine the truth instead of risking
+ * silently over-admitting past the cap.
+ */
+export class ConfirmedCreationFailure extends ProvisioningError {
+  constructor(message) {
+    super(message);
+    this.name = 'ConfirmedCreationFailure';
   }
 }
 
@@ -62,13 +82,50 @@ function pickValidatedDatabaseFields(databaseSpec = {}) {
 }
 
 /**
+ * Captures a create-call's poll result and REQUIRES the terminal
+ * provisioningState to be exactly "Succeeded". An immediate PUT response
+ * body already reporting "Failed"/"Canceled" is rejected without ever
+ * polling (no point waiting on a definitive answer we already have). A
+ * state that reaches any OTHER terminal value via polling (Failed/Canceled)
+ * is likewise rejected. Both throw ConfirmedCreationFailure -- a
+ * DEFINITIVE, RP-confirmed answer, distinct from an ambiguous/transient
+ * error -- so the caller can safely free admission capacity for it.
+ */
+async function ensureTerminalSucceeded({ result, kind, resourceName, dryRunOnly, pollTerminal, timeoutMs, getResource }) {
+  if (dryRunOnly) return result;
+
+  let state = result.body?.properties?.provisioningState;
+  if (state === 'Failed' || state === 'Canceled') {
+    throw new ConfirmedCreationFailure(
+      `${kind} for "${resourceName}" was immediately reported as "${state}" by the RP -- refusing to confirm creation.`
+    );
+  }
+
+  if (state !== 'Succeeded') {
+    const finalStatus = await pollTerminal({
+      checkStatus: buildResourceProvisioningStateCheck(getResource),
+      label: `${kind} "${resourceName}" creation`,
+      timeoutMs,
+    });
+    state = finalStatus.state;
+  }
+
+  if (state !== 'Succeeded') {
+    throw new ConfirmedCreationFailure(
+      `${kind} for "${resourceName}" reached terminal state "${state}", not "Succeeded" -- refusing to confirm creation.`
+    );
+  }
+  return result;
+}
+
+/**
  * @param {object} opts
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
  * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
  * @param {string} opts.resourceName - the cluster name.
  * @param {{family: string, name: string, capacity?: number}} opts.sku
  * @param {string} opts.location
- * @param {object} opts.config - runtime config (resourcePrefix, denylist, acknowledgedCustomerSubscription, ownerAlias, runId, subscriptionId, resourceGroup).
+ * @param {object} opts.config - runtime config (resourcePrefix, denylist, acknowledgedCustomerSubscription, ownerAlias, runId, subscriptionId, resourceGroup, createPollTimeoutMs).
  * @param {object} opts.lease - exclusive lease authorizing this create.
  * @param {import('./lease-manager.mjs').LeaseManager} opts.leaseManager
  * @param {import('./kill-switch.mjs').KillSwitch} [opts.killSwitch]
@@ -77,6 +134,7 @@ function pickValidatedDatabaseFields(databaseSpec = {}) {
  * @param {object} [opts.extraTags]
  * @param {object} [opts.databaseSpec] - validated-scenario-only database fields; see VALIDATED_DATABASE_FIELDS.
  * @param {number} [opts.maxLiveResources]
+ * @param {number} [opts.createPollTimeoutMs] - overall deadline for polling cluster/database creation to terminal; defaults to config.createPollTimeoutMs, then DEFAULT_CREATE_POLL_TIMEOUT_MS. Real local RP provisioning is multi-minute.
  * @param {() => number} [opts.now]
  * @param {typeof pollUntilTerminal} [opts.pollTerminal]
  */
@@ -95,6 +153,7 @@ export async function createOwnedCache({
   extraTags = {},
   databaseSpec = {},
   maxLiveResources = MAX_LIVE_RESOURCES,
+  createPollTimeoutMs = config?.createPollTimeoutMs ?? DEFAULT_CREATE_POLL_TIMEOUT_MS,
   now = () => Date.now(),
   pollTerminal = pollUntilTerminal,
 }) {
@@ -146,25 +205,44 @@ export async function createOwnedCache({
   let databaseResult;
   try {
     clusterResult = await adapter.createCluster(coords, clusterBody, context);
-    if (!dryRunOnly && clusterResult.body?.properties?.provisioningState !== 'Succeeded') {
-      await pollTerminal({
-        checkStatus: buildResourceProvisioningStateCheck((signal) => adapter.getCluster(coords, { signal })),
-        label: `cluster "${resourceName}" creation`,
-      });
-    }
+    await ensureTerminalSucceeded({
+      result: clusterResult,
+      kind: 'cluster',
+      resourceName,
+      dryRunOnly,
+      pollTerminal,
+      timeoutMs: createPollTimeoutMs,
+      getResource: (signal) => adapter.getCluster(coords, { signal }),
+    });
 
     const databaseBody = { properties: pickValidatedDatabaseFields(databaseSpec) };
     const dbCoords = { subscriptionId: config.subscriptionId, resourceGroup: config.resourceGroup, clusterName: resourceName };
     databaseResult = await adapter.createDatabase(dbCoords, databaseBody, context);
-    if (!dryRunOnly && databaseResult.body?.properties?.provisioningState !== 'Succeeded') {
-      await pollTerminal({
-        checkStatus: buildResourceProvisioningStateCheck((signal) => adapter.getDatabase(dbCoords, { signal })),
-        label: `database for "${resourceName}" creation`,
-      });
-    }
+    await ensureTerminalSucceeded({
+      result: databaseResult,
+      kind: 'database',
+      resourceName,
+      dryRunOnly,
+      pollTerminal,
+      timeoutMs: createPollTimeoutMs,
+      getResource: (signal) => adapter.getDatabase(dbCoords, { signal }),
+    });
   } catch (err) {
-    // Intent stays recorded (untouched) so reconciliation can retry or
-    // surface this cleanly on the next pass; we do not append 'created'.
+    if (err instanceof ConfirmedCreationFailure) {
+      // The RP gave a DEFINITIVE answer: creation did not succeed. Free
+      // the six-live admission slot -- an intent confirmed to never
+      // become a real resource must not permanently consume capacity.
+      // The original 'creation-intent' event is left untouched as audit
+      // evidence; 'created' is (and must remain) never appended.
+      ledger.append('creation-failed', resourceName, { reason: err.message });
+      throw err;
+    }
+    // Ambiguous/transient failure (network error, guard rejection, etc.):
+    // we cannot be sure whether the RP actually created something
+    // server-side, so the creation-intent stays reserved (untouched) --
+    // not appended 'created' -- so a future reconciliation pass can
+    // safely determine the truth rather than risking over-admission past
+    // the cap by prematurely freeing this slot.
     throw new ProvisioningError(`Failed to create "${resourceName}": ${err.message}`);
   }
 

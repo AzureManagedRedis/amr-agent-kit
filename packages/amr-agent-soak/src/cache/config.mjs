@@ -23,6 +23,18 @@ export const LOCAL_RP_PORT = 8443;
  * this default. */
 export const DEFAULT_API_VERSION = '2024-09-01-preview';
 
+/** Default overall deadline for polling a cluster/database CREATE to a
+ * terminal provisioningState. Real local RP provisioning is multi-minute
+ * (e.g. B0/E1-stage creates), not the ~60s generic default used elsewhere
+ * for reconciliation-style polling -- so this has its own, much larger,
+ * runtime-configurable default. Override via AMR_SOAK_CREATE_POLL_TIMEOUT_MS. */
+export const DEFAULT_CREATE_POLL_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+
+/** Default overall deadline for polling a DELETE to terminal absence.
+ * Deletes are typically faster than creates but still bounded, not
+ * unbounded -- override via AMR_SOAK_DELETE_POLL_TIMEOUT_MS. */
+export const DEFAULT_DELETE_POLL_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
 const REQUIRED_ACK_VALUE = 'true';
 
 export class ConfigError extends Error {
@@ -106,6 +118,8 @@ export function loadRuntimeConfig(env = process.env, fileReader = readRuntimeFil
     apiVersion: env.AMR_SOAK_API_VERSION ?? fileConfig.apiVersion ?? DEFAULT_API_VERSION,
     killSwitchPath: env.AMR_SOAK_KILL_SWITCH_PATH ?? fileConfig.killSwitchPath ?? null,
     ledgerPath: env.AMR_SOAK_LEDGER_PATH ?? fileConfig.ledgerPath ?? null,
+    createPollTimeoutMs: Number(env.AMR_SOAK_CREATE_POLL_TIMEOUT_MS ?? fileConfig.createPollTimeoutMs ?? DEFAULT_CREATE_POLL_TIMEOUT_MS),
+    deletePollTimeoutMs: Number(env.AMR_SOAK_DELETE_POLL_TIMEOUT_MS ?? fileConfig.deletePollTimeoutMs ?? DEFAULT_DELETE_POLL_TIMEOUT_MS),
     rpHost: LOCAL_RP_HOST,
     rpPort: LOCAL_RP_PORT,
     // Reaching this point means the ack check above passed; carry that fact

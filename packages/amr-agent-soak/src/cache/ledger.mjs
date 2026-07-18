@@ -20,6 +20,7 @@ export class LedgerError extends Error {
 const VALID_ACTIONS = new Set([
   'creation-intent',
   'created',
+  'creation-failed',
   'mutated',
   'deleted',
   'lease-acquired',
@@ -78,12 +79,21 @@ export class ResourceLedger {
       entry.events.push(record);
       entry.lastAction = record.action;
       entry.lastEventAt = record.ts;
-      entry.deleted = record.action === 'deleted';
+      // A resource stops counting as "active"/"live" once it is either
+      // actually deleted, or the RP gave a DEFINITIVE answer that creation
+      // never succeeded (`creation-failed` -- see provisioning.mjs's
+      // ConfirmedCreationFailure). Either way, this reflects the MOST
+      // RECENT lifecycle event, exactly like `deleted` always has -- so a
+      // later 'created' event (e.g. reconciliation confirming the resource
+      // actually did come up despite our earlier ambiguous view) correctly
+      // un-marks it.
+      entry.deleted = record.action === 'deleted' || record.action === 'creation-failed';
     }
     return { creationOrder, byResource };
   }
 
-  /** Resources created (or mutated) but not yet marked deleted, in creation order. */
+  /** Resources created (or mutated) but not yet marked deleted (or
+   * confirmed-failed to ever create), in creation order. */
   activeResources() {
     const { creationOrder, byResource } = this.replay();
     return creationOrder.filter((name) => !byResource.get(name).deleted);
@@ -118,5 +128,21 @@ export class ResourceLedger {
     const hasCreated = entry.events.some((e) => e.action === 'created');
     const hasIntent = entry.events.some((e) => e.action === 'creation-intent');
     return hasIntent && !hasCreated;
+  }
+
+  /**
+   * True if the RP gave a definitive answer that `name` never successfully
+   * came up (a confirmed terminal "Failed"/"Canceled" provisioningState --
+   * see provisioning.mjs's ConfirmedCreationFailure), as opposed to an
+   * ambiguous/transient failure. The `creation-intent` event itself is
+   * never removed (it remains as audit evidence), but this resource is
+   * excluded from `activeResources()` and therefore no longer consumes
+   * six-live-resource admission capacity.
+   */
+  hasCreationFailed(name) {
+    const { byResource } = this.replay();
+    const entry = byResource.get(name);
+    if (!entry) return false;
+    return entry.events.some((e) => e.action === 'creation-failed');
   }
 }

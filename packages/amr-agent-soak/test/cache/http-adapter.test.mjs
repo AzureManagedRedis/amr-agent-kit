@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { LocalRpHttpAdapter, AdapterError, DEFAULT_REQUEST_TIMEOUT_MS } from '../../src/cache/http-adapter.mjs';
+import { LocalRpHttpAdapter, AdapterError, DEFAULT_REQUEST_TIMEOUT_MS, DEFAULT_MAX_LIST_PAGES } from '../../src/cache/http-adapter.mjs';
 import { DEFAULT_API_VERSION } from '../../src/cache/config.mjs';
 import { MutationContextError } from '../../src/cache/mutation-context.mjs';
 import { LeaseManager, LeaseNotAuthorized, FencingTokenStale } from '../../src/cache/lease-manager.mjs';
@@ -409,4 +409,86 @@ test('an externally supplied AbortSignal also bounds the request', async () => {
 
 test('DEFAULT_REQUEST_TIMEOUT_MS is a sane positive default', () => {
   assert.ok(DEFAULT_REQUEST_TIMEOUT_MS > 0);
+});
+
+// ---- Review finding #3: ARM nextLink pagination, origin-locked and loop-guarded ----
+
+test('listClusters follows nextLink across multiple pages and returns every owned resource', async () => {
+  const fake = createFakeRp({
+    initialClusters: [
+      { name: 'dmon-run1-cache1' },
+      { name: 'dmon-run1-cache2' },
+      { name: 'dmon-run1-cache3' },
+      { name: 'dmon-run1-cache4' },
+      { name: 'dmon-run1-cache5' },
+    ],
+    listPageSize: 2,
+  });
+  const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+  const result = await adapter.listClusters({ subscriptionId: COORDS.subscriptionId, resourceGroup: COORDS.resourceGroup });
+
+  assert.equal(result.value.length, 5);
+  assert.deepEqual(
+    result.value.map((c) => c.name).sort(),
+    ['dmon-run1-cache1', 'dmon-run1-cache2', 'dmon-run1-cache3', 'dmon-run1-cache4', 'dmon-run1-cache5']
+  );
+  // 5 items at 2 per page: three pages (2/2/1) should have been fetched.
+  const listPath = `/subscriptions/${COORDS.subscriptionId}/resourceGroups/${COORDS.resourceGroup}/providers/Microsoft.Cache/redisEnterprise`;
+  const listRequests = fake._requestLog.filter((r) => r.path === listPath);
+  assert.equal(listRequests.length, 3);
+});
+
+test('listClusters refuses to follow a nextLink pointing outside this adapter origin (malicious/buggy nextLink)', async () => {
+  let evilFetchCalled = false;
+  const fetchImpl = async (url) => {
+    const u = new URL(url);
+    if (u.origin === 'http://evil.example:9999') {
+      evilFetchCalled = true;
+      return { ok: true, status: 200, headers: { get: () => null }, text: async () => JSON.stringify({ value: [] }) };
+    }
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () =>
+        JSON.stringify({
+          value: [{ name: 'dmon-run1-cache1' }],
+          nextLink: 'http://evil.example:9999/subscriptions/x/providers/Microsoft.Cache/redisEnterprise?api-version=2024-09-01-preview',
+        }),
+    };
+  };
+  const adapter = new LocalRpHttpAdapter({ fetchImpl });
+
+  await assert.rejects(
+    () => adapter.listClusters({ subscriptionId: COORDS.subscriptionId }),
+    (err) => err instanceof AdapterError && /outside/i.test(err.message)
+  );
+  assert.equal(evilFetchCalled, false); // the cross-origin nextLink must never actually be requested
+});
+
+test('listClusters refuses to follow a nextLink cycle forever, bounded by maxPages', async () => {
+  let callCount = 0;
+  const cyclicalNextLink =
+    'http://localhost:8443/subscriptions/loop/providers/Microsoft.Cache/redisEnterprise?api-version=2024-09-01-preview&_loop=1';
+  const fetchImpl = async () => {
+    callCount += 1;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      text: async () => JSON.stringify({ value: [], nextLink: cyclicalNextLink }), // always "more" -- would loop forever unguarded
+    };
+  };
+  const adapter = new LocalRpHttpAdapter({ fetchImpl });
+
+  await assert.rejects(
+    () => adapter.listClusters({ subscriptionId: COORDS.subscriptionId }, { maxPages: 3 }),
+    (err) => err instanceof AdapterError && /maximum page count/i.test(err.message)
+  );
+  assert.equal(callCount, 3); // stopped exactly at the configured cap -- never looped indefinitely
+});
+
+test('DEFAULT_MAX_LIST_PAGES is a sane positive default', () => {
+  assert.ok(DEFAULT_MAX_LIST_PAGES > 0);
 });

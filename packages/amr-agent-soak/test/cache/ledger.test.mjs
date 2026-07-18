@@ -72,3 +72,57 @@ test('a second ResourceLedger instance pointed at the same path sees prior recor
     assert.deepEqual(reopened.activeResources(), ['dmon-run1-cache1']);
   });
 });
+
+// ---- Review finding #1: 'creation-failed' excludes a resource from
+// activeResources() (the six-live cap) without erasing its creation-intent
+// audit evidence ----
+
+test('append accepts the creation-failed action', () => {
+  withTempLedger((ledger) => {
+    assert.doesNotThrow(() => ledger.append('creation-failed', 'dmon-run1-cache1', { reason: 'RP reported Failed' }));
+  });
+});
+
+test('a creation-intent followed by creation-failed is excluded from activeResources but keeps creation-intent evidence', () => {
+  withTempLedger((ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1');
+    ledger.append('creation-failed', 'dmon-run1-cache1', { reason: 'Failed' });
+
+    assert.deepEqual(ledger.activeResources(), []);
+    assert.equal(ledger.hasCreationEvidence('dmon-run1-cache1'), true); // intent event still present, for audit
+    assert.equal(ledger.hasCreationFailed('dmon-run1-cache1'), true);
+    assert.equal(ledger.isIntentOnly('dmon-run1-cache1'), true); // no 'created' -- still just intent (now confirmed-failed)
+  });
+});
+
+test('hasCreationFailed is false for a resource that was never marked creation-failed', () => {
+  withTempLedger((ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1');
+    ledger.append('created', 'dmon-run1-cache1');
+    assert.equal(ledger.hasCreationFailed('dmon-run1-cache1'), false);
+    assert.equal(ledger.hasCreationFailed('never-seen'), false);
+  });
+});
+
+test('a later created event un-marks an earlier creation-failed (e.g. reconciliation later confirms the resource actually did come up)', () => {
+  withTempLedger((ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1');
+    ledger.append('creation-failed', 'dmon-run1-cache1', { reason: 'ambiguous, then confirmed live on reconciliation' });
+    assert.deepEqual(ledger.activeResources(), []);
+
+    ledger.append('created', 'dmon-run1-cache1', { reconciled: true });
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']); // most-recent event wins, exactly like 'deleted' would
+  });
+});
+
+test('deleted and creation-failed are independent exclusion reasons that both keep a resource out of activeResources', () => {
+  withTempLedger((ledger) => {
+    ledger.append('created', 'dmon-run1-cache1');
+    ledger.append('deleted', 'dmon-run1-cache1');
+    ledger.append('creation-intent', 'dmon-run1-cache2');
+    ledger.append('creation-failed', 'dmon-run1-cache2');
+    ledger.append('created', 'dmon-run1-cache3');
+
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache3']);
+  });
+});
