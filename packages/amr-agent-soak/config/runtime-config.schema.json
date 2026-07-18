@@ -8,6 +8,7 @@
     "tenantId",
     "owner",
     "runId",
+    "resourceGroup",
     "ackCustomerSubscription",
     "denylist"
   ],
@@ -16,6 +17,8 @@
     "tenantId": { "type": "string", "minLength": 1 },
     "owner": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$" },
     "runId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+    "resourceGroup": { "type": "string", "minLength": 1 },
+    "apiVersion": { "type": "string", "minLength": 1 },
     "ackCustomerSubscription": { "type": "boolean", "const": true },
     "denylist": {
       "type": "array",

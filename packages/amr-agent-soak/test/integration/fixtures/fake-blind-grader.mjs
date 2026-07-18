@@ -7,8 +7,9 @@ export async function createBlindGrader({ config }) {
         kappa: config.testKappa ?? 0.9,
       }
     },
-    async grade() {
-      return {
+    snapshot: { fixture: true },
+    async gradePair() {
+      const grade = {
         score: 1,
         passed: true,
         details: {
@@ -26,6 +27,7 @@ export async function createBlindGrader({ config }) {
           ],
         },
       }
+      return { 'with-skill': grade, 'without-skill': grade }
     },
   }
 }

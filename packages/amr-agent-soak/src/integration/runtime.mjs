@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { FileExecutionArtifactCache, IntegrationReporter } from './adapters.mjs'
+import { loadRuntimeConfig } from '../cache/config.mjs'
 import { createEvidenceRuntime } from './evidence.mjs'
 import { RegistryGrader } from './grading-adapter.mjs'
 import { loadSoakRegistry, RegistryScenarioProvider, defaults } from './registry.mjs'
@@ -68,13 +69,22 @@ export async function createSoakModules({ config, processManager }) {
   ) {
     throw new Error('Deterministic grading is preflight-only (duration <= 1 hour, repetitions <= 2, live cache disabled)')
   }
+  if (gradingConfig.mode === 'external-blind' && integration.executionCache?.enabled === true) {
+    throw new Error('Execution artifact cache must be disabled for external blind grading')
+  }
   const liveInputs = []
+  let liveAdapterValidation
   if (integration.liveCache?.enabled === true) {
-    if (!integration.liveCache.runtimeConfigPath || !integration.liveCache.adapterModule) {
-      throw new Error('Live cache mode requires a gitignored runtimeConfigPath and an ARM-shaped adapterModule')
+    if (integration.liveCache.reviewedReady !== true) {
+      throw new Error('Live cache mode remains blocked until integration.liveCache.reviewedReady=true after review clearance')
     }
+    if (!integration.liveCache.runtimeConfigPath) {
+      throw new Error('Live cache mode requires a gitignored runtimeConfigPath')
+    }
+    const adapterModule = integration.liveCache.adapterModule ??
+      'packages/amr-agent-soak/src/cache/http-adapter.mjs'
     for (const [kind, configuredPath] of [
-      ['adapter', integration.liveCache.adapterModule],
+      ['adapter', adapterModule],
       ['runtime-config', integration.liveCache.runtimeConfigPath],
     ]) {
       const filePath = resolvePath(repositoryRoot, configuredPath)
@@ -83,6 +93,31 @@ export async function createSoakModules({ config, processManager }) {
         file: path.basename(filePath),
         sha256: createHash('sha256').update(await readFile(filePath)).digest('hex'),
       })
+    }
+    const runtimeConfigPath = resolvePath(repositoryRoot, integration.liveCache.runtimeConfigPath)
+    const runtimeConfig = loadRuntimeConfig({
+      ...process.env,
+      AMR_SOAK_RUNTIME_CONFIG_PATH: runtimeConfigPath,
+      AMR_SOAK_RUN_ID: config.runId,
+    })
+    if (!runtimeConfig.resourceGroup) throw new Error('Live cache runtime config requires resourceGroup')
+    if (runtimeConfig.denylist.length === 0) throw new Error('Live cache runtime config requires a non-empty infrastructure-subscription denylist')
+    const adapterPath = resolvePath(repositoryRoot, adapterModule)
+    const adapterExports = await import(pathToFileURL(adapterPath).href)
+    const adapter = typeof adapterExports.createLocalRpAdapter === 'function'
+      ? await adapterExports.createLocalRpAdapter({ runtimeConfig, controllerConfig: config })
+      : typeof adapterExports.LocalRpHttpAdapter === 'function'
+        ? new adapterExports.LocalRpHttpAdapter({ apiVersion: runtimeConfig.apiVersion })
+        : null
+    if (!adapter) throw new Error('Reviewed ARM adapter module exposes no supported factory/class')
+    const methods = ['listClusters', 'getCluster', 'createCluster', 'createDatabase', 'deleteCluster', 'listKeys']
+    if (!methods.every((method) => typeof adapter[method] === 'function')) {
+      throw new Error('Reviewed ARM adapter module does not implement the required redisEnterprise contract')
+    }
+    liveAdapterValidation = {
+      module: path.basename(adapterPath),
+      apiVersion: runtimeConfig.apiVersion,
+      methods,
     }
   }
 
@@ -111,8 +146,14 @@ export async function createSoakModules({ config, processManager }) {
       evidenceStore: evidence.store,
       config: gradingConfig,
       repositoryRoot,
+      processManager,
+      controllerConfig: config,
+      runDir: path.join(path.resolve(config.outputRoot ?? path.join(repositoryRoot, 'eval-runs')), config.runId),
+      skillSnapshotPath: path.resolve(config.skillSnapshotPath),
     })
-    if (typeof grader?.grade !== 'function') throw new Error('External blind grader does not implement grade()')
+    if (typeof grader?.gradePair !== 'function') {
+      throw new Error('External blind grader does not implement gradePair()')
+    }
     if (typeof grader.assertCalibration !== 'function') {
       throw new Error('External blind grader must implement assertCalibration()')
     }
@@ -146,6 +187,7 @@ export async function createSoakModules({ config, processManager }) {
       kappa: calibration.kappa,
       minimumKappa,
       calibrationHash: createHash('sha256').update(JSON.stringify(calibration)).digest('hex'),
+      implementation: grader.snapshot,
     }
   } else {
     grader = new RegistryGrader({ evidenceStore: evidence.store })
@@ -172,6 +214,7 @@ export async function createSoakModules({ config, processManager }) {
     registryHash: await hashTree(path.dirname(registryPath)),
     clientCorpusHash: await hashTree(clientCorpusRoot),
     liveInputs,
+    liveAdapterValidation,
     graderInput,
   }
   return {

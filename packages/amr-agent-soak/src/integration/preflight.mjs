@@ -6,6 +6,7 @@ import {
   LeaseManager,
   LocalRpHttpAdapter,
   ResourceLedger,
+  classifySkuViaProvider,
   createOwnedCache,
   deleteOwnedResource,
   runJanitorPass,
@@ -19,31 +20,56 @@ import { loadSoakRegistry, RegistryScenarioProvider, defaults } from './registry
 const REPO_ROOT = fileURLToPath(new URL('../../../../', import.meta.url))
 
 function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, text: async () => JSON.stringify(body) }
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    text: async () => JSON.stringify(body),
+  }
 }
 
 function fakeRp() {
   const caches = new Map()
+  const databases = new Set()
   return {
     caches,
     async fetchImpl(url, init = {}) {
       const parsed = new URL(url)
-      if (parsed.pathname === '/caches' && (init.method ?? 'GET') === 'GET') {
-        return response(200, { caches: [...caches.values()] })
-      }
-      const match = parsed.pathname.match(/^\/caches\/([^/]+)$/)
-      if (!match) return response(404, { error: 'not found' })
-      const name = decodeURIComponent(match[1])
       const method = init.method ?? 'GET'
-      if (method === 'GET') return caches.has(name) ? response(200, caches.get(name)) : response(404, { error: 'not found' })
+      const match = parsed.pathname.match(
+        /^\/subscriptions\/[^/]+(?:\/resourceGroups\/[^/]+)?\/providers\/Microsoft\.Cache\/redisEnterprise(?:\/([^/]+))?(?:\/databases\/default)?$/,
+      )
+      if (!match) return response(404, { error: 'not found' })
+      const name = match[1] ? decodeURIComponent(match[1]) : undefined
+      const databaseRequest = parsed.pathname.endsWith('/databases/default')
+      if (!name && method === 'GET') {
+        return response(200, { value: [...caches.values()] })
+      }
+      if (databaseRequest && method === 'GET') {
+        return databases.has(name)
+          ? response(200, { name: 'default', properties: { provisioningState: 'Succeeded' } })
+          : response(404, { error: 'not found' })
+      }
+      if (!databaseRequest && method === 'GET') {
+        return caches.has(name) ? response(200, caches.get(name)) : response(404, { error: 'not found' })
+      }
       if (method === 'PUT') {
         const body = JSON.parse(init.body ?? '{}')
-        caches.set(name, { name, ...body })
+        if (databaseRequest) {
+          databases.add(name)
+          return response(200, { name: 'default', ...body, properties: { ...body.properties, provisioningState: 'Succeeded' } })
+        }
+        caches.set(name, {
+          name,
+          ...body,
+          properties: { ...body.properties, provisioningState: 'Succeeded' },
+        })
         return response(200, caches.get(name))
       }
-      if (method === 'DELETE') {
+      if (!databaseRequest && method === 'DELETE') {
         if (!caches.has(name)) return response(404, { error: 'not found' })
         caches.delete(name)
+        databases.delete(name)
         return response(200, { deleted: true })
       }
       return response(404, { error: 'not found' })
@@ -59,18 +85,34 @@ async function fakeCacheSmoke(root) {
   const config = {
     subscriptionId: 'customer-subscription',
     tenantId: 'test-tenant',
+    resourceGroup: 'test-resource-group',
+    apiVersion: '2024-09-01-preview',
     ownerAlias: 'preflight',
     runId: 'integration',
     resourcePrefix: 'preflight-integration-',
     denylist: ['infrastructure-subscription'],
     acknowledgedCustomerSubscription: true,
   }
+  const catalogProvider = async () => ({
+    skus: [
+      { family: 'Balanced', name: 'B0', memoryGb: 0.025 },
+      { family: 'Balanced', name: 'B5', memoryGb: 6, capacityGb: 6 },
+    ],
+  })
+  const classification = await classifySkuViaProvider(catalogProvider, 'B0', 'Balanced')
   const createLease = leaseManager.acquire({ class: 'exclusive', resourceName: 'preflight-integration-cache' })
   await createOwnedCache({
     ledger,
     adapter,
     resourceName: 'preflight-integration-cache',
-    spec: { sku: { name: 'Balanced_B0' } },
+    sku: classification.sku,
+    location: 'test-region',
+    dryRunOnly: classification.dryRunOnly,
+    databaseSpec: {
+      clientProtocol: 'Encrypted',
+      evictionPolicy: 'NoEviction',
+      clusteringPolicy: 'EnterpriseCluster',
+    },
     config,
     lease: createLease,
     leaseManager,

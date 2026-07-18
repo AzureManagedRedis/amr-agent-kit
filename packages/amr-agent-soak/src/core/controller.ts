@@ -32,6 +32,7 @@ interface PairState {
   armOrder: ReadonlyArray<SoakArm>;
   admittedAt?: string;
   completedAt?: string;
+  gradedAt?: string;
   arms: Record<SoakArm, ArmState>;
 }
 
@@ -305,6 +306,8 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     };
   const activePairIds = new Set<string>();
   const cancellation = new AbortController();
+  const pairFinished = (pair: PairState): boolean =>
+    pairCompleted(pair) && (!modules.grader?.gradePair || Boolean(pair.gradedAt));
   let stopWatcherBusy = false;
   const heartbeat = async (): Promise<void> => {
     const value: Heartbeat = {
@@ -317,7 +320,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
       activeProcesses: [...activeProcesses.values()].sort(
         (left, right) => left.pid - right.pid,
       ),
-      completedPairs: Object.values(state.pairs).filter(pairCompleted).length,
+      completedPairs: Object.values(state.pairs).filter(pairFinished).length,
       totalPairs: Object.keys(state.pairs).length,
       admissionEndsAt: state.admissionEndsAt,
     };
@@ -345,7 +348,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
 
   const scenarioById = new Map(scenarios.map((scenario) => [scenario.id, scenario]));
   const pendingPairIds = Object.entries(state.pairs)
-    .filter(([, pair]) => !pairCompleted(pair))
+    .filter(([, pair]) => !pairFinished(pair))
     .sort(([, left], [, right]) => Number(Boolean(right.admittedAt)) - Number(Boolean(left.admittedAt)))
     .map(([id]) => id);
   let nextPairIndex = 0;
@@ -443,7 +446,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
       },
       capabilities,
     );
-    if (modules.grader) {
+    if (modules.grader?.grade) {
       artifact = { ...artifact, grade: await modules.grader.grade(artifact, scenario) };
     }
     const artifactPath = path.join(executionRoot, "artifact.json");
@@ -461,6 +464,44 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
         contamination: artifact.trace.contamination,
       },
     });
+    await persistState();
+  };
+
+  const gradeCompletedPair = async (
+    id: string,
+    pair: PairState,
+    scenario: SoakScenario,
+  ): Promise<void> => {
+    if (!modules.grader?.gradePair || pair.gradedAt) {
+      return;
+    }
+    if (!pairCompleted(pair)) {
+      throw new Error(`Cannot pair-grade incomplete pair ${id}`);
+    }
+    const artifacts = {} as Record<SoakArm, ExecutionArtifact>;
+    for (const arm of ARMS) {
+      const artifactPath = pair.arms[arm].artifactPath;
+      if (!artifactPath) {
+        throw new Error(`Pair ${id}/${arm} is missing its artifact path`);
+      }
+      const artifact = await readJsonIfExists<ExecutionArtifact>(artifactPath);
+      if (!artifact) {
+        throw new Error(`Pair ${id}/${arm} artifact disappeared: ${artifactPath}`);
+      }
+      artifacts[arm] = artifact;
+    }
+    const grades = await modules.grader.gradePair(artifacts, scenario, id);
+    for (const arm of ARMS) {
+      if (!grades[arm]) {
+        throw new Error(`Pair grader omitted ${id}/${arm}`);
+      }
+      await writeAtomicJson(pair.arms[arm].artifactPath!, {
+        ...artifacts[arm],
+        grade: grades[arm],
+      });
+    }
+    pair.gradedAt = new Date().toISOString();
+    await append("pair.graded", { pairId: id });
     await persistState();
   };
 
@@ -502,6 +543,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
           }
         }
         if (pairCompleted(pair)) {
+          await gradeCompletedPair(id, pair, scenario);
           pair.completedAt = new Date().toISOString();
           await append("pair.finished", { pairId: id });
           await persistState();
@@ -533,7 +575,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
   if (!failure) {
     state.status = cancellation.signal.aborted
       ? "stopping"
-      : Object.values(state.pairs).every(pairCompleted)
+      : Object.values(state.pairs).every(pairFinished)
         ? "completed"
         : "draining";
   }
@@ -550,7 +592,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     runId: config.runId,
     status: state.status,
     admittedPairs: Object.values(state.pairs).filter((pair) => pair.admittedAt).length,
-    completedPairs: Object.values(state.pairs).filter(pairCompleted).length,
+    completedPairs: Object.values(state.pairs).filter(pairFinished).length,
     completedExecutions: arms.filter((arm) => terminal(arm.status)).length,
     failedExecutions: arms.filter((arm) =>
       ["failed", "timed-out", "cancelled"].includes(arm.status),

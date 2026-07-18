@@ -1,0 +1,13 @@
+{
+  "mode": "external-blind",
+  "modulePath": "packages/amr-agent-soak/src/integration/copilot-blind-grader.mjs",
+  "modelIds": [
+    "replace-with-first-grader-model",
+    "replace-with-second-grader-model"
+  ],
+  "minimumKappa": 0.8,
+  "calibrationThreshold": 1,
+  "requireExecutorDiversity": true,
+  "timeoutMs": 120000,
+  "preflightTimeoutMs": 30000
+}

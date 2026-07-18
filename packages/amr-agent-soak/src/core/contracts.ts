@@ -31,7 +31,12 @@ export interface GradeResult {
 }
 
 export interface SoakGrader {
-  grade(artifact: ExecutionArtifact, scenario: SoakScenario): Promise<GradeResult>;
+  grade?(artifact: ExecutionArtifact, scenario: SoakScenario): Promise<GradeResult>;
+  gradePair?(
+    artifacts: Readonly<Record<SoakArm, ExecutionArtifact>>,
+    scenario: SoakScenario,
+    pairId: string,
+  ): Promise<Readonly<Record<SoakArm, GradeResult>>>;
 }
 
 export interface SoakReporter {

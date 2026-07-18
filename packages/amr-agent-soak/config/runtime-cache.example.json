@@ -3,6 +3,8 @@
   "tenantId": "replace-in-local-file",
   "owner": "replace-in-local-file",
   "runId": "replace-in-local-file",
+  "resourceGroup": "replace-in-local-file",
+  "apiVersion": "2024-09-01-preview",
   "ackCustomerSubscription": true,
   "denylist": [
     "replace-with-each-backing-infrastructure-subscription"

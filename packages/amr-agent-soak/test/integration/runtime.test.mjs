@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -37,6 +37,51 @@ const processManager = {
   async terminateTree() { return { discovered: [], killed: [], skipped: [] } },
 }
 
+function fakeScenarioExecutor(config) {
+  return {
+    async probe() { return capabilities() },
+    async execute(request) {
+      const good = request.scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'pass').answer_excerpt
+      const bad = request.scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail').answer_excerpt
+      const responseText = request.arm === 'with-skill' ? good : bad
+      const now = new Date().toISOString()
+      return {
+        soakRunId: config.runId,
+        executionId: request.executionId,
+        scenarioId: request.scenario.id,
+        arm: request.arm,
+        status: 'completed',
+        startedAt: now,
+        finishedAt: now,
+        responseText,
+        events: [],
+        trace: {
+          executablePath: 'fake',
+          executableHash: 'fake',
+          args: [],
+          cwd: request.workspace.projectDir,
+          pid: process.pid,
+          processIdentity: await processManager.identify(process.pid),
+          descendants: [],
+          startedAt: now,
+          finishedAt: now,
+          exitCode: 0,
+          signal: null,
+          timedOut: false,
+          cancelled: false,
+          stdoutFile: '',
+          stderrFile: '',
+          projectHashBefore: request.workspace.projectHash,
+          projectHashAfter: request.workspace.projectHash,
+          profileHashBefore: request.workspace.profileHash,
+          profileHashAfter: request.workspace.profileHash,
+          contamination: [],
+        },
+      }
+    },
+  }
+}
+
 test('runs the integrated registry, grader, retention, and reporter through the core controller', async () => {
   const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'amr-soak-controller-'))
   const config = {
@@ -60,48 +105,7 @@ test('runs the integrated registry, grader, retention, and reporter through the 
   }
   try {
     const integrated = await createSoakModules({ config, processManager })
-    const executor = {
-      async probe() { return capabilities() },
-      async execute(request) {
-        const good = request.scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'pass').answer_excerpt
-        const bad = request.scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail').answer_excerpt
-        const responseText = request.arm === 'with-skill' ? good : bad
-        const now = new Date().toISOString()
-        return {
-          soakRunId: config.runId,
-          executionId: request.executionId,
-          scenarioId: request.scenario.id,
-          arm: request.arm,
-          status: 'completed',
-          startedAt: now,
-          finishedAt: now,
-          responseText,
-          events: [],
-          trace: {
-            executablePath: 'fake',
-            executableHash: 'fake',
-            args: [],
-            cwd: request.workspace.projectDir,
-            pid: process.pid,
-            processIdentity: await processManager.identify(process.pid),
-            descendants: [],
-            startedAt: now,
-            finishedAt: now,
-            exitCode: 0,
-            signal: null,
-            timedOut: false,
-            cancelled: false,
-            stdoutFile: '',
-            stderrFile: '',
-            projectHashBefore: request.workspace.projectHash,
-            projectHashAfter: request.workspace.projectHash,
-            profileHashBefore: request.workspace.profileHash,
-            profileHashAfter: request.workspace.profileHash,
-            contamination: [],
-          },
-        }
-      },
-    }
+    const executor = fakeScenarioExecutor(config)
     const summary = await runSoak(config, { ...integrated, executor, processManager })
     assert.equal(summary.status, 'completed')
     assert.equal(summary.completedPairs, 2)
@@ -145,12 +149,28 @@ test('fails closed when deterministic grading is used for a long or live run', a
         integration: {
           ...base.integration,
           grading: { mode: 'external-blind', modulePath: 'local-blind-grader.mjs' },
+          liveCache: { enabled: true, reviewedReady: true },
+        },
+      },
+      processManager,
+    }),
+    /requires a gitignored runtimeConfigPath/,
+  )
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        repetitions: 1,
+        durationHours: 1,
+        integration: {
+          ...base.integration,
+          grading: { mode: 'external-blind', modulePath: 'local-blind-grader.mjs' },
           liveCache: { enabled: true },
         },
       },
       processManager,
     }),
-    /runtimeConfigPath and an ARM-shaped adapterModule/,
+    /reviewedReady=true/,
   )
 })
 
@@ -263,4 +283,123 @@ test('accepts only two distinct calibrated blind graders above the kappa gate', 
     }),
     /minimumKappa must be a finite number/,
   )
+})
+
+test('instantiates the reviewed ARM adapter from gitignored runtime configuration without network access', async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'arm-adapter-factory-'))
+  const runtimeConfigPath = path.join(root, 'runtime.local.json')
+  await writeFile(runtimeConfigPath, `${JSON.stringify({
+    subscriptionId: 'customer-subscription',
+    tenantId: 'test-tenant',
+    owner: 'tester',
+    runId: 'arm-adapter-factory',
+    resourceGroup: 'test-resource-group',
+    apiVersion: '2024-09-01-preview',
+    ackCustomerSubscription: true,
+    denylist: ['backing-infrastructure-subscription'],
+  }, null, 2)}\n`, 'utf8')
+  try {
+    const config = {
+      runId: 'arm-adapter-factory',
+      repositoryRoot: repoRoot,
+      outputRoot: root,
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+      repetitions: 3,
+      durationHours: 48,
+      model: 'executor-model',
+      integration: {
+        targetSkill: 'redis-code',
+        scenarioIds: ['scn-connection-auth-tls-entra'],
+        grading: {
+          mode: 'external-blind',
+          modulePath: 'packages/amr-agent-soak/test/integration/fixtures/fake-blind-grader.mjs',
+          minimumKappa: 0.7,
+        },
+        liveCache: {
+          enabled: true,
+          reviewedReady: true,
+          runtimeConfigPath,
+        },
+      },
+    }
+    const modules = await createSoakModules({ config, processManager })
+    assert.equal(modules.snapshot.liveAdapterValidation.module, 'http-adapter.mjs')
+    assert.ok(modules.snapshot.liveAdapterValidation.methods.includes('createDatabase'))
+    assert.equal(modules.snapshot.liveInputs.length, 2)
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('pair-grades both arms and persists raw grader agreement through the controller', async () => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'blind-pair-controller-'))
+  const config = {
+    runId: 'blind-pair-controller',
+    repositoryRoot: repoRoot,
+    outputRoot,
+    skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    concurrency: 12,
+    repetitions: 2,
+    durationHours: 48,
+    timeoutMinutes: 1,
+    heartbeatSeconds: 0.05,
+    model: 'executor-model',
+    integration: {
+      targetSkill: 'redis-code',
+      scenarioIds: ['scn-connection-auth-tls-entra'],
+      grading: {
+        mode: 'external-blind',
+        modulePath: 'packages/amr-agent-soak/test/integration/fixtures/fake-blind-grader.mjs',
+        minimumKappa: 0.7,
+      },
+      executionCache: { enabled: false },
+      evidence: { required: false, hooks: [] },
+      liveCache: { enabled: false },
+    },
+  }
+  try {
+    const integrated = await createSoakModules({ config, processManager })
+    const summary = await runSoak(config, {
+      ...integrated,
+      executor: fakeScenarioExecutor(config),
+      processManager,
+    })
+    assert.equal(summary.status, 'completed')
+    assert.equal(summary.completedPairs, 2)
+    const state = JSON.parse(await readFile(path.join(outputRoot, config.runId, 'state.json'), 'utf8'))
+    assert.ok(Object.values(state.pairs).every((pair) => pair.gradedAt))
+    for (const pair of Object.values(state.pairs)) {
+      for (const arm of ['with-skill', 'without-skill']) {
+        const artifact = JSON.parse(await readFile(pair.arms[arm].artifactPath, 'utf8'))
+        assert.equal(artifact.grade.passed, true)
+        assert.equal(artifact.grade.details.graders.length, 2)
+      }
+    }
+    const report = await readFile(path.join(outputRoot, config.runId, 'report.md'), 'utf8')
+    assert.match(report, /Cohen's kappa: 1\.000/)
+
+    const [firstPair] = Object.values(state.pairs)
+    delete firstPair.gradedAt
+    delete firstPair.completedAt
+    for (const arm of ['with-skill', 'without-skill']) {
+      const artifact = JSON.parse(await readFile(firstPair.arms[arm].artifactPath, 'utf8'))
+      delete artifact.grade
+      await writeFile(firstPair.arms[arm].artifactPath, `${JSON.stringify(artifact, null, 2)}\n`, 'utf8')
+    }
+    await writeFile(
+      path.join(outputRoot, config.runId, 'state.json'),
+      `${JSON.stringify(state, null, 2)}\n`,
+      'utf8',
+    )
+    const resumed = await runSoak(config, {
+      ...integrated,
+      executor: fakeScenarioExecutor(config),
+      processManager,
+    })
+    assert.equal(resumed.status, 'completed')
+    const resumedState = JSON.parse(await readFile(path.join(outputRoot, config.runId, 'state.json'), 'utf8'))
+    assert.ok(Object.values(resumedState.pairs).every((pair) => pair.gradedAt))
+  } finally {
+    await rm(outputRoot, { recursive: true, force: true })
+  }
 })

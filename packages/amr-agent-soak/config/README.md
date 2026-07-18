@@ -17,14 +17,18 @@ live cache access. A 48-hour launch must set `mode=external-blind` and provide a
 reviewed, gitignored/local module exporting `createBlindGrader`; the module is
 content-hashed into the immutable run snapshot. `createBlindGrader` receives
 `runtime`, `evidenceStore`, `config`, and `repositoryRoot`, and returns a
-`SoakGrader` with:
+pair grader with:
 
-- `grade(artifact, scenario)`, whose `details.grading` is the adjudicated result
-  and whose `details.graders` contains both raw grader results; and
+- `gradePair(artifacts, scenario, pairId)`, returning grades for both
+  `with-skill` and `without-skill`; each grade's `details.grading` is the
+  adjudicated result and `details.graders` contains both raw grader results; and
 - `assertCalibration(scenarios)`, returning `{ passed, modelIds, kappa }`.
 
 Launch fails unless calibration passes, `modelIds` contains at least two distinct
 models, and kappa meets `integration.grading.minimumKappa` (default `0.6`).
+`blind-grading.example.json` shows the production shape using the committed
+Copilot CLI bridge. Both grader model IDs must also differ from the configured
+scenario-executor model when `requireExecutorDiversity` is true.
 
 ## Evidence hooks
 
@@ -40,13 +44,17 @@ Live cache mode fails closed unless both are configured:
 
 1. `integration.liveCache.runtimeConfigPath` points to a gitignored file conforming
    to `runtime-config.schema.json`.
-2. `integration.liveCache.adapterModule` points to a local module exporting
-   `createLocalRpAdapter`.
+2. The reviewed ARM-shaped adapter is used by default from
+   `src/cache/http-adapter.mjs`. `integration.liveCache.adapterModule` is optional
+   and exists only for an independently reviewed compatible replacement.
 
-The committed cache adapter currently models the safety contract with a simplified
-fake-RP route shape. It is **not** the ARM-shaped local RP adapter required for a
-real cache smoke. Do not enable live mode until an adapter implementing the real
-subscription/resource-group/database paths has been added and independently reviewed.
+The committed adapter uses localhost:8443, ARM subscription/resource-group
+`Microsoft.Cache/redisEnterprise` cluster and `databases/default` paths, required
+Referer and api-version handling, same-origin polling, and create-only mutation
+guards. Live remains disabled until cache-owner review/PID follow-up and the
+runtime prerequisites are cleared.
+Even with `enabled=true`, both controller and resource janitor reject startup
+until `integration.liveCache.reviewedReady=true` is set after that clearance.
 
 When live mode is enabled, `scripts/start-soak.ps1` launches a third, independent
 resource janitor and records its verified process identity beside the controller and
