@@ -18,9 +18,18 @@
 // regardless of what its tags claim -- a name or tag match alone is never
 // sufficient, since either could coincidentally collide or be spoofed.
 // Where evidence exists (a 'creation-intent' entry with no confirming
-// 'created' yet -- the signature of a crash in between), tag-based
-// eligibility (tags.mjs) is layered on top as an additional check before
-// confirming the ledger entry.
+// 'created' yet -- the signature of a crash in between, OR simply a create
+// still genuinely in flight), tag-based eligibility (tags.mjs) is layered
+// on top as an additional check, and the ACTUAL current state is then
+// confirmed via a direct GET (never trusting a possibly-stale list-record
+// provisioningState) before ever appending 'created': only a confirmed
+// terminal Succeeded is upgraded to 'created'; a confirmed terminal
+// Failed/Canceled (or a 404) is recorded as 'creation-failed' instead
+// (freeing six-live admission capacity, exactly like
+// provisioning.mjs's ConfirmedCreationFailure); anything still non-terminal,
+// or an inconclusive verification, leaves the entry intent-only -- still
+// admission-active and still eligible for a future safe cleanup pass --
+// and is reported as 'pending' rather than silently confirmed or dropped.
 //
 // pollUntilTerminal is intentionally generic -- it takes a `checkStatus`
 // callback rather than assuming any particular "/operations/*" API (the
@@ -108,6 +117,55 @@ export async function confirmCandidateLiveness(getResource, absentStates = CANDI
   }
 }
 
+/** provisioningState values confirming a create genuinely succeeded. */
+const CONFIRMED_SUCCEEDED_STATES = new Set(['Succeeded']);
+/** provisioningState values that are a DEFINITIVE, RP-confirmed answer
+ * that a create did NOT succeed (mirrors ConfirmedCreationFailure in
+ * provisioning.mjs). */
+const CONFIRMED_FAILED_STATES = new Set(['Failed', 'Canceled']);
+
+/**
+ * Classifies the ACTUAL current state of an intent-only resource via a
+ * direct GET -- never trusting a possibly-stale list-record's
+ * provisioningState (see confirmCandidateLiveness for the same principle
+ * applied to orphan/quarantine candidates) -- so startup reconciliation
+ * never prematurely confirms 'created' for a create that never actually
+ * reached a terminal Succeeded state. Real local-RP provisioning can
+ * remain non-terminal for tens of minutes; a crash/restart during that
+ * window must not cause reconciliation to fabricate a "created"
+ * confirmation it cannot back up.
+ *
+ * Returns:
+ *   - 'succeeded' -- provisioningState is Succeeded. Safe to confirm 'created'.
+ *   - 'failed'    -- provisioningState is Failed/Canceled, OR the resource
+ *                    404s entirely (a definitive answer that creation did
+ *                    NOT succeed). Never 'created' -- see reconcileOnStartup,
+ *                    which appends 'creation-failed' instead (freeing the
+ *                    six-live admission slot, exactly like
+ *                    ConfirmedCreationFailure does at create time).
+ *   - 'pending'   -- any other provisioningState (Creating, Updating,
+ *                    etc.): the create is still genuinely in flight. Must
+ *                    NOT be marked 'created' or 'creation-failed' --
+ *                    remains intent-only (still admission-active, still
+ *                    eligible for a future safe cleanup pass).
+ *   - 'ambiguous' -- the confirming GET itself failed for some OTHER
+ *                    reason (network error, timeout). Fails safe: treated
+ *                    exactly like 'pending' -- never prematurely confirms
+ *                    OR fails the intent on an inconclusive signal.
+ */
+async function classifyIntentConfirmation(getResource) {
+  try {
+    const resource = await getResource();
+    const state = resource?.properties?.provisioningState;
+    if (CONFIRMED_SUCCEEDED_STATES.has(state)) return { classification: 'succeeded', state };
+    if (CONFIRMED_FAILED_STATES.has(state)) return { classification: 'failed', state };
+    return { classification: 'pending', state: state ?? null };
+  } catch (err) {
+    if (err?.status === 404) return { classification: 'failed', state: 'NotFound' };
+    return { classification: 'ambiguous', state: null };
+  }
+}
+
 /**
  * Reconciles ledger state against the live local RP at process startup (or
  * from the janitor, on each pass). Never touches resources outside
@@ -145,7 +203,7 @@ export async function reconcileOnStartup({
   const tagCheckEnabled = Boolean(ownerAlias && runId);
 
   const { creationOrder, byResource } = ledger.replay();
-  const report = { confirmedIntents: [], reconciledDeletions: [], quarantined: [] };
+  const report = { confirmedIntents: [], reconciledDeletions: [], quarantined: [], creationFailed: [], pending: [] };
 
   for (const [liveName, record] of liveRecordsByName) {
     assertOwnedResource(liveName, resourcePrefix);
@@ -174,8 +232,9 @@ export async function reconcileOnStartup({
 
     // Durable 'creation-intent' evidence exists with no confirming 'created'
     // yet: the signature of a crash between the intent append and the
-    // create confirmation. Layer tag-based eligibility on top before
-    // confirming, when we have enough context to check it.
+    // create confirmation -- OR simply a create that is still genuinely
+    // in flight. Layer tag-based eligibility on top before confirming,
+    // when we have enough context to check it.
     if (tagCheckEnabled) {
       const evaluation = evaluateCleanupEligibility(record.tags, { ownerAlias, runId, now });
       if (!evaluation.eligible) {
@@ -184,8 +243,36 @@ export async function reconcileOnStartup({
       }
     }
 
-    ledger.append('created', liveName, { reconciled: true, reason: 'intent-confirmed-on-startup' });
-    report.confirmedIntents.push(liveName);
+    // Never trust the list record's (possibly stale) provisioningState for
+    // this decision -- confirm the ACTUAL current state via a direct GET.
+    const { classification, state } = await classifyIntentConfirmation(() =>
+      adapter.getCluster({ subscriptionId, resourceGroup, name: liveName })
+    );
+
+    if (classification === 'succeeded') {
+      ledger.append('created', liveName, { reconciled: true, reason: 'intent-confirmed-on-startup' });
+      report.confirmedIntents.push(liveName);
+      continue;
+    }
+
+    if (classification === 'failed') {
+      // A definitive, RP-confirmed answer that creation did NOT succeed --
+      // never 'created'. Frees the six-live admission slot, exactly like
+      // ConfirmedCreationFailure does in provisioning.mjs; the original
+      // 'creation-intent' event stays as audit evidence.
+      ledger.append('creation-failed', liveName, { reconciled: true, reason: 'intent-not-succeeded-on-startup', state });
+      report.creationFailed.push(liveName);
+      continue;
+    }
+
+    // 'pending' (still genuinely in flight -- e.g. Creating/Updating) or
+    // 'ambiguous' (verification itself was inconclusive): do NOT mark
+    // 'created' or 'creation-failed'. Remains intent-only -- still
+    // admission-active (occupies a live-cap slot, exactly as before this
+    // reconciliation ran) and still eligible for a future safe
+    // cleanup/delete pass. Reported for visibility, never silently
+    // dropped.
+    report.pending.push({ resourceName: liveName, state, classification });
   }
 
   for (const name of creationOrder) {

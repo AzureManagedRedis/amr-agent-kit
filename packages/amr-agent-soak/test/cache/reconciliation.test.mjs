@@ -135,6 +135,110 @@ test('a prefix-matching live resource with durable creation-intent evidence is s
   });
 });
 
+// ---- Second live-blocking finding: intent reconciliation must confirm the
+// ACTUAL direct resource state before ever appending 'created' -- a create
+// that never reached Succeeded (still Creating/Updating past a long real
+// local-RP provisioning window, or one that terminally Failed/Canceled)
+// must never be fabricated as confirmed-created ----
+
+test('reconcileOnStartup confirms Succeeded intent as created (explicit terminal-state confirmation, not just list trust)', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', properties: { provisioningState: 'Succeeded' } }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.confirmedIntents, ['dmon-run1-cache1']);
+    assert.deepEqual(report.creationFailed, []);
+    assert.deepEqual(report.pending, []);
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']);
+  });
+});
+
+test('reconcileOnStartup marks a terminally Failed intent as creation-failed, never created -- frees the six-live slot', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', properties: { provisioningState: 'Failed' } }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.confirmedIntents, []);
+    assert.deepEqual(report.creationFailed, ['dmon-run1-cache1']);
+    assert.deepEqual(report.pending, []);
+    assert.equal(ledger.hasCreationFailed('dmon-run1-cache1'), true);
+    const records = ledger.readAll().filter((r) => r.resourceName === 'dmon-run1-cache1');
+    assert.equal(records.some((r) => r.action === 'created'), false); // never fabricated as created
+    assert.deepEqual(ledger.activeResources(), []); // six-live slot freed
+  });
+});
+
+test('reconcileOnStartup marks a terminally Canceled intent as creation-failed, never created', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', properties: { provisioningState: 'Canceled' } }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.creationFailed, ['dmon-run1-cache1']);
+    assert.equal(ledger.hasCreationFailed('dmon-run1-cache1'), true);
+    assert.deepEqual(ledger.activeResources(), []);
+  });
+});
+
+test('reconcileOnStartup treats a 404 on direct GET as a definitive creation-failed, never created', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    // The resource genuinely never came up (no initialClusters at all --
+    // a direct GET 404s), but the list response still reports it as a
+    // stale "ghost" entry, so the intent-confirmation branch is reached.
+    const fake = createFakeRp({ staleListGhosts: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.creationFailed, ['dmon-run1-cache1']);
+    assert.deepEqual(report.confirmedIntents, []);
+    assert.equal(ledger.hasCreationFailed('dmon-run1-cache1'), true);
+  });
+});
+
+test('reconcileOnStartup leaves a still-Creating (non-terminal) intent as pending -- never created, never creation-failed, still admission-active', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', properties: { provisioningState: 'Creating' } }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.confirmedIntents, []);
+    assert.deepEqual(report.creationFailed, []);
+    assert.deepEqual(report.pending, [{ resourceName: 'dmon-run1-cache1', state: 'Creating', classification: 'pending' }]);
+
+    const records = ledger.readAll().filter((r) => r.resourceName === 'dmon-run1-cache1');
+    assert.deepEqual(records.map((r) => r.action), ['creation-intent']); // no new ledger entry at all
+    assert.equal(ledger.isIntentOnly('dmon-run1-cache1'), true);
+    // Still admission-active (occupies a live-cap slot) and still eligible
+    // for a future safe cleanup pass -- exactly as before reconciliation ran.
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']);
+  });
+});
+
+test('reconcileOnStartup leaves an intent pending (not created, not creation-failed) when the confirming GET fails ambiguously', async () => {
+  await withTempLedger(async (ledger) => {
+    ledger.append('creation-intent', 'dmon-run1-cache1', {});
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    adapter.getCluster = async () => {
+      throw new Error('simulated transient network failure during intent confirmation');
+    };
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.confirmedIntents, []);
+    assert.deepEqual(report.creationFailed, []);
+    assert.deepEqual(report.pending, [{ resourceName: 'dmon-run1-cache1', state: null, classification: 'ambiguous' }]);
+    assert.equal(ledger.isIntentOnly('dmon-run1-cache1'), true);
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']); // still admission-active, still cleanable
+  });
+});
+
 test('a resource already fully confirmed created is left untouched (no duplicate ledger entries)', async () => {
   await withTempLedger(async (ledger) => {
     ledger.append('creation-intent', 'dmon-run1-cache1', {});
