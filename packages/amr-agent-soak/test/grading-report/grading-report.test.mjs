@@ -211,6 +211,7 @@ test('requires live results only for live retained bundles and omits offline liv
   const missingLive = await buildClientArtifactIndex({ root, clients: [live] })
   assert.equal(missingLive.complete, false)
   assert.ok(missingLive.entries[0].completeness.missing.includes('with-skill/live-result.json'))
+  assert.deepEqual(missingLive.entries[0].links.live_logs, [])
   await writeFile(path.join(root, 'client-1', 'with-skill', 'live-result.json'), '{}')
   await writeFile(path.join(root, 'client-1', 'without-skill', 'live-result.json'), '{}')
   const completeLive = await buildClientArtifactIndex({ root, clients: [live] })

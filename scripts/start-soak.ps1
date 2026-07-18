@@ -48,6 +48,7 @@ $janitorOut = Join-Path $runDir 'janitor.stdout.log'
 $janitorErr = Join-Path $runDir 'janitor.stderr.log'
 $resourceJanitorOut = Join-Path $runDir 'resource-janitor.stdout.log'
 $resourceJanitorErr = Join-Path $runDir 'resource-janitor.stderr.log'
+$resourceJanitorReadinessPath = Join-Path $repoRoot 'packages\amr-agent-soak\src\integration\resource-janitor-readiness.mjs'
 $controller = Start-Process -FilePath (Get-Command node).Source `
     -ArgumentList @("`"$cliPath`"", 'controller', '--config', "`"$resolvedConfig`"") `
     -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru `
@@ -118,11 +119,9 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
             ($heartbeat.controller.name -eq $controllerIdentity.name)) {
             $resourceResponsive = -not $resourceJanitor
             if ($resourceJanitor) {
-                $resourceHeartbeatPath = Join-Path $runDir 'resource-janitor.heartbeat.json'
-                if (Test-Path $resourceHeartbeatPath) {
-                    $resourceHeartbeat = Get-Content -Raw $resourceHeartbeatPath | ConvertFrom-Json
-                    $resourceResponsive = ($resourceHeartbeat.pid -eq $resourceJanitorIdentity.pid)
-                }
+                & (Get-Command node).Source $resourceJanitorReadinessPath `
+                    --run-dir $runDir --config $resolvedConfig *> $null
+                $resourceResponsive = ($LASTEXITCODE -eq 0)
             }
             if ($resourceResponsive) {
                 $responsive = $true

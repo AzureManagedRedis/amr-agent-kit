@@ -103,6 +103,8 @@ export async function buildClientArtifactIndex({ root, clients = [] }) {
   for (const client of clients) {
     const normalized = normalizeVariant(root, client)
     const completeness = await checkArtifactCompleteness(root, normalized)
+    const liveLogsComplete = normalized.mode === 'live' &&
+      !completeness.missing.some((item) => item.endsWith('/live-result.json'))
     const fileHashes = {}
     const clientRoot = path.resolve(root, normalized.root)
     try {
@@ -127,7 +129,7 @@ export async function buildClientArtifactIndex({ root, clients = [] }) {
         patches: path.join(normalized.root, normalized.patches ?? 'patches'),
         transcripts: ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'transcript.md')),
         build_logs: ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'build-result.json')),
-        live_logs: normalized.mode === 'live'
+        live_logs: liveLogsComplete
           ? ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'live-result.json'))
           : [],
         hashes: path.join(normalized.root, normalized.hashes ?? 'hashes.json'),
