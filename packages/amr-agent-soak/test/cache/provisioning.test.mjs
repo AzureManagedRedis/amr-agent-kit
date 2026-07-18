@@ -9,6 +9,8 @@ import { LeaseManager } from '../../src/cache/lease-manager.mjs';
 import { createOwnedCache, ProvisioningError, MAX_LIVE_RESOURCES } from '../../src/cache/provisioning.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
 
+const SUBSCRIPTION_ID = '11111111-2222-3333-4444-555555555555';
+
 async function withTempLedger(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'amr-soak-provisioning-'));
   try {
@@ -20,6 +22,8 @@ async function withTempLedger(fn) {
 
 function testConfig(overrides = {}) {
   return {
+    subscriptionId: SUBSCRIPTION_ID,
+    resourceGroup: 'rg1',
     resourcePrefix: 'dmon-run1-',
     denylist: [],
     ownerAlias: 'dmon',
@@ -45,7 +49,8 @@ test('createOwnedCache records durable creation-intent BEFORE calling the RP, th
       ledger,
       adapter,
       resourceName: 'dmon-run1-cache1',
-      spec: { sku: 'B1' },
+      sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+      location: 'eastus',
       config: testConfig(),
       lease,
       leaseManager,
@@ -59,7 +64,83 @@ test('createOwnedCache records durable creation-intent BEFORE calling the RP, th
 
     const records = ledger.readAll().filter((r) => r.resourceName === 'dmon-run1-cache1');
     assert.deepEqual(records.map((r) => r.action), ['creation-intent', 'created']);
-    assert.equal(fake._caches.has('dmon-run1-cache1'), true);
+    assert.equal(fake._clusters.has('dmon-run1-cache1'), true);
+    assert.deepEqual(fake._clusters.get('dmon-run1-cache1').sku, { name: 'Balanced_B1', capacity: 1 });
+    assert.equal(fake._databases.has('dmon-run1-cache1'), true);
+  });
+});
+
+test('createOwnedCache omits capacity for Balanced B0', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({});
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const { leaseManager, lease } = exclusiveLease();
+
+    await createOwnedCache({
+      ledger,
+      adapter,
+      resourceName: 'dmon-run1-cache1',
+      sku: { family: 'Balanced', name: 'B0' },
+      location: 'eastus',
+      config: testConfig(),
+      lease,
+      leaseManager,
+    });
+
+    const stored = fake._clusters.get('dmon-run1-cache1');
+    assert.deepEqual(stored.sku, { name: 'Balanced_B0' });
+    assert.equal('capacity' in stored.sku, false);
+  });
+});
+
+test('createOwnedCache only passes through validated-scenario database fields, never inventing defaults', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({});
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const { leaseManager, lease } = exclusiveLease();
+
+    await createOwnedCache({
+      ledger,
+      adapter,
+      resourceName: 'dmon-run1-cache1',
+      sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+      location: 'eastus',
+      config: testConfig(),
+      lease,
+      leaseManager,
+      databaseSpec: { clientProtocol: 'Encrypted', evictionPolicy: 'VolatileLRU', notAValidatedField: 'should-be-dropped' },
+    });
+
+    const db = fake._databases.get('dmon-run1-cache1');
+    assert.equal(db.properties.clientProtocol, 'Encrypted');
+    assert.equal(db.properties.evictionPolicy, 'VolatileLRU');
+    assert.equal('notAValidatedField' in db.properties, false);
+    assert.equal('clusteringPolicy' in db.properties, false); // never invented when not supplied
+  });
+});
+
+test('createOwnedCache polls both cluster and database provisioningState to terminal when async', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ pollsUntilCreateSucceeded: 2 });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const { leaseManager, lease } = exclusiveLease();
+
+    const result = await createOwnedCache({
+      ledger,
+      adapter,
+      resourceName: 'dmon-run1-cache1',
+      sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+      location: 'eastus',
+      config: testConfig(),
+      lease,
+      leaseManager,
+      pollTerminal: (opts) => import('../../src/cache/reconciliation.mjs').then((m) => m.pollUntilTerminal({ ...opts, intervalMs: 1, sleep: async () => {} })),
+    });
+
+    assert.equal(fake._clusters.get('dmon-run1-cache1').properties.provisioningState, 'Succeeded');
+    assert.equal(fake._databases.get('dmon-run1-cache1').properties.provisioningState, 'Succeeded');
+    const records = ledger.readAll().filter((r) => r.resourceName === 'dmon-run1-cache1');
+    assert.deepEqual(records.map((r) => r.action), ['creation-intent', 'created']);
   });
 });
 
@@ -75,13 +156,15 @@ test('createOwnedCache refuses a resourceName outside the configured prefix', as
           ledger,
           adapter,
           resourceName: 'other-owner-cache1',
+          sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+          location: 'eastus',
           config: testConfig(),
           lease,
           leaseManager,
         }),
       ProvisioningError
     );
-    assert.equal(fake._caches.size, 0);
+    assert.equal(fake._clusters.size, 0);
   });
 });
 
@@ -89,7 +172,7 @@ test('createOwnedCache leaves intent recorded (but not confirmed) if the RP call
   await withTempLedger(async (ledger) => {
     const fake = createFakeRp({});
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
-    adapter.createCache = async () => {
+    adapter.createCluster = async () => {
       throw new Error('simulated RP failure');
     };
     const { leaseManager, lease } = exclusiveLease();
@@ -100,6 +183,8 @@ test('createOwnedCache leaves intent recorded (but not confirmed) if the RP call
           ledger,
           adapter,
           resourceName: 'dmon-run1-cache1',
+          sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+          location: 'eastus',
           config: testConfig(),
           lease,
           leaseManager,
@@ -121,7 +206,7 @@ test('the seventh ledger-confirmed live resource is refused even though lease ca
     }
     const fake = createFakeRp({});
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
-    const { leaseManager, lease } = exclusiveLease(); // plenty of lease capacity; irrelevant to this cap
+    const { leaseManager, lease } = exclusiveLease();
 
     await assert.rejects(
       () =>
@@ -129,13 +214,15 @@ test('the seventh ledger-confirmed live resource is refused even though lease ca
           ledger,
           adapter,
           resourceName: 'dmon-run1-cache-seventh',
+          sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+          location: 'eastus',
           config: testConfig(),
           lease,
           leaseManager,
         }),
       ProvisioningError
     );
-    assert.equal(fake._caches.size, 0); // never attempted
+    assert.equal(fake._clusters.size, 0); // never attempted
   });
 });
 
@@ -148,7 +235,7 @@ test('releasing a lease does NOT free resource capacity -- only a ledger-confirm
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
     const lease = leaseManager.acquire({ class: 'exclusive' });
-    leaseManager.release(lease.id); // releasing the lease changes nothing about resource capacity
+    leaseManager.release(lease.id);
     const lease2 = leaseManager.acquire({ class: 'exclusive' });
 
     await assert.rejects(
@@ -157,6 +244,8 @@ test('releasing a lease does NOT free resource capacity -- only a ledger-confirm
           ledger,
           adapter,
           resourceName: 'dmon-run1-cache-seventh',
+          sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+          location: 'eastus',
           config: testConfig(),
           lease: lease2,
           leaseManager,
@@ -164,13 +253,14 @@ test('releasing a lease does NOT free resource capacity -- only a ledger-confirm
       ProvisioningError
     );
 
-    // Only after an actual ledger 'deleted' event does capacity free up.
     ledger.append('deleted', 'dmon-run1-cache0');
     await assert.doesNotReject(() =>
       createOwnedCache({
         ledger,
         adapter,
         resourceName: 'dmon-run1-cache-seventh',
+        sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+        location: 'eastus',
         config: testConfig(),
         lease: lease2,
         leaseManager,
@@ -184,7 +274,6 @@ test('createOwnedCache admission check is not fooled by acquiring/releasing many
     const fake = createFakeRp({});
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
-    // Acquire and release many leases -- none of this touches the ledger.
     for (let i = 0; i < 20; i += 1) {
       const l = leaseManager.acquire({ class: 'shared' });
       leaseManager.release(l.id);
@@ -192,7 +281,16 @@ test('createOwnedCache admission check is not fooled by acquiring/releasing many
     const lease = leaseManager.acquire({ class: 'exclusive' });
 
     await assert.doesNotReject(() =>
-      createOwnedCache({ ledger, adapter, resourceName: 'dmon-run1-cache1', config: testConfig(), lease, leaseManager })
+      createOwnedCache({
+        ledger,
+        adapter,
+        resourceName: 'dmon-run1-cache1',
+        sku: { family: 'Balanced', name: 'B1', capacity: 1 },
+        location: 'eastus',
+        config: testConfig(),
+        lease,
+        leaseManager,
+      })
     );
   });
 });
@@ -207,14 +305,16 @@ test('createOwnedCache respects a dryRunOnly classification: no real create, no 
       ledger,
       adapter,
       resourceName: 'dmon-run1-cache1',
+      sku: { family: 'MemoryOptimized', name: 'M10', capacity: 10 },
+      location: 'eastus',
       config: testConfig(),
       lease,
       leaseManager,
       dryRunOnly: true,
     });
 
-    assert.equal(result.response.simulated, true);
-    assert.equal(fake._caches.size, 0); // no real resource created
+    assert.equal(result.cluster.body.simulated, true);
+    assert.equal(fake._clusters.size, 0); // no real resource created
     const records = ledger.readAll().filter((r) => r.resourceName === 'dmon-run1-cache1');
     assert.deepEqual(records.map((r) => r.action), ['creation-intent', 'created']);
   });

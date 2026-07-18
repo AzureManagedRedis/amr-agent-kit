@@ -4,6 +4,8 @@ import {
   deriveLiveCeiling,
   isSkuWithinLiveCeiling,
   classifySkuRequest,
+  buildArmSkuName,
+  buildArmSkuBody,
   CatalogError,
 } from '../../src/cache/sku-catalog.mjs';
 import { fakeSkuCatalog } from './fakes/fake-rp.mjs';
@@ -78,4 +80,37 @@ test('isSkuWithinLiveCeiling rejects unrecognized families', () => {
     () => isSkuWithinLiveCeiling({ name: 'Z1', family: 'Quantum', memoryGb: 1 }, ceiling),
     CatalogError
   );
+});
+
+// ---- Real ARM sku naming: "Family_Size" combined string, B0 omits capacity ----
+
+test('buildArmSkuName combines family and size into the real ARM sku.name string', () => {
+  assert.equal(buildArmSkuName({ family: 'Balanced', name: 'B0' }), 'Balanced_B0');
+  assert.equal(buildArmSkuName({ family: 'MemoryOptimized', name: 'M10' }), 'MemoryOptimized_M10');
+  assert.equal(buildArmSkuName({ family: 'ComputeOptimized', name: 'X5' }), 'ComputeOptimized_X5');
+});
+
+test('buildArmSkuName rejects an unrecognized family or a missing size name', () => {
+  assert.throws(() => buildArmSkuName({ family: 'Quantum', name: 'Q1' }), CatalogError);
+  assert.throws(() => buildArmSkuName({ family: 'Balanced' }), CatalogError);
+});
+
+test('buildArmSkuBody omits capacity ONLY for exactly Balanced B0', () => {
+  const b0Body = buildArmSkuBody({ family: 'Balanced', name: 'B0' });
+  assert.deepEqual(b0Body, { name: 'Balanced_B0' });
+  assert.equal('capacity' in b0Body, false);
+});
+
+test('buildArmSkuBody requires and includes capacity for every SKU other than Balanced B0', () => {
+  assert.deepEqual(buildArmSkuBody({ family: 'Balanced', name: 'B1', capacity: 1 }), { name: 'Balanced_B1', capacity: 1 });
+  assert.deepEqual(
+    buildArmSkuBody({ family: 'MemoryOptimized', name: 'M10', capacity: 10 }),
+    { name: 'MemoryOptimized_M10', capacity: 10 }
+  );
+  assert.deepEqual(buildArmSkuBody({ family: 'Balanced', name: 'B1', capacityGb: 1 }), { name: 'Balanced_B1', capacity: 1 });
+});
+
+test('buildArmSkuBody fails closed if a non-B0 SKU is missing capacity entirely', () => {
+  assert.throws(() => buildArmSkuBody({ family: 'MemoryOptimized', name: 'M10' }), CatalogError);
+  assert.throws(() => buildArmSkuBody({ family: 'Balanced', name: 'B1' }), CatalogError);
 });

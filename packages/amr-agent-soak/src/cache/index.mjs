@@ -8,6 +8,7 @@ export * from './config.mjs';
 export * from './mutation-context.mjs';
 export * from './http-adapter.mjs';
 export * from './sku-catalog.mjs';
+export * from './catalog-provider.mjs';
 export * from './kill-switch.mjs';
 export * from './guards.mjs';
 export * from './lease-manager.mjs';

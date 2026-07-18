@@ -17,6 +17,8 @@ import { GuardViolation } from '../../src/cache/guards.mjs';
 import { LeaseManager, LeaseNotAuthorized, FencingTokenStale } from '../../src/cache/lease-manager.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
 
+const SUBSCRIPTION_ID = '11111111-2222-3333-4444-555555555555';
+
 async function withTempLedger(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'amr-soak-cleanup-'));
   try {
@@ -27,7 +29,14 @@ async function withTempLedger(fn) {
 }
 
 function testConfig(overrides = {}) {
-  return { resourcePrefix: 'dmon-run1-', denylist: [], acknowledgedCustomerSubscription: true, ...overrides };
+  return {
+    subscriptionId: SUBSCRIPTION_ID,
+    resourceGroup: 'rg1',
+    resourcePrefix: 'dmon-run1-',
+    denylist: [],
+    acknowledgedCustomerSubscription: true,
+    ...overrides,
+  };
 }
 
 function exclusiveLeaseFor(resourceName) {
@@ -39,7 +48,7 @@ function exclusiveLeaseFor(resourceName) {
 test('reverseCleanup tears down resources in reverse (LIFO) creation order', async () => {
   await withTempLedger(async (ledger) => {
     const fake = createFakeRp({
-      initialCaches: [{ name: 'dmon-run1-cache1' }, { name: 'dmon-run1-cache2' }, { name: 'dmon-run1-cache3' }],
+      initialClusters: [{ name: 'dmon-run1-cache1' }, { name: 'dmon-run1-cache2' }, { name: 'dmon-run1-cache3' }],
     });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
@@ -53,13 +62,13 @@ test('reverseCleanup tears down resources in reverse (LIFO) creation order', asy
       ['dmon-run1-cache3', 'dmon-run1-cache2', 'dmon-run1-cache1']
     );
     assert.ok(results.every((r) => r.status === 'deleted'));
-    assert.equal(fake._caches.size, 0);
+    assert.equal(fake._clusters.size, 0);
   });
 });
 
 test('reverseCleanup is idempotent: a second run finds nothing left to delete', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
@@ -87,7 +96,7 @@ test('reverseCleanup treats an already-absent resource as idempotent success, no
 
 test('reverseCleanup refuses to delete anything once the kill switch is engaged', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     const killSwitch = new KillSwitch({ path: '/tmp/engaged.killswitch', exists: () => true });
@@ -97,14 +106,13 @@ test('reverseCleanup refuses to delete anything once the kill switch is engaged'
       () => reverseCleanup({ ledger, adapter, config: testConfig(), killSwitch, lease, leaseManager }),
       KillSwitchEngaged
     );
-    // Nothing was deleted.
-    assert.equal(fake._caches.size, 1);
+    assert.equal(fake._clusters.size, 1);
   });
 });
 
 test('reverseCleanup never touches a resource outside the owner/run prefix, even if present in the ledger (isolation)', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'other-owner-run9-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'other-owner-run9-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'other-owner-run9-cache1');
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
@@ -113,13 +121,13 @@ test('reverseCleanup never touches a resource outside the owner/run prefix, even
       () => reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager }),
       GuardViolation
     );
-    assert.equal(fake._caches.size, 1); // untouched
+    assert.equal(fake._clusters.size, 1); // untouched
   });
 });
 
 test('reverseCleanup honors the runtime denylist even for owned resources', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-locked-cache' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-locked-cache' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-locked-cache');
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
@@ -140,7 +148,7 @@ test('reverseCleanup honors the runtime denylist even for owned resources', asyn
 
 test('reverseCleanup requires config + a lease and leaseManager for real (non-dry-run) mutations', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
 
@@ -150,7 +158,7 @@ test('reverseCleanup requires config + a lease and leaseManager for real (non-dr
 
 test('reverseCleanup rejects a shared (read-only) lease -- write mutations require exclusive', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     const leaseManager = new LeaseManager();
@@ -160,13 +168,13 @@ test('reverseCleanup rejects a shared (read-only) lease -- write mutations requi
       () => reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager }),
       LeaseNotAuthorized
     );
-    assert.equal(fake._caches.size, 1); // untouched
+    assert.equal(fake._clusters.size, 1); // untouched
   });
 });
 
 test('reverseCleanup rejects a stale fencing token: an owner that lost its lease cannot keep deleting', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
 
@@ -179,13 +187,13 @@ test('reverseCleanup rejects a stale fencing token: an owner that lost its lease
       () => reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager }),
       FencingTokenStale
     );
-    assert.equal(fake._caches.size, 1); // untouched
+    assert.equal(fake._clusters.size, 1); // untouched
   });
 });
 
 test('reverseCleanup dry-run mode reports intended deletions without mutating anything or requiring a lease', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }, { name: 'dmon-run1-cache2' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }, { name: 'dmon-run1-cache2' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     ledger.append('created', 'dmon-run1-cache2');
@@ -195,7 +203,7 @@ test('reverseCleanup dry-run mode reports intended deletions without mutating an
       results.map((r) => r.status),
       ['dry-run', 'dry-run']
     );
-    assert.equal(fake._caches.size, 2); // nothing actually deleted
+    assert.equal(fake._clusters.size, 2); // nothing actually deleted
     assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1', 'dmon-run1-cache2']); // ledger unchanged
   });
 });
@@ -203,7 +211,7 @@ test('reverseCleanup dry-run mode reports intended deletions without mutating an
 test('reverseCleanup circuit breaker trips (fail closed) when a run would exceed the max-delete cap', async () => {
   await withTempLedger(async (ledger) => {
     const names = Array.from({ length: DEFAULT_MAX_DELETES_PER_RUN + 1 }, (_, i) => `dmon-run1-cache${i}`);
-    const fake = createFakeRp({ initialCaches: names.map((name) => ({ name })) });
+    const fake = createFakeRp({ initialClusters: names.map((name) => ({ name })) });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     for (const name of names) ledger.append('created', name);
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
@@ -212,14 +220,14 @@ test('reverseCleanup circuit breaker trips (fail closed) when a run would exceed
       () => reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager }),
       CircuitBreakerTripped
     );
-    assert.equal(fake._caches.size, names.length); // nothing deleted -- tripped before any mutation
+    assert.equal(fake._clusters.size, names.length); // nothing deleted -- tripped before any mutation
   });
 });
 
 test('reverseCleanup circuit breaker can be explicitly overridden after manual review', async () => {
   await withTempLedger(async (ledger) => {
     const names = Array.from({ length: DEFAULT_MAX_DELETES_PER_RUN + 1 }, (_, i) => `dmon-run1-cache${i}`);
-    const fake = createFakeRp({ initialCaches: names.map((name) => ({ name })) });
+    const fake = createFakeRp({ initialClusters: names.map((name) => ({ name })) });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     for (const name of names) ledger.append('created', name);
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
@@ -233,77 +241,55 @@ test('reverseCleanup circuit breaker can be explicitly overridden after manual r
       allowExceedCircuitBreaker: true,
     });
     assert.equal(results.length, names.length);
-    assert.equal(fake._caches.size, 0);
+    assert.equal(fake._clusters.size, 0);
   });
 });
 
-test('reverseCleanup waits for terminal state before recording a delete when the RP returns an async operation', async () => {
+test('reverseCleanup polls the real DELETE contract (no fake "/operations" API) to terminal absence', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }], pollsUntilDeleteComplete: 2 });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
 
-    let pollCalls = 0;
-    const pollTerminal = async ({ operationId }) => {
-      pollCalls += 1;
-      return { id: operationId, state: 'Succeeded' };
-    };
-    // Wrap the fake adapter's deleteCache to simulate an async operation response.
-    const originalDelete = adapter.deleteCache.bind(adapter);
-    adapter.deleteCache = async (name, context) => {
-      await originalDelete(name, context);
-      return { operationId: 'op-delete-1' };
-    };
-
-    const results = await reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager, pollTerminal });
-    assert.equal(pollCalls, 1);
+    const results = await reverseCleanup({
+      ledger,
+      adapter,
+      config: testConfig(),
+      lease,
+      leaseManager,
+      pollTerminal: (opts) => import('../../src/cache/reconciliation.mjs').then((m) => m.pollUntilTerminal({ ...opts, intervalMs: 1, sleep: async () => {} })),
+    });
     assert.deepEqual(results, [{ resourceName: 'dmon-run1-cache1', status: 'deleted' }]);
+    assert.equal(fake._clusters.has('dmon-run1-cache1'), false);
   });
 });
 
-test('reverseCleanup preserves a failed async delete for future reconciliation instead of ledgering it as deleted', async () => {
+test('reverseCleanup preserves a delete that reaches a terminal Failed state for future reconciliation', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    // A large pollsUntilDeleteComplete keeps the fake's cluster present (in
+    // "Deleting") rather than actually removing it, so the override below
+    // can substitute a terminal "Failed" state instead.
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }], pollsUntilDeleteComplete: 100 });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
 
-    // Simulate the RP operation ultimately reaching a Failed terminal state.
-    // The resource is deliberately NOT removed from the fake store, since a
-    // real delete that fails would leave it in place too.
-    const pollTerminal = async ({ operationId }) => ({ id: operationId, state: 'Failed' });
-    adapter.deleteCache = async () => ({ operationId: 'op-delete-failed' });
+    // Simulate the RP reporting the delete ultimately failed rather than
+    // completing -- the resource stays present.
+    const originalGetCluster = adapter.getCluster.bind(adapter);
+    adapter.getCluster = async (...args) => ({ ...(await originalGetCluster(...args)), properties: { provisioningState: 'Failed' } });
 
-    const results = await reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager, pollTerminal });
+    const results = await reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager });
     assert.deepEqual(results, [{ resourceName: 'dmon-run1-cache1', status: 'failed-pending-retry', state: 'Failed' }]);
     // The ledger must still consider this resource active for a future retry.
     assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']);
   });
 });
 
-test('reverseCleanup does not ledger a delete if the resource is still present afterward (verify-absence)', async () => {
-  await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
-    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
-    ledger.append('created', 'dmon-run1-cache1');
-    const { leaseManager, lease } = exclusiveLeaseFor('cleanup');
-
-    // Simulate a delete call that reports success but never actually removes
-    // the resource from the RP (an RP inconsistency).
-    adapter.deleteCache = async () => ({});
-
-    const results = await reverseCleanup({ ledger, adapter, config: testConfig(), lease, leaseManager });
-    assert.deepEqual(results, [
-      { resourceName: 'dmon-run1-cache1', status: 'failed-pending-retry', reason: 'still-present-after-delete' },
-    ]);
-    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']);
-  });
-});
-
 test('deleteOwnedResource can be used standalone (e.g. by the janitor) with the same verified-delete guarantees', async () => {
   await withTempLedger(async (ledger) => {
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     ledger.append('created', 'dmon-run1-cache1');
     const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');

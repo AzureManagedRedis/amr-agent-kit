@@ -95,7 +95,7 @@ export function readHeartbeat(heartbeatFilePath) {
 }
 
 function extractLiveRecordsByName(liveList, resourcePrefix) {
-  const rawList = Array.isArray(liveList) ? liveList : (liveList?.caches ?? []);
+  const rawList = Array.isArray(liveList) ? liveList : (liveList?.value ?? []);
   const byName = new Map();
   for (const item of rawList) {
     const record = typeof item === 'string' ? { name: item } : item;
@@ -133,9 +133,12 @@ export async function runJanitorPass({ ledger, adapter, config, leaseManager, ki
   if (!leaseManager) throw new JanitorError('runJanitorPass requires a leaseManager to authorize expired-orphan deletes.');
 
   const resourcePrefix = config.resourcePrefix;
+  const listCoords = { subscriptionId: config.subscriptionId, resourceGroup: config.resourceGroup };
   const reconciliation = await reconcileOnStartup({
     ledger,
     adapter,
+    subscriptionId: config.subscriptionId,
+    resourceGroup: config.resourceGroup,
     resourcePrefix,
     ownerAlias: config.ownerAlias,
     runId: config.runId,
@@ -145,7 +148,7 @@ export async function runJanitorPass({ ledger, adapter, config, leaseManager, ki
   // Step 2: delete (not merely adopt/retain) any ledger-confirmed active
   // resource that is now tag-expired.
   const deletedExpired = [];
-  const preDeleteLive = extractLiveRecordsByName(await adapter.listCaches(), resourcePrefix);
+  const preDeleteLive = extractLiveRecordsByName(await adapter.listClusters(listCoords), resourcePrefix);
   for (const name of ledger.activeResources()) {
     const record = preDeleteLive.get(name);
     if (!record) continue; // Not actually live; reconciliation already handles that mismatch separately.
@@ -166,7 +169,7 @@ export async function runJanitorPass({ ledger, adapter, config, leaseManager, ki
 
   // Step 3: re-list fresh -- never trust the pre-deletion snapshot for the
   // final zero-orphan claim.
-  const liveNames = new Set(extractLiveRecordsByName(await adapter.listCaches(), resourcePrefix).keys());
+  const liveNames = new Set(extractLiveRecordsByName(await adapter.listClusters(listCoords), resourcePrefix).keys());
   const activeInLedger = new Set(ledger.activeResources());
   const orphans = [...liveNames].filter((name) => !activeInLedger.has(name));
 

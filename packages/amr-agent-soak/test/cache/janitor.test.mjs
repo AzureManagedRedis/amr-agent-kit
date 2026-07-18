@@ -28,6 +28,8 @@ async function withTempDir(fn) {
 
 function testConfig(overrides = {}) {
   return {
+    subscriptionId: '11111111-2222-3333-4444-555555555555',
+    resourceGroup: 'rg1',
     resourcePrefix: 'dmon-run1-',
     denylist: [],
     ownerAlias: 'dmon',
@@ -98,7 +100,7 @@ test('runJanitorPass produces zero-orphan evidence when the ledger and RP alread
   await withTempDir(async (dir) => {
     const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
     ledger.append('created', 'dmon-run1-cache1');
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
 
@@ -114,7 +116,7 @@ test('runJanitorPass quarantines (never adopts) a live resource with zero ledger
   await withTempDir(async (dir) => {
     const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
     // Ledger has never heard of this resource at all -- no intent, no created.
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
 
@@ -132,7 +134,7 @@ test('runJanitorPass confirms an intent-evidenced crash orphan (legitimate recov
     const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
     ledger.append('creation-intent', 'dmon-run1-cache1', {});
     const tags = buildResourceTags({ ownerAlias: 'dmon', runId: 'run1', expiresInMs: 3600000 });
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', tags }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
 
@@ -149,7 +151,7 @@ test('runJanitorPass DELETES (not merely retains) an intent-evidenced resource t
     ledger.append('creation-intent', 'dmon-run1-cache1', {});
     ledger.append('created', 'dmon-run1-cache1', {});
     const tags = buildResourceTags({ ownerAlias: 'dmon', runId: 'run1', expiresInMs: 1000, now: () => 1000 });
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', tags }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
 
@@ -157,7 +159,7 @@ test('runJanitorPass DELETES (not merely retains) an intent-evidenced resource t
     const evidence = await runJanitorPass({ ledger, adapter, config: testConfig(), leaseManager, now: () => 999999 });
 
     assert.deepEqual(evidence.deletedExpired, ['dmon-run1-cache1']);
-    assert.equal(fake._caches.has('dmon-run1-cache1'), false); // actually deleted, not just re-labeled
+    assert.equal(fake._clusters.has('dmon-run1-cache1'), false); // actually deleted, not just re-labeled
     assert.equal(evidence.zeroOrphans, true);
     assert.deepEqual(ledger.activeResources(), []); // confirmed deleted in the ledger, not "active"
   });
@@ -169,13 +171,13 @@ test('runJanitorPass leaves a still-live, non-expired resource alone (does not d
     ledger.append('creation-intent', 'dmon-run1-cache1', {});
     ledger.append('created', 'dmon-run1-cache1', {});
     const tags = buildResourceTags({ ownerAlias: 'dmon', runId: 'run1', expiresInMs: 3600000, now: () => 1000 });
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1', tags }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1', tags }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
 
     const evidence = await runJanitorPass({ ledger, adapter, config: testConfig(), leaseManager, now: () => 2000 });
     assert.deepEqual(evidence.deletedExpired, []);
-    assert.equal(fake._caches.has('dmon-run1-cache1'), true);
+    assert.equal(fake._clusters.has('dmon-run1-cache1'), true);
     assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']);
   });
 });
@@ -183,7 +185,7 @@ test('runJanitorPass leaves a still-live, non-expired resource alone (does not d
 test('runJanitorPass never reports resources outside our prefix as orphans (isolation)', async () => {
   await withTempDir(async (dir) => {
     const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
-    const fake = createFakeRp({ initialCaches: [{ name: 'other-owner-run9-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'other-owner-run9-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
     const leaseManager = new LeaseManager();
 

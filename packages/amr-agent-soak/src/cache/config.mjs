@@ -17,6 +17,12 @@ export const LOCAL_RP_HOST = 'localhost';
  * (e.g. 8444) -- see http-adapter.mjs for the hard enforcement of this. */
 export const LOCAL_RP_PORT = 8443;
 
+/** Default ARM api-version used against the local RP's Microsoft.Cache
+ * (redisEnterprise) contract when the caller/environment does not override
+ * it. Runtime-configurable via AMR_SOAK_API_VERSION -- never hard-coded past
+ * this default. */
+export const DEFAULT_API_VERSION = '2024-09-01-preview';
+
 const REQUIRED_ACK_VALUE = 'true';
 
 export class ConfigError extends Error {
@@ -96,6 +102,8 @@ export function loadRuntimeConfig(env = process.env, fileReader = readRuntimeFil
     runId,
     resourcePrefix: `${ownerAlias}-${runId}-`,
     denylist,
+    resourceGroup: env.AMR_SOAK_RESOURCE_GROUP ?? fileConfig.resourceGroup ?? null,
+    apiVersion: env.AMR_SOAK_API_VERSION ?? fileConfig.apiVersion ?? DEFAULT_API_VERSION,
     killSwitchPath: env.AMR_SOAK_KILL_SWITCH_PATH ?? fileConfig.killSwitchPath ?? null,
     ledgerPath: env.AMR_SOAK_LEDGER_PATH ?? fileConfig.ledgerPath ?? null,
     rpHost: LOCAL_RP_HOST,

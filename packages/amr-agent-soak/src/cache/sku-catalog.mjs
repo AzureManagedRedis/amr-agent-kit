@@ -99,3 +99,36 @@ export function classifySkuRequest(catalog, requestedSkuName, requestedFamily) {
     dryRunOnly: !withinCeiling,
   };
 }
+
+/**
+ * Builds the real ARM SKU name string (e.g. "Balanced_B0", "MemoryOptimized_M10")
+ * expected in a Microsoft.Cache/redisEnterprise creation body's `sku.name`
+ * field, from the catalog's separate family/name fields.
+ */
+export function buildArmSkuName({ family, name }) {
+  if (!RECOGNIZED_FAMILIES.has(family)) {
+    throw new CatalogError(`Unrecognized SKU family "${family}". Expected one of: Balanced, MemoryOptimized, ComputeOptimized.`);
+  }
+  if (!name) {
+    throw new CatalogError('buildArmSkuName requires a SKU size name (e.g. "B0").');
+  }
+  return `${family}_${name}`;
+}
+
+/**
+ * Builds the ARM `sku` object for a creation body: `{ name, capacity }`,
+ * omitting `capacity` ONLY for exactly Balanced B0 (the one SKU allowed to
+ * have no capacity dimension at all).
+ */
+export function buildArmSkuBody(sku) {
+  const armName = buildArmSkuName(sku);
+  const isBalancedB0 = sku.family === 'Balanced' && sku.name === 'B0';
+  if (isBalancedB0) {
+    return { name: armName };
+  }
+  if (typeof sku.capacityGb !== 'number' && typeof sku.capacity !== 'number') {
+    throw new CatalogError(`SKU "${armName}" is not Balanced B0 and must specify a capacity.`);
+  }
+  return { name: armName, capacity: sku.capacity ?? sku.capacityGb };
+}
+

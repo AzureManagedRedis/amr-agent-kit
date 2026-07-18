@@ -44,7 +44,7 @@ test('run A cleanup never deletes run B resources sharing the same fake RP insta
   const dir = mkdtempSync(join(tmpdir(), 'amr-soak-isolation-'));
   try {
     const runA = loadRuntimeConfig(baseEnv({ AMR_SOAK_OWNER: 'dmon', AMR_SOAK_RUN_ID: 'run1' }));
-    const fake = createFakeRp({ initialCaches: [{ name: 'dmon-run1-cache1' }, { name: 'phil-run2-cache1' }] });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }, { name: 'phil-run2-cache1' }] });
     const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
 
     const ledgerA = new ResourceLedger({ path: join(dir, 'ledgerA.jsonl') });
@@ -54,8 +54,8 @@ test('run A cleanup never deletes run B resources sharing the same fake RP insta
     const lease = leaseManager.acquire({ class: 'exclusive' });
     const resultsA = await reverseCleanup({ ledger: ledgerA, adapter, config: runA, lease, leaseManager });
     assert.deepEqual(resultsA.map((r) => r.resourceName), ['dmon-run1-cache1']);
-    assert.equal(fake._caches.has('phil-run2-cache1'), true); // run B's cache is untouched
-    assert.equal(fake._caches.has('dmon-run1-cache1'), false);
+    assert.equal(fake._clusters.has('phil-run2-cache1'), true); // run B's cache is untouched
+    assert.equal(fake._clusters.has('dmon-run1-cache1'), false);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -20,7 +20,7 @@
 // known to have.
 
 import { assertSafeToMutate } from './guards.mjs';
-import { pollUntilTerminal } from './reconciliation.mjs';
+import { pollUntilTerminal, buildDeletionCheck } from './reconciliation.mjs';
 import { assertLeaseAuthorizes, MAX_ACTIVE_LEASES } from './lease-manager.mjs';
 
 export class CleanupError extends Error {
@@ -43,55 +43,45 @@ export class CircuitBreakerTripped extends CleanupError {
  * after manual review. */
 export const DEFAULT_MAX_DELETES_PER_RUN = MAX_ACTIVE_LEASES;
 
-async function verifyAbsent(adapter, resourceName) {
-  try {
-    await adapter.getCache(resourceName);
-    return false; // still present
-  } catch (err) {
-    if (err?.status === 404) return true;
-    throw err;
-  }
-}
-
 /**
- * Deletes a single owned resource, verifying full completion before ever
- * ledgering it as deleted:
+ * Deletes a single owned resource (a Microsoft.Cache/redisEnterprise
+ * cluster), verifying full completion before ever ledgering it as deleted:
  *   1. issue the delete through the guarded adapter boundary
- *   2. if it returned an async operation, poll until terminal
- *   3. only if that terminal state is 'Succeeded', verify actual absence
- *      via a fresh GET
- *   4. only then append 'deleted' to the ledger
+ *   2. poll the cluster resource until it 404s (fully gone) or reports a
+ *      terminal "Deleted" provisioningState -- never assuming a fake
+ *      "/operations" API
+ *   3. only then append 'deleted' to the ledger
  *
- * If the operation does not reach 'Succeeded', or the resource is somehow
- * still present afterward, this does NOT ledger a deletion -- it returns a
- * 'failed-pending-retry' result so the resource stays "active" for a future
- * reconciliation/cleanup pass to retry, rather than the ledger falsely
- * believing cleanup already succeeded. A hard/unexpected error throws
- * CleanupError (the resource likewise stays active).
+ * If the poll does not reach a terminal deleted state (times out on
+ * something other than 404/Deleted), this does NOT ledger a deletion -- it
+ * returns a 'failed-pending-retry' result so the resource stays "active"
+ * for a future reconciliation/cleanup pass to retry, rather than the
+ * ledger falsely believing cleanup already succeeded. A hard/unexpected
+ * error throws CleanupError (the resource likewise stays active).
  *
  * @param {object} opts
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
  * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
  * @param {string} opts.resourceName
- * @param {object} opts.context - mutation context (see mutation-context.mjs) passed through to adapter.deleteCache.
+ * @param {object} opts.context - mutation context (see mutation-context.mjs); context.config must carry subscriptionId/resourceGroup.
  * @param {typeof pollUntilTerminal} [opts.pollTerminal]
  */
 export async function deleteOwnedResource({ ledger, adapter, resourceName, context, pollTerminal = pollUntilTerminal }) {
+  const coords = {
+    subscriptionId: context?.config?.subscriptionId,
+    resourceGroup: context?.config?.resourceGroup,
+    name: resourceName,
+  };
   try {
-    const response = await adapter.deleteCache(resourceName, context);
+    await adapter.deleteCluster(coords, context);
 
-    let finalState = 'Succeeded';
-    if (response?.operationId) {
-      const pollResult = await pollTerminal({ adapter, operationId: response.operationId });
-      finalState = pollResult.state;
-    }
-    if (finalState !== 'Succeeded') {
-      return { resourceName, status: 'failed-pending-retry', state: finalState };
-    }
+    const status = await pollTerminal({
+      checkStatus: buildDeletionCheck((signal) => adapter.getCluster(coords, { signal })),
+      label: `deletion of "${resourceName}"`,
+    });
 
-    const absent = await verifyAbsent(adapter, resourceName);
-    if (!absent) {
-      return { resourceName, status: 'failed-pending-retry', reason: 'still-present-after-delete' };
+    if (status.state !== 'Deleted') {
+      return { resourceName, status: 'failed-pending-retry', state: status.state };
     }
 
     ledger.append('deleted', resourceName, { via: 'deleteOwnedResource' });

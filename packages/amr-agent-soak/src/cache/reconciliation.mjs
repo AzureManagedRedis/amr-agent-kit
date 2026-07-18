@@ -2,9 +2,10 @@
 // safety subsystem.
 //
 // Reconciliation never deletes anything itself -- it only reconciles the
-// ledger's view of the world against what the local RP actually reports, so
-// that a process that crashed mid-operation resumes with an accurate picture
-// instead of silently drifting.
+// ledger's view of the world against what the local RP actually reports (via
+// the real Microsoft.Cache/redisEnterprise listClusters/getCluster ARM
+// contract), so that a process that crashed mid-operation resumes with an
+// accurate picture instead of silently drifting.
 //
 // Adoption requires DURABLE PRE-CREATE INTENT EVIDENCE, not merely a
 // name-prefix (or even a tag) match: a live resource is only ever upgraded
@@ -20,6 +21,15 @@
 // 'created' yet -- the signature of a crash in between), tag-based
 // eligibility (tags.mjs) is layered on top as an additional check before
 // confirming the ledger entry.
+//
+// pollUntilTerminal is intentionally generic -- it takes a `checkStatus`
+// callback rather than assuming any particular "/operations/*" API (the
+// real local RP has none). Use the exported helper builders to construct a
+// checkStatus for the common cases: polling a resource's own
+// `properties.provisioningState` (buildResourceProvisioningStateCheck),
+// polling until a DELETE resolves to 404/Deleted (buildDeletionCheck), or
+// following a Location/Azure-AsyncOperation header when the RP happens to
+// provide one (buildAsyncOperationCheck).
 
 import { assertOwnedResource } from './guards.mjs';
 import { evaluateCleanupEligibility } from './tags.mjs';
@@ -35,7 +45,7 @@ const TERMINAL_STATES = new Set(['Succeeded', 'Failed', 'Canceled']);
 const TRANSIENT_REQUEST_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 
 function extractLiveRecords(liveList, resourcePrefix) {
-  const rawList = Array.isArray(liveList) ? liveList : (liveList?.caches ?? []);
+  const rawList = Array.isArray(liveList) ? liveList : (liveList?.value ?? []);
   const byName = new Map();
   for (const item of rawList) {
     const record = typeof item === 'string' ? { name: item } : item;
@@ -55,13 +65,24 @@ function extractLiveRecords(liveList, resourcePrefix) {
  * @param {object} opts
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
  * @param {import('./http-adapter.mjs').LocalRpHttpAdapter} opts.adapter
+ * @param {string} opts.subscriptionId
+ * @param {string} [opts.resourceGroup]
  * @param {string} opts.resourcePrefix
  * @param {string} [opts.ownerAlias] - enables tag-based eligibility checking when supplied with runId.
  * @param {string} [opts.runId]
  * @param {() => number} [opts.now]
  */
-export async function reconcileOnStartup({ ledger, adapter, resourcePrefix, ownerAlias, runId, now = () => Date.now() }) {
-  const liveList = await adapter.listCaches();
+export async function reconcileOnStartup({
+  ledger,
+  adapter,
+  subscriptionId,
+  resourceGroup,
+  resourcePrefix,
+  ownerAlias,
+  runId,
+  now = () => Date.now(),
+}) {
+  const liveList = await adapter.listClusters({ subscriptionId, resourceGroup });
   const liveRecordsByName = extractLiveRecords(liveList, resourcePrefix);
   const liveNames = new Set(liveRecordsByName.keys());
   const tagCheckEnabled = Boolean(ownerAlias && runId);
@@ -131,16 +152,19 @@ async function callWithAbortTimeout(fn, timeoutMs) {
 }
 
 /**
- * Polls the local RP for an operation's terminal state with exponential
- * backoff, up to an overall `timeoutMs` deadline. Every individual poll
- * request is itself bounded by an AbortController -- `remaining` overall
- * deadline time, capped at `perRequestTimeoutMs` -- so a single hung request
- * can never let the overall poll exceed its deadline; a request that times
- * out is treated as transient and retried against the remaining budget.
+ * Polls an arbitrary caller-supplied status check with exponential backoff,
+ * up to an overall `timeoutMs` deadline. Every individual check is itself
+ * bounded by an AbortController -- the remaining overall deadline time,
+ * capped at `perRequestTimeoutMs` -- so a single hung request can never let
+ * the overall poll exceed its deadline; a request that times out is treated
+ * as transient and retried against the remaining budget.
+ *
+ * @param {object} opts
+ * @param {(signal: AbortSignal) => Promise<{terminal: boolean, state?: string}>} opts.checkStatus
  */
 export async function pollUntilTerminal({
-  adapter,
-  operationId,
+  checkStatus,
+  label = 'operation',
   intervalMs = 250,
   backoffFactor = 2,
   maxIntervalMs = 5000,
@@ -153,24 +177,24 @@ export async function pollUntilTerminal({
   for (;;) {
     const remaining = timeoutMs - (Date.now() - start);
     if (remaining <= 0) {
-      throw new ReconciliationError(`Operation "${operationId}" did not reach a terminal state within ${timeoutMs}ms.`);
+      throw new ReconciliationError(`${label} did not reach a terminal state within ${timeoutMs}ms.`);
     }
 
     const requestTimeout = Math.min(perRequestTimeoutMs, remaining);
     let status = null;
     try {
-      status = await callWithAbortTimeout((signal) => adapter.getOperationStatus(operationId, { signal }), requestTimeout);
+      status = await callWithAbortTimeout((signal) => checkStatus(signal), requestTimeout);
     } catch (err) {
       if (!TRANSIENT_REQUEST_ERROR_NAMES.has(err?.name)) throw err;
       // A single hung/aborted request is transient -- fall through to the
       // overall-deadline check below instead of retrying indefinitely.
     }
 
-    if (status && TERMINAL_STATES.has(status.state)) return status;
+    if (status?.terminal) return status;
 
     if (Date.now() - start >= timeoutMs) {
       throw new ReconciliationError(
-        `Operation "${operationId}" did not reach a terminal state within ${timeoutMs}ms` +
+        `${label} did not reach a terminal state within ${timeoutMs}ms` +
           (status ? ` (last state: ${status.state}).` : ' (last request timed out).')
       );
     }
@@ -178,3 +202,56 @@ export async function pollUntilTerminal({
     interval = Math.min(interval * backoffFactor, maxIntervalMs);
   }
 }
+
+/**
+ * Builds a checkStatus callback that polls a resource's own
+ * `properties.provisioningState` (via `getResource(signal)`) until it
+ * reaches a terminal state. This is the default/primary polling strategy
+ * for both cluster and database creation, since the real local RP is not
+ * guaranteed to emit Location/Azure-AsyncOperation headers.
+ */
+export function buildResourceProvisioningStateCheck(getResource, terminalStates = TERMINAL_STATES) {
+  return async (signal) => {
+    const resource = await getResource(signal);
+    const state = resource?.properties?.provisioningState;
+    return { terminal: terminalStates.has(state), state, raw: resource };
+  };
+}
+
+/**
+ * Builds a checkStatus callback for DELETE completion: polls
+ * `getResource(signal)` until it 404s (fully gone), reports a terminal
+ * "Deleted"-style provisioningState, or reports a terminal failure state
+ * (e.g. "Failed") -- the latter is detected immediately rather than only
+ * via the overall timeout, since it is a definitive (non-transient) answer
+ * that the delete did not succeed.
+ */
+export function buildDeletionCheck(getResource, terminalDeletedStates = new Set(['Deleted']), failedStates = new Set(['Failed'])) {
+  return async (signal) => {
+    try {
+      const resource = await getResource(signal);
+      const state = resource?.properties?.provisioningState;
+      const terminal = terminalDeletedStates.has(state) || failedStates.has(state);
+      return { terminal, state, raw: resource };
+    } catch (err) {
+      if (err?.status === 404) return { terminal: true, state: 'Deleted', raw: null };
+      throw err;
+    }
+  };
+}
+
+/**
+ * Builds a checkStatus callback that follows a Location/Azure-AsyncOperation
+ * header URL (Azure async-operation body shape: `{ status: "..." }`), when
+ * the RP happens to supply one. `pollOperationUrl` on the adapter
+ * origin-locks the URL -- it is never assumed to point anywhere but this
+ * same local RP.
+ */
+export function buildAsyncOperationCheck(adapter, url, terminalStates = TERMINAL_STATES) {
+  return async (signal) => {
+    const body = await adapter.pollOperationUrl(url, { signal });
+    const state = body?.status;
+    return { terminal: terminalStates.has(state), state, raw: body };
+  };
+}
+

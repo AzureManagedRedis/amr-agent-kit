@@ -1,86 +1,224 @@
-// In-memory fake of the local RP's HTTP surface, exposed as a fetch-shaped
+// Contract-faithful, in-memory ARM-shaped fake of the local RP's real
+// Microsoft.Cache/redisEnterprise surface -- exposed as a fetch-shaped
 // function so it can be injected into LocalRpHttpAdapter without any real
-// network call or socket. This is what makes the whole test suite run with
-// "no Azure calls" and no real network at all.
+// network call or socket. This replaces the earlier "/caches"-shaped fake:
+// paths, the required api-version query parameter, the required Referer
+// header, and request/response body shapes all match the real contract.
+//
+// Provisioning is simulated as asynchronous: a create/delete leaves the
+// resource in a non-terminal provisioningState for `pollsUntilSucceeded`/
+// `pollsUntilDeleteComplete` subsequent GETs before flipping to terminal
+// (Succeeded, or actually removed/404 for deletes). This lets tests exercise
+// real polling behavior deterministically without real timers.
 
-export function createFakeRp({ initialCaches = [], skuCatalog } = {}) {
-  const caches = new Map(initialCaches.map((c) => [c.name, { ...c }]));
+const CLUSTER_LIST_RE = /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise$/;
+const CLUSTER_RE = /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise\/([^/]+)$/;
+const DATABASE_RE =
+  /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise\/([^/]+)\/databases\/default$/;
+const LIST_KEYS_RE =
+  /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise\/([^/]+)\/databases\/default\/listKeys$/;
+const OPERATION_STATUS_RE = /^\/subscriptions\/([^/]+)\/providers\/Microsoft\.Cache\/locations\/([^/]+)\/operationsStatus\/([^/]+)$/;
+
+export function createFakeRp({
+  initialClusters = [],
+  pollsUntilCreateSucceeded = 0,
+  pollsUntilDeleteComplete = 0,
+} = {}) {
+  const clusters = new Map(
+    initialClusters.map((c) => [
+      c.name,
+      {
+        name: c.name,
+        location: c.location ?? 'eastus',
+        tags: c.tags ?? {},
+        sku: c.sku ?? { name: 'Balanced_B1', capacity: 1 },
+        properties: { provisioningState: 'Succeeded', minimumTlsVersion: '1.2', ...(c.properties ?? {}) },
+        _createPollsRemaining: 0,
+        _deletePollsRemaining: 0,
+      },
+    ])
+  );
+  const databases = new Map();
   const operations = new Map();
+  const requestLog = [];
   let opCounter = 0;
 
-  function jsonResponse(status, body) {
+  function jsonResponse(status, body, headers = {}) {
+    const lowerHeaders = Object.fromEntries(Object.entries(headers).map(([k, v]) => [k.toLowerCase(), v]));
     return {
       ok: status >= 200 && status < 300,
       status,
+      headers: { get: (key) => lowerHeaders[key.toLowerCase()] ?? null },
       text: async () => JSON.stringify(body),
     };
+  }
+
+  function sanitizeCluster(record) {
+    const { _createPollsRemaining, _deletePollsRemaining, ...rest } = record;
+    return JSON.parse(JSON.stringify(rest));
   }
 
   async function fetchImpl(url, init = {}) {
     const u = new URL(url);
     const method = init.method ?? 'GET';
-    const path = u.pathname;
+    const headers = init.headers ?? {};
+    requestLog.push({ method, path: u.pathname, query: Object.fromEntries(u.searchParams), headers: { ...headers } });
 
-    if (path === '/catalog/skus' && method === 'GET') {
-      return jsonResponse(200, skuCatalog ?? { skus: [] });
+    // Real ARM contract requirements, enforced here so tests prove the
+    // adapter actually sends them.
+    const referer = headers.referer ?? headers.Referer;
+    if (!referer) return jsonResponse(400, { error: { code: 'MissingReferer', message: 'Referer header is required.' } });
+    if (referer !== 'http://localhost:8443') {
+      return jsonResponse(400, { error: { code: 'InvalidReferer', message: `Unexpected Referer: ${referer}` } });
+    }
+    if (!OPERATION_STATUS_RE.test(u.pathname) && !u.searchParams.get('api-version')) {
+      return jsonResponse(400, { error: { code: 'MissingApiVersion', message: 'api-version query parameter is required.' } });
     }
 
-    if (path === '/caches' && method === 'GET') {
-      return jsonResponse(200, { caches: [...caches.values()] });
-    }
+    const body = init.body ? JSON.parse(init.body) : undefined;
 
-    const cacheMatch = path.match(/^\/caches\/([^/]+)$/);
-    if (cacheMatch) {
-      const name = decodeURIComponent(cacheMatch[1]);
-      if (method === 'GET') {
-        if (!caches.has(name)) return jsonResponse(404, { error: 'not found' });
-        return jsonResponse(200, caches.get(name));
-      }
-      if (method === 'PUT') {
-        const body = init.body ? JSON.parse(init.body) : {};
-        caches.set(name, { name, ...body, provisioningState: 'Succeeded' });
-        return jsonResponse(200, caches.get(name));
-      }
-      if (method === 'DELETE') {
-        if (!caches.has(name)) return jsonResponse(404, { error: 'not found' });
-        caches.delete(name);
-        return jsonResponse(200, { name, deleted: true });
-      }
-    }
-
-    const topologyMatch = path.match(/^\/caches\/([^/]+)\/topology$/);
-    if (topologyMatch && method === 'PATCH') {
-      const name = decodeURIComponent(topologyMatch[1]);
-      if (!caches.has(name)) return jsonResponse(404, { error: 'not found' });
-      const body = init.body ? JSON.parse(init.body) : {};
-      caches.set(name, { ...caches.get(name), ...body });
-      const opId = `op-${++opCounter}`;
-      operations.set(opId, { id: opId, state: 'Running', pollsRemaining: 1 });
-      return jsonResponse(200, { operationId: opId, ...caches.get(name) });
-    }
-
-    const opMatch = path.match(/^\/operations\/([^/]+)$/);
+    // ---- operationsStatus (Azure-AsyncOperation follow-up) ----
+    const opMatch = u.pathname.match(OPERATION_STATUS_RE);
     if (opMatch && method === 'GET') {
-      const id = decodeURIComponent(opMatch[1]);
-      const op = operations.get(id);
-      if (!op) return jsonResponse(404, { error: 'not found' });
+      const [, , , opId] = opMatch;
+      const op = operations.get(opId);
+      if (!op) return jsonResponse(404, { error: { code: 'NotFound' } });
       if (op.pollsRemaining > 0) {
         op.pollsRemaining -= 1;
-        return jsonResponse(200, { id, state: 'Running' });
+        return jsonResponse(200, { status: 'InProgress' });
       }
-      op.state = 'Succeeded';
-      return jsonResponse(200, { id, state: 'Succeeded' });
+      op.onSucceed?.();
+      return jsonResponse(200, { status: 'Succeeded' });
     }
 
-    return jsonResponse(404, { error: `no fake route for ${method} ${path}` });
+    // ---- listKeys ----
+    const listKeysMatch = u.pathname.match(LIST_KEYS_RE);
+    if (listKeysMatch && method === 'POST') {
+      const [, , , clusterName] = listKeysMatch;
+      if (!clusters.has(clusterName)) return jsonResponse(404, { error: { code: 'NotFound' } });
+      return jsonResponse(200, {
+        // Obviously-fake placeholder values -- never real secrets, even in tests.
+        primaryKey: 'FAKE-PRIMARY-KEY-0000000000000000000000000000',
+        secondaryKey: 'FAKE-SECONDARY-KEY-0000000000000000000000000',
+      });
+    }
+
+    // ---- database ----
+    const dbMatch = u.pathname.match(DATABASE_RE);
+    if (dbMatch) {
+      const [, , , clusterName] = dbMatch;
+      if (method === 'GET') {
+        const db = databases.get(clusterName);
+        if (!db) return jsonResponse(404, { error: { code: 'NotFound' } });
+        if (db._pollsRemaining > 0) {
+          db._pollsRemaining -= 1;
+          if (db._pollsRemaining === 0) db.properties.provisioningState = 'Succeeded';
+        }
+        const { _pollsRemaining, ...rest } = db;
+        return jsonResponse(200, JSON.parse(JSON.stringify(rest)));
+      }
+      if (method === 'PUT') {
+        if (!clusters.has(clusterName)) return jsonResponse(404, { error: { code: 'NotFound', message: 'Cluster does not exist.' } });
+        if (databases.has(clusterName)) {
+          return jsonResponse(409, { error: { code: 'DatabaseAlreadyExists' } });
+        }
+        const record = {
+          name: 'default',
+          properties: { ...(body?.properties ?? {}), provisioningState: pollsUntilCreateSucceeded > 0 ? 'Creating' : 'Succeeded' },
+          _pollsRemaining: pollsUntilCreateSucceeded,
+        };
+        databases.set(clusterName, record);
+        const { _pollsRemaining, ...rest } = record;
+        return jsonResponse(pollsUntilCreateSucceeded > 0 ? 202 : 201, JSON.parse(JSON.stringify(rest)));
+      }
+    }
+
+    // ---- cluster list ----
+    const listMatch = u.pathname.match(CLUSTER_LIST_RE);
+    if (listMatch && method === 'GET') {
+      return jsonResponse(200, { value: [...clusters.values()].map(sanitizeCluster) });
+    }
+
+    // ---- cluster (single) ----
+    const clusterMatch = u.pathname.match(CLUSTER_RE);
+    if (clusterMatch) {
+      const [, , , name] = clusterMatch;
+
+      if (method === 'GET') {
+        const record = clusters.get(name);
+        if (!record) return jsonResponse(404, { error: { code: 'NotFound' } });
+        if (record._deletePollsRemaining > 0) {
+          record._deletePollsRemaining -= 1;
+          if (record._deletePollsRemaining === 0) {
+            clusters.delete(name);
+            databases.delete(name);
+            return jsonResponse(404, { error: { code: 'NotFound' } });
+          }
+          return jsonResponse(200, sanitizeCluster(record));
+        }
+        if (record._createPollsRemaining > 0) {
+          record._createPollsRemaining -= 1;
+          if (record._createPollsRemaining === 0) record.properties.provisioningState = 'Succeeded';
+        }
+        return jsonResponse(200, sanitizeCluster(record));
+      }
+
+      if (method === 'PUT') {
+        if (clusters.has(name)) {
+          return jsonResponse(409, { error: { code: 'AlreadyExists', message: 'A cluster with this name already exists.' } });
+        }
+        const useAsyncHeaders = Boolean(body?._testUseAsyncHeaders);
+        const record = {
+          name,
+          location: body?.location,
+          tags: body?.tags ?? {},
+          sku: body?.sku,
+          properties: { ...(body?.properties ?? {}), provisioningState: pollsUntilCreateSucceeded > 0 ? 'Creating' : 'Succeeded' },
+          _createPollsRemaining: pollsUntilCreateSucceeded,
+          _deletePollsRemaining: 0,
+        };
+        clusters.set(name, record);
+
+        const responseHeaders = {};
+        if (useAsyncHeaders) {
+          const opId = `create-op-${++opCounter}`;
+          operations.set(opId, {
+            pollsRemaining: pollsUntilCreateSucceeded,
+            onSucceed: () => {
+              record.properties.provisioningState = 'Succeeded';
+              record._createPollsRemaining = 0;
+            },
+          });
+          const opUrl = `http://localhost:8443/subscriptions/${encodeURIComponent(clusterMatch[1])}/providers/Microsoft.Cache/locations/${encodeURIComponent(record.location ?? 'eastus')}/operationsStatus/${opId}?api-version=2024-09-01-preview`;
+          responseHeaders.location = opUrl;
+          responseHeaders['azure-asyncoperation'] = opUrl;
+        }
+
+        return jsonResponse(pollsUntilCreateSucceeded > 0 ? 202 : 201, sanitizeCluster(record), responseHeaders);
+      }
+
+      if (method === 'DELETE') {
+        const record = clusters.get(name);
+        if (!record) return jsonResponse(404, { error: { code: 'NotFound' } });
+        if (pollsUntilDeleteComplete <= 0) {
+          clusters.delete(name);
+          databases.delete(name);
+          return jsonResponse(200, {});
+        }
+        record._deletePollsRemaining = pollsUntilDeleteComplete;
+        record.properties.provisioningState = 'Deleting';
+        return jsonResponse(202, {});
+      }
+    }
+
+    return jsonResponse(404, { error: { code: 'RouteNotFound', message: `no fake route for ${method} ${u.pathname}` } });
   }
 
   return {
     fetchImpl,
-    // Exposed for direct test assertions/manipulation (e.g. simulating a
-    // crash by creating a cache "behind the adapter's back").
-    _caches: caches,
-    _operations: operations,
+    _clusters: clusters,
+    _databases: databases,
+    _requestLog: requestLog,
   };
 }
 
