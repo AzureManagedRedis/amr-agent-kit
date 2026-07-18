@@ -27,6 +27,14 @@ interface CapturedProcess {
   readonly stderr: string;
 }
 
+export function isBundledExtractionRace(output: string): boolean {
+  return /Failed to extract bundled package|EPERM: operation not permitted, rename/i.test(output);
+}
+
+export function preflightRetryDelayMs(attempt: number): number {
+  return 500 * 2 ** attempt;
+}
+
 async function capture(
   command: string,
   args: ReadonlyArray<string>,
@@ -117,11 +125,17 @@ async function captureSuccessful(
   },
 ): Promise<CapturedProcess> {
   let last: CapturedProcess | undefined;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  const maxAttempts = 4;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     last = await capture(command, args, options);
     if (last.exitCode === 0) {
       return last;
     }
+    const extractionRace = isBundledExtractionRace(`${last.stderr}\n${last.stdout}`);
+    if (!extractionRace || attempt === maxAttempts - 1) {
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, preflightRetryDelayMs(attempt)));
   }
   return last!;
 }

@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ExecutorCapabilities } from "../../src/core/contracts.js";
-import { assertExecutorCapabilities } from "../../src/executor/copilot-cli.js";
+import {
+  assertExecutorCapabilities,
+  isBundledExtractionRace,
+  preflightRetryDelayMs,
+} from "../../src/executor/copilot-cli.js";
 
 const capabilities: ExecutorCapabilities = {
   executablePath: "copilot",
@@ -33,4 +37,13 @@ test("preflight requires every flag used by execution", () => {
       new RegExp(property.replace(/^supports/, ""), "i"),
     );
   }
+});
+
+test("preflight recognizes Windows bundled-package extraction races and backs off", () => {
+  assert.equal(
+    isBundledExtractionRace("Failed to extract bundled package: EPERM: operation not permitted, rename"),
+    true,
+  );
+  assert.equal(isBundledExtractionRace("ordinary command failure"), false);
+  assert.deepEqual([0, 1, 2].map(preflightRetryDelayMs), [500, 1000, 2000]);
 });
