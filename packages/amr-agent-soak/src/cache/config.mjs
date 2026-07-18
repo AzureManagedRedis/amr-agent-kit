@@ -35,6 +35,13 @@ export const DEFAULT_CREATE_POLL_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
  * unbounded -- override via AMR_SOAK_DELETE_POLL_TIMEOUT_MS. */
 export const DEFAULT_DELETE_POLL_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 
+/** Upper bound on any poll-timeout value (create or delete), guarding
+ * against absurd overflow (e.g. a stray extra zero, or a value pasted in
+ * the wrong unit) being silently accepted and effectively disabling the
+ * overall deadline. Nothing in this subsystem's real create/delete
+ * lifecycle plausibly needs longer than this. */
+export const MAX_POLL_TIMEOUT_MS = 24 * 60 * 60 * 1000; // 24 hours
+
 const REQUIRED_ACK_VALUE = 'true';
 
 export class ConfigError extends Error {
@@ -52,6 +59,29 @@ function readRuntimeFile(path) {
   } catch (err) {
     throw new ConfigError(`Failed to read runtime config file at ${path}: ${err.message}`);
   }
+}
+
+/**
+ * Resolves and validates a poll-timeout value (createPollTimeoutMs or
+ * deletePollTimeoutMs) sourced from env/runtime-file, or falls back to
+ * `defaultValue` when unset. Fails closed: anything other than a finite,
+ * positive, whole-millisecond integer no greater than MAX_POLL_TIMEOUT_MS
+ * is rejected BEFORE any polling ever happens -- NaN (e.g. a typo'd env
+ * value), Infinity, zero, negative values, non-integer values, and absurd
+ * overflow (e.g. a stray extra zero) are all refused rather than silently
+ * coerced into some other behavior (an unbounded or instantly-expiring
+ * deadline would defeat the entire point of an overall poll timeout).
+ */
+function resolvePollTimeoutMs(rawValue, { envVarName, defaultValue }) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') return defaultValue;
+  const num = typeof rawValue === 'number' ? rawValue : Number(rawValue);
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num <= 0 || num > MAX_POLL_TIMEOUT_MS) {
+    throw new ConfigError(
+      `${envVarName} (or the matching runtime-config-file field) must be a finite, positive, whole-millisecond ` +
+        `integer no greater than ${MAX_POLL_TIMEOUT_MS}ms; got "${rawValue}".`
+    );
+  }
+  return num;
 }
 
 /**
@@ -118,8 +148,14 @@ export function loadRuntimeConfig(env = process.env, fileReader = readRuntimeFil
     apiVersion: env.AMR_SOAK_API_VERSION ?? fileConfig.apiVersion ?? DEFAULT_API_VERSION,
     killSwitchPath: env.AMR_SOAK_KILL_SWITCH_PATH ?? fileConfig.killSwitchPath ?? null,
     ledgerPath: env.AMR_SOAK_LEDGER_PATH ?? fileConfig.ledgerPath ?? null,
-    createPollTimeoutMs: Number(env.AMR_SOAK_CREATE_POLL_TIMEOUT_MS ?? fileConfig.createPollTimeoutMs ?? DEFAULT_CREATE_POLL_TIMEOUT_MS),
-    deletePollTimeoutMs: Number(env.AMR_SOAK_DELETE_POLL_TIMEOUT_MS ?? fileConfig.deletePollTimeoutMs ?? DEFAULT_DELETE_POLL_TIMEOUT_MS),
+    createPollTimeoutMs: resolvePollTimeoutMs(env.AMR_SOAK_CREATE_POLL_TIMEOUT_MS ?? fileConfig.createPollTimeoutMs, {
+      envVarName: 'AMR_SOAK_CREATE_POLL_TIMEOUT_MS',
+      defaultValue: DEFAULT_CREATE_POLL_TIMEOUT_MS,
+    }),
+    deletePollTimeoutMs: resolvePollTimeoutMs(env.AMR_SOAK_DELETE_POLL_TIMEOUT_MS ?? fileConfig.deletePollTimeoutMs, {
+      envVarName: 'AMR_SOAK_DELETE_POLL_TIMEOUT_MS',
+      defaultValue: DEFAULT_DELETE_POLL_TIMEOUT_MS,
+    }),
     rpHost: LOCAL_RP_HOST,
     rpPort: LOCAL_RP_PORT,
     // Reaching this point means the ack check above passed; carry that fact

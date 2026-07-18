@@ -76,6 +76,77 @@ test('loadRuntimeConfig honors createPollTimeoutMs/deletePollTimeoutMs from the 
   assert.equal(config.deletePollTimeoutMs, 45000);
 });
 
+// ---- Final hardening: poll timeouts must fail closed on invalid values,
+// BEFORE any polling ever happens -- never silently coerced ----
+
+const INVALID_POLL_TIMEOUT_VALUES = [
+  ['NaN', 'NaN'],
+  ['Infinity', 'Infinity'],
+  ['-Infinity', '-Infinity'],
+  ['zero', '0'],
+  ['negative', '-5000'],
+  ['non-integer', '1000.5'],
+  ['absurd overflow (100 years in ms)', String(100 * 365 * 24 * 60 * 60 * 1000)],
+  ['non-numeric garbage', 'not-a-number'],
+  ['empty-ish whitespace', '   '],
+];
+
+for (const [label, rawValue] of INVALID_POLL_TIMEOUT_VALUES) {
+  test(`loadRuntimeConfig rejects an invalid createPollTimeoutMs env value (${label})`, () => {
+    const env = { ...BASE_ENV, AMR_SOAK_CREATE_POLL_TIMEOUT_MS: rawValue };
+    assert.throws(() => loadRuntimeConfig(env), ConfigError);
+  });
+
+  test(`loadRuntimeConfig rejects an invalid deletePollTimeoutMs env value (${label})`, () => {
+    const env = { ...BASE_ENV, AMR_SOAK_DELETE_POLL_TIMEOUT_MS: rawValue };
+    assert.throws(() => loadRuntimeConfig(env), ConfigError);
+  });
+}
+
+test('loadRuntimeConfig rejects an invalid createPollTimeoutMs/deletePollTimeoutMs sourced from the runtime file', () => {
+  assert.throws(() => loadRuntimeConfig(BASE_ENV, () => ({ createPollTimeoutMs: Number.NaN })), ConfigError);
+  assert.throws(() => loadRuntimeConfig(BASE_ENV, () => ({ createPollTimeoutMs: 0 })), ConfigError);
+  assert.throws(() => loadRuntimeConfig(BASE_ENV, () => ({ createPollTimeoutMs: -1 })), ConfigError);
+  assert.throws(() => loadRuntimeConfig(BASE_ENV, () => ({ createPollTimeoutMs: Infinity })), ConfigError);
+  assert.throws(() => loadRuntimeConfig(BASE_ENV, () => ({ deletePollTimeoutMs: Number.NaN })), ConfigError);
+  assert.throws(() => loadRuntimeConfig(BASE_ENV, () => ({ deletePollTimeoutMs: -1 })), ConfigError);
+});
+
+test('loadRuntimeConfig accepts a valid createPollTimeoutMs/deletePollTimeoutMs at the exact MAX_POLL_TIMEOUT_MS boundary', async () => {
+  const { MAX_POLL_TIMEOUT_MS } = await import('../../src/cache/config.mjs');
+  const config = loadRuntimeConfig({
+    ...BASE_ENV,
+    AMR_SOAK_CREATE_POLL_TIMEOUT_MS: String(MAX_POLL_TIMEOUT_MS),
+    AMR_SOAK_DELETE_POLL_TIMEOUT_MS: String(MAX_POLL_TIMEOUT_MS),
+  });
+  assert.equal(config.createPollTimeoutMs, MAX_POLL_TIMEOUT_MS);
+  assert.equal(config.deletePollTimeoutMs, MAX_POLL_TIMEOUT_MS);
+});
+
+test('loadRuntimeConfig rejects a value one millisecond past MAX_POLL_TIMEOUT_MS', async () => {
+  const { MAX_POLL_TIMEOUT_MS } = await import('../../src/cache/config.mjs');
+  const env = { ...BASE_ENV, AMR_SOAK_CREATE_POLL_TIMEOUT_MS: String(MAX_POLL_TIMEOUT_MS + 1) };
+  assert.throws(() => loadRuntimeConfig(env), ConfigError);
+});
+
+test('loadRuntimeConfig falls back to the safe default when the env var is unset or an empty string, rather than treating it as invalid', () => {
+  const configUnset = loadRuntimeConfig(BASE_ENV);
+  assert.equal(configUnset.createPollTimeoutMs, DEFAULT_CREATE_POLL_TIMEOUT_MS);
+
+  const configEmpty = loadRuntimeConfig({ ...BASE_ENV, AMR_SOAK_CREATE_POLL_TIMEOUT_MS: '' });
+  assert.equal(configEmpty.createPollTimeoutMs, DEFAULT_CREATE_POLL_TIMEOUT_MS);
+});
+
+test('loadRuntimeConfig still accepts valid, in-range numeric-string overrides for both poll timeouts', () => {
+  const config = loadRuntimeConfig({
+    ...BASE_ENV,
+    AMR_SOAK_CREATE_POLL_TIMEOUT_MS: '600000',
+    AMR_SOAK_DELETE_POLL_TIMEOUT_MS: '300000',
+  });
+  assert.equal(config.createPollTimeoutMs, 600000);
+  assert.equal(config.deletePollTimeoutMs, 300000);
+});
+
 test('loadRuntimeConfig rejects a falsy/typo ack value (e.g. "yes")', () => {
   const env = { ...BASE_ENV, AMR_SOAK_ACK_CUSTOMER_SUBSCRIPTION: 'yes' };
   assert.throws(() => loadRuntimeConfig(env), ConfigError);
