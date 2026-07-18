@@ -14,14 +14,44 @@ const FORBIDDEN_PARTS = new Set([
   "skills",
 ]);
 
-const SCRUBBED_ENV_PREFIXES = ["COPILOT_", "CLAUDE_", "CODEX_", "GEMINI_"];
-const PRESERVED_AUTH_ENV_NAMES = new Set(["COPILOT_GITHUB_TOKEN"]);
-const SCRUBBED_ENV_NAMES = new Set([
-  "AGENTS_FILE",
-  "GITHUB_COPILOT_EXTENSIONS_PATH",
-  "XDG_CONFIG_HOME",
-  "XDG_DATA_HOME",
+const PASSTHROUGH_ENV_NAMES = new Set([
+  "COMSPEC",
+  "COPILOT_GITHUB_TOKEN",
+  "COPILOT_GH_HOST",
+  "COPILOT_TRAMPOLINE_IDENTIFIER",
+  "COPILOT_TRAMPOLINE_PORT",
+  "COPILOT_TRAMPOLINE_TOKEN",
+  "GITHUB_TOKEN",
+  "GH_HOST",
+  "GH_TOKEN",
+  "HTTPS_PROXY",
+  "HTTP_PROXY",
+  "NO_PROXY",
+  "NUMBER_OF_PROCESSORS",
+  "OS",
+  "PATH",
+  "PATHEXT",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "PSMODULEPATH",
+  "SSL_CERT_DIR",
+  "SSL_CERT_FILE",
+  "SYSTEMDRIVE",
+  "SYSTEMROOT",
+  "WINDIR",
 ]);
+const PARENT_SESSION_ENV_NAMES = new Set([
+  "MSFT_AGENCY",
+  "AI_AGENT",
+  "AGENT_MERGE_REPLY_BYLINE_FILE",
+  "RUBBER_DUCK_AGENT",
+  "COPILOT_AGENT_SESSION_ID",
+  "COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
+]);
+
+function isParentSessionEnvironment(name: string): boolean {
+  return name.startsWith("AGENCY_") || PARENT_SESSION_ENV_NAMES.has(name);
+}
 
 function validateRelativeScaffoldPath(relativePath: string): string {
   if (path.isAbsolute(relativePath)) {
@@ -81,14 +111,13 @@ function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: str
   for (const [name, value] of Object.entries(process.env)) {
     const upper = name.toUpperCase();
     if (
-      !PRESERVED_AUTH_ENV_NAMES.has(upper) &&
-      (SCRUBBED_ENV_NAMES.has(upper) ||
-      SCRUBBED_ENV_PREFIXES.some((prefix) => upper.startsWith(prefix))
-      )
+      PASSTHROUGH_ENV_NAMES.has(upper) ||
+      upper.startsWith("COPILOT_GH_ACCOUNT_") ||
+      upper === "LANG" ||
+      upper === "LC_ALL"
     ) {
-      continue;
+      environment[name] = value;
     }
-    environment[name] = value;
   }
 
   const appData = path.join(profileDir, "AppData", "Roaming");
@@ -173,6 +202,20 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
   ]
     .filter((value, index, values) => value.length > 3 && values.indexOf(value) === index)
     .map((value) => value.toLowerCase());
+  const parentSessionMarkers = Object.entries(process.env)
+    .filter(
+      ([name, value]) =>
+        isParentSessionEnvironment(name.toUpperCase()) && (value?.length ?? 0) > 5,
+    )
+    .map(([, value]) => value!.toLowerCase())
+    .filter(
+      (value) =>
+        value.length >= 12 &&
+        !options.root.toLowerCase().includes(value) &&
+        !options.repositoryRoot.toLowerCase().includes(value) &&
+        !options.skillSnapshotPath.toLowerCase().includes(value),
+    )
+    .filter((value, index, values) => values.indexOf(value) === index);
 
   return {
     root: options.root,
@@ -187,6 +230,7 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
     profileHash: await hashTree(profileDir),
     environment: isolatedEnvironment(profileDir, tempDir, options.soakRunId),
     forbiddenMarkers,
+    parentSessionMarkers,
   };
 }
 

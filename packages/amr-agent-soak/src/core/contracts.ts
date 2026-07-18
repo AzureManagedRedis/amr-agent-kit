@@ -59,6 +59,7 @@ export interface ExecutorCapabilities {
   readonly supportsNoRemoteExport: boolean;
   readonly supportsNoAutoUpdate: boolean;
   readonly supportsStreamControl: boolean;
+  readonly calibratedModels: ReadonlyArray<string>;
 }
 
 export interface ProcessIdentity {
@@ -82,6 +83,7 @@ export interface IsolatedWorkspace {
   readonly profileHash: string;
   readonly environment: NodeJS.ProcessEnv;
   readonly forbiddenMarkers: ReadonlyArray<string>;
+  readonly parentSessionMarkers: ReadonlyArray<string>;
 }
 
 export interface ExecutionRequest {
@@ -138,6 +140,10 @@ export interface HeadlessExecutor {
   probe(workspaces: {
     readonly withoutSkill: IsolatedWorkspace;
     readonly withSkill: IsolatedWorkspace;
+    readonly calibrations: ReadonlyArray<{
+      readonly workspace: IsolatedWorkspace;
+      readonly model?: string;
+    }>;
   }): Promise<ExecutorCapabilities>;
   execute(request: ExecutionRequest, capabilities: ExecutorCapabilities): Promise<ExecutionArtifact>;
 }

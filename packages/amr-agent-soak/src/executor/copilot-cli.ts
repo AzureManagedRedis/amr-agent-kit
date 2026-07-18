@@ -160,6 +160,42 @@ export function assertExecutorCapabilities(capabilities: ExecutorCapabilities): 
   }
 }
 
+export function assertCalibrationArtifact(
+  artifact: ExecutionArtifact,
+  parentSessionMarkers: ReadonlyArray<string> = [],
+): void {
+  if (artifact.status !== "completed" || artifact.trace.exitCode !== 0) {
+    throw new Error(
+      `Calibration execution failed (${artifact.status}, exit ${artifact.trace.exitCode}); stderr: ${artifact.trace.stderrFile}`,
+    );
+  }
+  if (
+    artifact.events.length === 0 ||
+    artifact.events.some(
+      (event) =>
+        event &&
+        typeof event === "object" &&
+        (event as Record<string, unknown>).type === "unparsed",
+    )
+  ) {
+    throw new Error("Calibration execution did not produce a valid JSON event stream");
+  }
+  const serialized = JSON.stringify(artifact.events).toLowerCase();
+  const forbidden = [
+    "todo_status",
+    "inbox_entries",
+    "agency_session",
+    "session attachment",
+    "unable to open database file",
+    ...parentSessionMarkers.map((marker) => marker.toLowerCase()),
+  ].filter((marker) => serialized.includes(marker));
+  if (forbidden.length > 0) {
+    throw new Error(
+      `Calibration execution inherited parent session content: ${forbidden.join(", ")}`,
+    );
+  }
+}
+
 function skillRecords(value: unknown): ReadonlyArray<Record<string, unknown>> {
   if (
     !Array.isArray(value) ||
@@ -181,12 +217,16 @@ export class CopilotCliExecutor implements HeadlessExecutor {
   ) {
     this.#command = command;
     this.#processManager = options.processManager ?? new SystemProcessManager();
-    this.#preflightTimeoutMs = options.preflightTimeoutMs ?? 30_000;
+    this.#preflightTimeoutMs = options.preflightTimeoutMs ?? 120_000;
   }
 
   async probe(workspaces: {
     readonly withoutSkill: IsolatedWorkspace;
     readonly withSkill: IsolatedWorkspace;
+    readonly calibrations: ReadonlyArray<{
+      readonly workspace: IsolatedWorkspace;
+      readonly model?: string;
+    }>;
   }): Promise<ExecutorCapabilities> {
     const workspace = workspaces.withoutSkill;
     const executablePath = await resolveExecutable(
@@ -288,7 +328,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       );
     }
     const text = help.stdout;
-    const capabilities: ExecutorCapabilities = {
+    let capabilities: ExecutorCapabilities = {
       executablePath,
       executableHash: hashBytes(executableBytes),
       version: version.stdout.trim(),
@@ -303,8 +343,45 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       supportsNoRemoteExport: /--no-remote-export\b/.test(text),
       supportsNoAutoUpdate: /--no-auto-update\b/.test(text),
       supportsStreamControl: /--stream\s+<mode>[\s\S]*(?:on|off)/.test(text),
+      calibratedModels: [],
     };
     assertExecutorCapabilities(capabilities);
+    const calibratedModels: string[] = [];
+    for (const [index, calibration] of workspaces.calibrations.entries()) {
+      const warmup = await captureSuccessful(executablePath, ["--version"], {
+        cwd: calibration.workspace.projectDir,
+        env: calibration.workspace.environment,
+        timeoutMs: this.#preflightTimeoutMs,
+        processManager: this.#processManager,
+      });
+      if (warmup.exitCode !== 0) {
+        throw new Error(
+          `Calibration profile warmup failed: ${warmup.stderr || warmup.stdout}`,
+        );
+      }
+      const warmedWorkspace: IsolatedWorkspace = {
+        ...calibration.workspace,
+        profileHash: await hashTree(calibration.workspace.profileDir),
+      };
+      const artifact = await this.execute(
+        {
+          executionId: `preflight-calibration-${index + 1}`,
+          scenario: {
+            id: `preflight-calibration-${index + 1}`,
+            prompt: "Reply with exactly CALIBRATION_OK. Do not call tools.",
+          },
+          arm: "without-skill",
+          workspace: warmedWorkspace,
+          timeoutMs: this.#preflightTimeoutMs,
+          model: calibration.model,
+          signal: new AbortController().signal,
+        },
+        capabilities,
+      );
+      assertCalibrationArtifact(artifact, warmedWorkspace.parentSessionMarkers);
+      calibratedModels.push(calibration.model ?? "auto");
+    }
+    capabilities = { ...capabilities, calibratedModels };
     return capabilities;
   }
 

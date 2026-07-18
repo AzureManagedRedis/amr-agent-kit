@@ -12,6 +12,7 @@ export interface SoakConfig {
   readonly heartbeatSeconds?: number;
   readonly probeConcurrency?: number;
   readonly model?: string;
+  readonly calibrationModelIds?: ReadonlyArray<string>;
 }
 
 export interface NormalizedSoakConfig {
@@ -27,6 +28,7 @@ export interface NormalizedSoakConfig {
   readonly heartbeatMs: number;
   readonly probeConcurrency: number;
   readonly model?: string;
+  readonly calibrationModelIds: ReadonlyArray<string>;
 }
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -62,6 +64,13 @@ export function normalizeConfig(config: SoakConfig): NormalizedSoakConfig {
   if (!Number.isInteger(probeConcurrency) || probeConcurrency < 1 || probeConcurrency > 4) {
     throw new Error(`probeConcurrency must be an integer from 1 through 4; got ${probeConcurrency}`);
   }
+  const calibrationModelIds = [...(config.calibrationModelIds ?? [])];
+  if (
+    calibrationModelIds.some((model) => typeof model !== "string" || model.trim().length === 0) ||
+    new Set(calibrationModelIds).size !== calibrationModelIds.length
+  ) {
+    throw new Error("calibrationModelIds must contain distinct non-empty model ids");
+  }
 
   const repositoryRoot = path.resolve(config.repositoryRoot);
   const outputRoot = path.resolve(config.outputRoot ?? path.join(repositoryRoot, "eval-runs"));
@@ -78,5 +87,6 @@ export function normalizeConfig(config: SoakConfig): NormalizedSoakConfig {
     heartbeatMs: heartbeatSeconds * 1_000,
     probeConcurrency,
     model: config.model,
+    calibrationModelIds,
   };
 }

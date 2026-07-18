@@ -130,9 +130,27 @@ async function preflight(configPath: string): Promise<void> {
     repositoryRoot: path.resolve(config.repositoryRoot),
     soakRunId: config.runId,
   });
+  const calibrationModels: ReadonlyArray<string | undefined> =
+    config.calibrationModelIds && config.calibrationModelIds.length > 0
+      ? config.calibrationModelIds
+      : [undefined];
+  const calibrations = await Promise.all(
+    calibrationModels.map(async (model, index) => ({
+      model,
+      workspace: await createIsolatedWorkspace({
+        root: path.join(runRoot, `calibration-${index + 1}`),
+        arm: "without-skill",
+        scenario: { id: `calibration-${index + 1}`, prompt: "calibration" },
+        skillSnapshotPath: path.resolve(config.skillSnapshotPath),
+        repositoryRoot: path.resolve(config.repositoryRoot),
+        soakRunId: config.runId,
+      }),
+    })),
+  );
   const capabilities = await new CopilotCliExecutor(config.copilotCommand).probe({
     withoutSkill: workspace,
     withSkill,
+    calibrations,
   });
   process.stdout.write(`${JSON.stringify(capabilities, null, 2)}\n`);
 }

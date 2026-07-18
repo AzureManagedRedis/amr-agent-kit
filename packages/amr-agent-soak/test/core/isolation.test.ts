@@ -40,6 +40,31 @@ test("creates identical neutral projects and physically separates the skill", as
     withoutSkill.environment.LOCALAPPDATA,
     path.join(withoutSkill.profileDir, "AppData", "Local"),
   );
+  for (const name of [
+    "AGENCY_SESSION_SUBPROCESS",
+    "AGENCY_SESSION_ID",
+    "AGENCY_LOG_SESSION_DIR",
+    "AGENCY_OPERATION_ID",
+    "AGENCY_REPO_DIR",
+    "AGENCY_ENGINE",
+    "MSFT_AGENCY",
+    "COPILOT_AGENT_SESSION_ID",
+    "COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
+    "AI_AGENT",
+    "AGENT_MERGE_REPLY_BYLINE_FILE",
+    "RUBBER_DUCK_AGENT",
+  ]) {
+    assert.equal(withoutSkill.environment[name], undefined, `${name} leaked into isolation`);
+  }
+  for (const name of [
+    "COPILOT_TRAMPOLINE_IDENTIFIER",
+    "COPILOT_TRAMPOLINE_PORT",
+    "COPILOT_TRAMPOLINE_TOKEN",
+  ]) {
+    if (process.env[name]) {
+      assert.equal(withoutSkill.environment[name], process.env[name]);
+    }
+  }
   assert.equal(
     await readFile(path.join(withSkill.profileDir, ".copilot", "skills", "redis-code", "SKILL.md"), "utf8"),
     "# pinned\n",

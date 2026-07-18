@@ -155,12 +155,28 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
       }),
     ),
   );
+  const calibrationModels: ReadonlyArray<string | undefined> =
+    config.calibrationModelIds.length > 0 ? config.calibrationModelIds : [undefined];
+  const calibrationWorkspaces = await Promise.all(
+    calibrationModels.map(async (model, index) => ({
+      model,
+      workspace: await createIsolatedWorkspace({
+        root: path.join(preflightRoot, `calibration-${index + 1}`),
+        arm: "without-skill",
+        scenario: { id: `calibration-${index + 1}`, prompt: "calibration", scaffold: {} },
+        skillSnapshotPath: config.skillSnapshotPath,
+        repositoryRoot: config.repositoryRoot,
+        soakRunId: config.runId,
+      }),
+    })),
+  );
   if (withoutSkillPreflight.projectHash !== withSkillPreflight.projectHash) {
     throw new Error("Preflight could not prove identical neutral project scaffolding");
   }
   const capabilities = await modules.executor.probe({
     withoutSkill: withoutSkillPreflight,
     withSkill: withSkillPreflight,
+    calibrations: calibrationWorkspaces,
   });
   const executorHash = hashJson(capabilities);
 

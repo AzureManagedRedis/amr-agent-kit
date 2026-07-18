@@ -29,6 +29,7 @@ const capabilities: ExecutorCapabilities = {
   supportsNoRemoteExport: true,
   supportsNoAutoUpdate: true,
   supportsStreamControl: true,
+  calibratedModels: ["fake"],
 };
 
 class FakeExecutor implements HeadlessExecutor {
@@ -37,6 +38,7 @@ class FakeExecutor implements HeadlessExecutor {
   probe(_workspaces: {
     readonly withoutSkill: IsolatedWorkspace;
     readonly withSkill: IsolatedWorkspace;
+    readonly calibrations: ReadonlyArray<{ readonly workspace: IsolatedWorkspace; readonly model?: string }>;
   }): Promise<ExecutorCapabilities> {
     return Promise.resolve(capabilities);
   }
