@@ -1,10 +1,13 @@
 // Safety guard utilities for the live-cache safety subsystem.
 //
 // These are the checks that must gate every mutating call: the runtime
-// denylist, the owner/run prefix (no unowned/pre-existing mutation), and the
-// explicit customer-subscription acknowledgement. Callers should treat
-// `assertSafeToMutate` as the single required gate immediately before any
-// mutating RP call.
+// denylist, the owner/run prefix (no unowned/pre-existing mutation), the
+// explicit customer-subscription acknowledgement, and the SUBSCRIPTION
+// denylist (deliberately distinct from the resource-NAME denylist -- a
+// denylisted subscription must block every resource within it, not just a
+// resource whose name happens to match some unrelated pattern). Callers
+// should treat `assertSafeToMutate` as the single required gate immediately
+// before any mutating RP call.
 
 export class GuardViolation extends Error {
   constructor(message) {
@@ -19,6 +22,34 @@ export class GuardViolation extends Error {
 export function assertCustomerSubscriptionAcknowledged(config) {
   if (config?.acknowledgedCustomerSubscription !== true) {
     throw new GuardViolation('Explicit customer-subscription acknowledgement is missing. Refusing to proceed.');
+  }
+}
+
+/**
+ * Throws if `subscriptionId` (normalized: trimmed, case-insensitive) is an
+ * EXACT match for any entry in `subscriptionDenylist` (each entry
+ * normalized the same way -- no wildcard support, unlike the resource-name
+ * denylist: a subscription ID either is, or is not, denylisted). This is a
+ * deliberately SEPARATE mechanism from `assertNotDenylisted` (which checks
+ * resource NAMES) -- the two must never be conflated: a resource name that
+ * happens to look like a subscription ID, or a subscription-denylist entry
+ * that happens to look like a resource name, must not trip the other
+ * check.
+ *
+ * A missing/falsy `subscriptionId` is not this guard's concern (other
+ * guards/config validation require it elsewhere) -- it simply passes
+ * through without throwing.
+ */
+export function assertSubscriptionNotDenylisted(subscriptionId, subscriptionDenylist = []) {
+  if (!subscriptionId) return;
+  const normalized = String(subscriptionId).trim().toLowerCase();
+  for (const entry of subscriptionDenylist) {
+    if (!entry) continue;
+    if (String(entry).trim().toLowerCase() === normalized) {
+      throw new GuardViolation(
+        `Subscription "${subscriptionId}" is present in the runtime subscription denylist. Refusing to proceed.`
+      );
+    }
   }
 }
 
@@ -60,9 +91,13 @@ export function assertNotPreExisting(resourceName, knownResourceNames) {
   }
 }
 
-/** Combined guard: ownership + denylist. This is the single call every
- * mutating code path must make immediately before touching the RP. */
-export function assertSafeToMutate(resourceName, { resourcePrefix, denylist = [] } = {}) {
+/** Combined guard: ownership + resource-name denylist + subscription
+ * denylist. This is the single call every mutating code path must make
+ * immediately before touching the RP. `subscriptionId`/`subscriptionDenylist`
+ * are optional to preserve callers that only care about resource-level
+ * checks, but every real mutation path in this subsystem supplies them. */
+export function assertSafeToMutate(resourceName, { resourcePrefix, denylist = [], subscriptionId, subscriptionDenylist = [] } = {}) {
+  assertSubscriptionNotDenylisted(subscriptionId, subscriptionDenylist);
   assertOwnedResource(resourceName, resourcePrefix);
   assertNotDenylisted(resourceName, denylist);
 }

@@ -31,7 +31,7 @@
 // following a Location/Azure-AsyncOperation header when the RP happens to
 // provide one (buildAsyncOperationCheck).
 
-import { assertOwnedResource } from './guards.mjs';
+import { assertOwnedResource, assertSubscriptionNotDenylisted } from './guards.mjs';
 import { evaluateCleanupEligibility } from './tags.mjs';
 
 export class ReconciliationError extends Error {
@@ -59,8 +59,9 @@ function extractLiveRecords(liveList, resourcePrefix) {
 /**
  * Reconciles ledger state against the live local RP at process startup (or
  * from the janitor, on each pass). Never touches resources outside
- * `resourcePrefix` (defense in depth on top of the guard layer), and never
- * deletes anything itself.
+ * `resourcePrefix` (defense in depth on top of the guard layer), never
+ * lists a denylisted subscription (checked BEFORE the adapter is ever
+ * touched), and never deletes anything itself.
  *
  * @param {object} opts
  * @param {import('./ledger.mjs').ResourceLedger} opts.ledger
@@ -68,6 +69,7 @@ function extractLiveRecords(liveList, resourcePrefix) {
  * @param {string} opts.subscriptionId
  * @param {string} [opts.resourceGroup]
  * @param {string} opts.resourcePrefix
+ * @param {string[]} [opts.subscriptionDenylist]
  * @param {string} [opts.ownerAlias] - enables tag-based eligibility checking when supplied with runId.
  * @param {string} [opts.runId]
  * @param {() => number} [opts.now]
@@ -78,10 +80,13 @@ export async function reconcileOnStartup({
   subscriptionId,
   resourceGroup,
   resourcePrefix,
+  subscriptionDenylist = [],
   ownerAlias,
   runId,
   now = () => Date.now(),
 }) {
+  assertSubscriptionNotDenylisted(subscriptionId, subscriptionDenylist);
+
   const liveList = await adapter.listClusters({ subscriptionId, resourceGroup });
   const liveRecordsByName = extractLiveRecords(liveList, resourcePrefix);
   const liveNames = new Set(liveRecordsByName.keys());

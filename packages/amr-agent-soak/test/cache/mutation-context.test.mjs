@@ -60,6 +60,40 @@ test('assertValidMutationContext enforces ownership + denylist', () => {
   );
 });
 
+// ---- Final-review finding: subscription denylist must be enforced at this
+// boundary too, as a mechanism separate from the resource-name denylist ----
+
+test('assertValidMutationContext rejects a denylisted subscription before any other resource-level check would matter', () => {
+  const leaseManager = new LeaseManager();
+  const lease = leaseManager.acquire({ class: 'exclusive' });
+  const SUBSCRIPTION_ID = '11111111-2222-3333-4444-555555555555';
+  const context = {
+    config: baseConfig({ subscriptionId: SUBSCRIPTION_ID, subscriptionDenylist: [SUBSCRIPTION_ID] }),
+    lease,
+    leaseManager,
+  };
+  // Even a perfectly valid, owned, non-denylisted resource name must still
+  // be refused when its subscription is denylisted.
+  assert.throws(() => assertValidMutationContext(context, 'dmon-run1-cache1', 'write'), GuardViolation);
+});
+
+test('assertValidMutationContext passes when the subscription is not denylisted, unaffected by an unrelated resource-name-denylist entry', () => {
+  const leaseManager = new LeaseManager();
+  const lease = leaseManager.acquire({ class: 'exclusive' });
+  const SUBSCRIPTION_ID = '11111111-2222-3333-4444-555555555555';
+  const OTHER_SUBSCRIPTION_ID = '66666666-7777-8888-9999-aaaaaaaaaaaa';
+  const context = {
+    config: baseConfig({
+      subscriptionId: SUBSCRIPTION_ID,
+      subscriptionDenylist: [OTHER_SUBSCRIPTION_ID],
+      denylist: [SUBSCRIPTION_ID], // coincidentally present in the resource-name denylist -- must not matter here
+    }),
+    lease,
+    leaseManager,
+  };
+  assert.doesNotThrow(() => assertValidMutationContext(context, 'dmon-run1-cache1', 'write'));
+});
+
 test('assertValidMutationContext enforces lease-class operation authorization', () => {
   const leaseManager = new LeaseManager();
   const lease = leaseManager.acquire({ class: 'shared' });

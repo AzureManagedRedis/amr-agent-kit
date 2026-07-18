@@ -76,6 +76,41 @@ test('loadRuntimeConfig honors createPollTimeoutMs/deletePollTimeoutMs from the 
   assert.equal(config.deletePollTimeoutMs, 45000);
 });
 
+// ---- Final-review finding: subscriptionDenylist parsing, distinct from
+// the resource-name denylist ----
+
+test('loadRuntimeConfig defaults subscriptionDenylist to an empty array', () => {
+  const config = loadRuntimeConfig(BASE_ENV);
+  assert.deepEqual(config.subscriptionDenylist, []);
+});
+
+test('loadRuntimeConfig parses AMR_SOAK_SUBSCRIPTION_DENYLIST as a comma-separated list', () => {
+  const config = loadRuntimeConfig({
+    ...BASE_ENV,
+    AMR_SOAK_SUBSCRIPTION_DENYLIST: '11111111-1111-1111-1111-111111111111, 22222222-2222-2222-2222-222222222222',
+  });
+  assert.deepEqual(config.subscriptionDenylist, [
+    '11111111-1111-1111-1111-111111111111',
+    '22222222-2222-2222-2222-222222222222',
+  ]);
+});
+
+test('loadRuntimeConfig honors subscriptionDenylist as an array from the runtime file config', () => {
+  const fileReader = () => ({ subscriptionDenylist: ['33333333-3333-3333-3333-333333333333'] });
+  const config = loadRuntimeConfig(BASE_ENV, fileReader);
+  assert.deepEqual(config.subscriptionDenylist, ['33333333-3333-3333-3333-333333333333']);
+});
+
+test('loadRuntimeConfig keeps subscriptionDenylist and denylist as independent lists', () => {
+  const config = loadRuntimeConfig({
+    ...BASE_ENV,
+    AMR_SOAK_DENYLIST: 'some-resource-name',
+    AMR_SOAK_SUBSCRIPTION_DENYLIST: '99999999-9999-9999-9999-999999999999',
+  });
+  assert.deepEqual(config.denylist, ['some-resource-name']);
+  assert.deepEqual(config.subscriptionDenylist, ['99999999-9999-9999-9999-999999999999']);
+});
+
 // ---- Final hardening: poll timeouts must fail closed on invalid values,
 // BEFORE any polling ever happens -- never silently coerced ----
 

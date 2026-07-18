@@ -19,12 +19,13 @@ export class MutationContextError extends Error {
 /**
  * Validates a mutation context immediately before a mutating adapter call.
  * Checks, in order: shape of the context itself, customer-subscription
- * acknowledgement, the kill switch, ownership + denylist, lease-class
- * operation authorization, and fencing-token liveness. Throws the specific
- * underlying error class on the first failing check.
+ * acknowledgement, the kill switch, subscription denylist + ownership +
+ * resource-name denylist, lease-class operation authorization, and
+ * fencing-token liveness. Throws the specific underlying error class on
+ * the first failing check.
  *
  * @param {object} context
- * @param {object} context.config - runtime config (acknowledgedCustomerSubscription, resourcePrefix, denylist).
+ * @param {object} context.config - runtime config (acknowledgedCustomerSubscription, resourcePrefix, denylist, subscriptionId, subscriptionDenylist).
  * @param {object} context.lease - the lease authorizing this operation.
  * @param {import('./lease-manager.mjs').LeaseManager} context.leaseManager
  * @param {import('./kill-switch.mjs').KillSwitch} [context.killSwitch]
@@ -42,7 +43,12 @@ export function assertValidMutationContext(context, resourceName, operationKind)
 
   assertCustomerSubscriptionAcknowledged(config);
   killSwitch?.assertNotEngaged(`mutate(${operationKind}) ${resourceName}`);
-  assertSafeToMutate(resourceName, { resourcePrefix: config.resourcePrefix, denylist: config.denylist });
+  assertSafeToMutate(resourceName, {
+    resourcePrefix: config.resourcePrefix,
+    denylist: config.denylist,
+    subscriptionId: config.subscriptionId,
+    subscriptionDenylist: config.subscriptionDenylist,
+  });
   assertLeaseAuthorizes(lease, operationKind);
   leaseManager.assertFencingTokenValid(lease.id, lease.fencingToken);
 }

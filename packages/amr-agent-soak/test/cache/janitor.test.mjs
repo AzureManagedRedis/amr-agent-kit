@@ -14,7 +14,11 @@ import {
   runJanitorPass,
   startJanitor,
   JanitorError,
+  claimJanitorIdentity,
+  buildOwnIdentity,
+  readJanitorIdentity,
 } from '../../src/cache/janitor.mjs';
+import { GuardViolation } from '../../src/cache/guards.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
 
 async function withTempDir(fn) {
@@ -115,6 +119,216 @@ test('claimPidFile never lets two concurrent claimants both win a stale replacem
     assert.equal(readFileSync(pidPath, 'utf8').trim(), '333');
   });
 });
+// ---- Final-review finding: identity-safe janitor claim (not PID-only) --
+// closes the PID-reuse gap in claimPidFile ----
+
+test('claimJanitorIdentity writes a structured identity when no claim file exists yet', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const identity = buildOwnIdentity({ pid: 4242, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    const claimed = claimJanitorIdentity(identityPath, { identity, resolveIdentity: () => null, isAlive: () => false });
+    assert.deepEqual(claimed, identity);
+    assert.deepEqual(readJanitorIdentity(identityPath), identity);
+  });
+});
+
+test('claimJanitorIdentity is idempotent for exactly the same identity (re-claiming our own identity succeeds)', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const identity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    claimJanitorIdentity(identityPath, { identity, resolveIdentity: () => identity, isAlive: () => true });
+    assert.doesNotThrow(() => claimJanitorIdentity(identityPath, { identity, resolveIdentity: () => identity, isAlive: () => true }));
+  });
+});
+
+test('claimJanitorIdentity refuses a second janitor while the recorded identity is confirmed still alive AND matching', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const firstIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    claimJanitorIdentity(identityPath, { identity: firstIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    const secondIdentity = buildOwnIdentity({ pid: 222, startedAt: 2000, name: 'node', executablePath: '/usr/bin/node' });
+    // resolveIdentity confirms PID 111 is alive AND is genuinely the same
+    // process that recorded the claim (matching identity).
+    assert.throws(
+      () =>
+        claimJanitorIdentity(identityPath, {
+          identity: secondIdentity,
+          resolveIdentity: (pid) => (pid === 111 ? firstIdentity : null),
+        }),
+      JanitorError
+    );
+    // The original claim must be left untouched.
+    assert.deepEqual(readJanitorIdentity(identityPath), firstIdentity);
+  });
+});
+
+test('claimJanitorIdentity rejects PID reuse: same PID number, but resolveIdentity proves it is a DIFFERENT process (different startedAt/executablePath) -- treated as stale, not alive', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    // The ORIGINAL janitor recorded this identity under PID 111, then crashed.
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    claimJanitorIdentity(identityPath, { identity: originalIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    // The OS reused PID 111 for a completely unrelated process (e.g. a
+    // shell) that started much later -- same PID number, different
+    // identity entirely.
+    const reusedProcessIdentity = buildOwnIdentity({ pid: 111, startedAt: 999999, name: 'bash', executablePath: '/bin/bash' });
+    const newIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000, name: 'node', executablePath: '/usr/bin/node' });
+
+    const claimed = claimJanitorIdentity(identityPath, {
+      identity: newIdentity,
+      resolveIdentity: (pid) => (pid === 111 ? reusedProcessIdentity : null),
+      // A naive PID-only liveness check would say "alive" here -- but it
+      // must never even be consulted for a PID resolveIdentity CAN answer.
+      isAlive: () => true,
+    });
+
+    assert.deepEqual(claimed, newIdentity);
+    assert.deepEqual(readJanitorIdentity(identityPath), newIdentity); // the reused-PID claim was safely replaced
+  });
+});
+
+test('claimJanitorIdentity treats the SAME PID with a materially different startedAt as a non-match (PID reuse variant)', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    claimJanitorIdentity(identityPath, { identity: originalIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    // Same pid, same name/executablePath, but startedAt is wildly
+    // different (far beyond the tolerance) -- a different process
+    // instance that happened to reuse both the PID and the executable.
+    const differentInstanceSamePid = buildOwnIdentity({ pid: 111, startedAt: 999999999, name: 'node', executablePath: '/usr/bin/node' });
+    const newIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000, name: 'node', executablePath: '/usr/bin/node' });
+
+    const claimed = claimJanitorIdentity(identityPath, {
+      identity: newIdentity,
+      resolveIdentity: (pid) => (pid === 111 ? differentInstanceSamePid : null),
+    });
+    assert.deepEqual(claimed, newIdentity);
+  });
+});
+
+test('claimJanitorIdentity: a small startedAt difference within tolerance is still considered the SAME process (measurement imprecision)', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    claimJanitorIdentity(identityPath, { identity: originalIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    const slightlyDifferentReading = buildOwnIdentity({ pid: 111, startedAt: 1500, name: 'node', executablePath: '/usr/bin/node' }); // 500ms off, well within default tolerance
+    const newIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000 });
+
+    assert.throws(
+      () =>
+        claimJanitorIdentity(identityPath, {
+          identity: newIdentity,
+          resolveIdentity: (pid) => (pid === 111 ? slightlyDifferentReading : null),
+        }),
+      JanitorError
+    );
+  });
+});
+
+test('claimJanitorIdentity falls back to a plain liveness check (fail closed) when resolveIdentity cannot determine identity for another PID', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000 });
+    claimJanitorIdentity(identityPath, { identity: originalIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    const newIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000 });
+    // resolveIdentity cannot answer for PID 111 (returns null); isAlive says
+    // "yes, something is running there" -- fail closed: refuse, exactly
+    // like the legacy PID-only claimPidFile always did.
+    assert.throws(
+      () => claimJanitorIdentity(identityPath, { identity: newIdentity, resolveIdentity: () => null, isAlive: () => true }),
+      JanitorError
+    );
+  });
+});
+
+test('claimJanitorIdentity replaces a genuinely dead claimant (resolveIdentity null AND isAlive false)', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000 });
+    claimJanitorIdentity(identityPath, { identity: originalIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    const newIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000 });
+    const claimed = claimJanitorIdentity(identityPath, { identity: newIdentity, resolveIdentity: () => null, isAlive: () => false });
+    assert.deepEqual(claimed, newIdentity);
+  });
+});
+
+test('claimJanitorIdentity never lets two concurrent claimants both win a stale replacement (regression, identity-based)', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000 });
+    claimJanitorIdentity(identityPath, { identity: originalIdentity, resolveIdentity: () => null, isAlive: () => false });
+
+    // A genuine concurrent claimant: the instant our stale file is
+    // unlinked, another process's exclusive create wins the race and
+    // plants its OWN (alive, matching) identity before our retry.
+    const concurrentIdentity = buildOwnIdentity({ pid: 333, startedAt: 9000 });
+    const unlink = (targetPath) => {
+      unlinkSync(targetPath);
+      writeFileSync(targetPath, JSON.stringify(concurrentIdentity), 'utf8');
+    };
+
+    const ourIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000 });
+    assert.throws(
+      () =>
+        claimJanitorIdentity(identityPath, {
+          identity: ourIdentity,
+          resolveIdentity: (pid) => (pid === 333 ? concurrentIdentity : null),
+          unlink,
+        }),
+      JanitorError
+    );
+    // The concurrent claimant's identity must be left completely untouched by us.
+    assert.deepEqual(readJanitorIdentity(identityPath), concurrentIdentity);
+  });
+});
+
+test('claimJanitorIdentity treats a corrupt/unparseable claim file as stale rather than blocking forever', async () => {
+  await withTempDir((dir) => {
+    const identityPath = join(dir, 'janitor.json');
+    writeFileSync(identityPath, 'not-json-at-all{{{', 'utf8');
+
+    const newIdentity = buildOwnIdentity({ pid: 222, startedAt: 5000 });
+    const claimed = claimJanitorIdentity(identityPath, { identity: newIdentity, resolveIdentity: () => null, isAlive: () => false });
+    assert.deepEqual(claimed, newIdentity);
+  });
+});
+
+test('startJanitor accepts an injectable identity/resolveIdentity for real SystemProcessManager integration', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    const fake = createFakeRp({});
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+    const identityPath = join(dir, 'j.json');
+    const identity = buildOwnIdentity({ pid: 4242, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+
+    const handle = await startJanitor({
+      pidFilePath: identityPath,
+      heartbeatFilePath: join(dir, 'j.hb.json'),
+      ledger,
+      adapter,
+      config: testConfig(),
+      leaseManager,
+      intervalMs: 100000,
+      unref: true,
+      identity,
+      resolveIdentity: () => null,
+      isAlive: () => false,
+    });
+    try {
+      assert.deepEqual(readJanitorIdentity(identityPath), identity);
+    } finally {
+      handle.stop();
+    }
+  });
+});
+
 test('writeHeartbeat / readHeartbeat round-trip exact PID and timestamp', async () => {
   await withTempDir((dir) => {
     const hbPath = join(dir, 'janitor.heartbeat.json');
@@ -145,6 +359,51 @@ test('runJanitorPass produces zero-orphan evidence when the ledger and RP alread
     assert.equal(evidence.orphanCount, 0);
     assert.deepEqual(evidence.orphans, []);
     assert.equal(evidence.ts, 42);
+  });
+});
+
+// ---- Final-review finding: subscription denylist -- rejected BEFORE any
+// adapter call, including the janitor's own entry point ----
+
+test('runJanitorPass rejects a denylisted subscription before ever calling the adapter', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    ledger.append('created', 'dmon-run1-cache1');
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+
+    await assert.rejects(
+      () =>
+        runJanitorPass({
+          ledger,
+          adapter,
+          config: testConfig({ subscriptionDenylist: ['11111111-2222-3333-4444-555555555555'] }),
+          leaseManager,
+        }),
+      GuardViolation
+    );
+    assert.equal(fake._requestLog.length, 0); // no adapter call was ever made
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']); // untouched
+  });
+});
+
+test('runJanitorPass proceeds normally when the subscription is not denylisted', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    ledger.append('created', 'dmon-run1-cache1');
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+
+    const evidence = await runJanitorPass({
+      ledger,
+      adapter,
+      config: testConfig({ subscriptionDenylist: ['66666666-7777-8888-9999-aaaaaaaaaaaa'] }), // unrelated
+      leaseManager,
+    });
+    assert.equal(evidence.zeroOrphans, true);
+    assert.ok(fake._requestLog.length > 0);
   });
 });
 

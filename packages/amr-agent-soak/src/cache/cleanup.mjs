@@ -19,7 +19,7 @@
 // runaway/duplicate-processing bug the existing (not reused) orphan job is
 // known to have.
 
-import { assertSafeToMutate } from './guards.mjs';
+import { assertSafeToMutate, assertSubscriptionNotDenylisted } from './guards.mjs';
 import { pollUntilTerminal, buildDeletionCheck } from './reconciliation.mjs';
 import { assertLeaseAuthorizes, MAX_ACTIVE_LEASES } from './lease-manager.mjs';
 import { DEFAULT_DELETE_POLL_TIMEOUT_MS } from './config.mjs';
@@ -76,6 +76,12 @@ export async function deleteOwnedResource({
   deletePollTimeoutMs = context?.config?.deletePollTimeoutMs ?? DEFAULT_DELETE_POLL_TIMEOUT_MS,
   pollTerminal = pollUntilTerminal,
 }) {
+  // Subscription-denylist entry point: standalone callers (e.g. the
+  // janitor) invoke this directly without necessarily routing through
+  // reverseCleanup's own per-iteration check below -- so this must assert
+  // it independently here too, before the adapter is ever touched.
+  assertSubscriptionNotDenylisted(context?.config?.subscriptionId, context?.config?.subscriptionDenylist);
+
   const coords = {
     subscriptionId: context?.config?.subscriptionId,
     resourceGroup: context?.config?.resourceGroup,
@@ -133,6 +139,12 @@ export async function reverseCleanup({
 }) {
   const resourcePrefix = config?.resourcePrefix;
   const denylist = config?.denylist ?? [];
+  const subscriptionId = config?.subscriptionId;
+  const subscriptionDenylist = config?.subscriptionDenylist ?? [];
+  // Entry-point subscription-denylist check: fail before even enumerating
+  // the active-resource list, let alone touching the adapter.
+  assertSubscriptionNotDenylisted(subscriptionId, subscriptionDenylist);
+
   const active = ledger.activeResources();
   const order = [...active].reverse(); // LIFO: most recently created goes first.
 
@@ -154,7 +166,7 @@ export async function reverseCleanup({
 
   for (const resourceName of order) {
     killSwitch?.assertNotEngaged(`cleanup(${resourceName})`);
-    assertSafeToMutate(resourceName, { resourcePrefix, denylist });
+    assertSafeToMutate(resourceName, { resourcePrefix, denylist, subscriptionId, subscriptionDenylist });
 
     if (dryRun) {
       results.push({ resourceName, status: 'dry-run' });

@@ -61,6 +61,20 @@ function readRuntimeFile(path) {
   }
 }
 
+/** Parses a denylist-shaped value (array, comma-separated string, or
+ * absent) into a normalized array. Shared by the resource-name denylist
+ * and the (deliberately separate) subscription denylist. */
+function parseListValue(raw) {
+  return Array.isArray(raw)
+    ? raw
+    : typeof raw === 'string' && raw.length > 0
+      ? raw
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+}
+
 /**
  * Resolves and validates a poll-timeout value (createPollTimeoutMs or
  * deletePollTimeoutMs) sourced from env/runtime-file, or falls back to
@@ -128,14 +142,12 @@ export function loadRuntimeConfig(env = process.env, fileReader = readRuntimeFil
     );
   }
 
-  const denylist = Array.isArray(denylistRaw)
-    ? denylistRaw
-    : typeof denylistRaw === 'string' && denylistRaw.length > 0
-      ? denylistRaw
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
-      : [];
+  const denylist = parseListValue(denylistRaw);
+  // Deliberately a SEPARATE list from `denylist` (resource NAMES) -- see
+  // guards.mjs's assertSubscriptionNotDenylisted. A denylisted subscription
+  // blocks every resource within it; the two lists/checks must never be
+  // conflated.
+  const subscriptionDenylist = parseListValue(env.AMR_SOAK_SUBSCRIPTION_DENYLIST ?? fileConfig.subscriptionDenylist);
 
   return {
     subscriptionId,
@@ -144,6 +156,7 @@ export function loadRuntimeConfig(env = process.env, fileReader = readRuntimeFil
     runId,
     resourcePrefix: `${ownerAlias}-${runId}-`,
     denylist,
+    subscriptionDenylist,
     resourceGroup: env.AMR_SOAK_RESOURCE_GROUP ?? fileConfig.resourceGroup ?? null,
     apiVersion: env.AMR_SOAK_API_VERSION ?? fileConfig.apiVersion ?? DEFAULT_API_VERSION,
     killSwitchPath: env.AMR_SOAK_KILL_SWITCH_PATH ?? fileConfig.killSwitchPath ?? null,
@@ -173,6 +186,7 @@ export function describeConfig(config) {
     runId: config.runId,
     resourcePrefix: config.resourcePrefix,
     denylistSize: config.denylist.length,
+    subscriptionDenylistSize: config.subscriptionDenylist?.length ?? 0,
     rpHost: config.rpHost,
     rpPort: config.rpPort,
     subscriptionId: config.subscriptionId,

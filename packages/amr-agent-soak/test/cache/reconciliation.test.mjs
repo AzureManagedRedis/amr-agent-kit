@@ -245,6 +245,47 @@ test('tag-based eligibility is opt-in: without ownerAlias/runId, intent-evidence
   });
 });
 
+// ---- Final-review finding: subscription denylist is a distinct entry point
+// check, enforced BEFORE any adapter call ----
+
+test('reconcileOnStartup rejects a denylisted subscription before ever calling listClusters', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    await assert.rejects(
+      () =>
+        reconcileOnStartup({
+          ledger,
+          adapter,
+          subscriptionId: SUBSCRIPTION_ID,
+          resourcePrefix: 'dmon-run1-',
+          subscriptionDenylist: [SUBSCRIPTION_ID],
+        }),
+      GuardViolation
+    );
+    assert.equal(fake._requestLog.length, 0); // no adapter call was ever made
+  });
+});
+
+test('reconcileOnStartup proceeds normally when the subscription is not denylisted', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    await assert.doesNotReject(() =>
+      reconcileOnStartup({
+        ledger,
+        adapter,
+        subscriptionId: SUBSCRIPTION_ID,
+        resourcePrefix: 'dmon-run1-',
+        subscriptionDenylist: ['66666666-7777-8888-9999-aaaaaaaaaaaa'], // unrelated
+      })
+    );
+    assert.ok(fake._requestLog.length > 0);
+  });
+});
+
 // ---- pollUntilTerminal (generic, no fake "/operations" API assumed) ----
 
 test('pollUntilTerminal polls a resource provisioningState with backoff until terminal', async () => {

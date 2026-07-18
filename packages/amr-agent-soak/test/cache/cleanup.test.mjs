@@ -146,6 +146,116 @@ test('reverseCleanup honors the runtime denylist even for owned resources', asyn
   });
 });
 
+// ---- Final-review finding: subscription denylist entry points -- rejected
+// BEFORE any adapter call ----
+
+test('reverseCleanup rejects a denylisted subscription before ever touching the adapter', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+    const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');
+
+    await assert.rejects(
+      () =>
+        reverseCleanup({
+          ledger,
+          adapter,
+          config: testConfig({ subscriptionDenylist: [SUBSCRIPTION_ID] }),
+          lease,
+          leaseManager,
+        }),
+      GuardViolation
+    );
+    assert.equal(fake._requestLog.length, 0); // no adapter call was ever made
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']); // untouched
+  });
+});
+
+test('reverseCleanup dry-run also rejects a denylisted subscription before reporting any intended deletions', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({});
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+
+    await assert.rejects(
+      () =>
+        reverseCleanup({
+          ledger,
+          adapter,
+          config: testConfig({ subscriptionDenylist: [SUBSCRIPTION_ID] }),
+          dryRun: true,
+        }),
+      GuardViolation
+    );
+  });
+});
+
+test('deleteOwnedResource rejects a denylisted subscription before ever calling the adapter (standalone janitor path)', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+    const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');
+
+    await assert.rejects(
+      () =>
+        deleteOwnedResource({
+          ledger,
+          adapter,
+          resourceName: 'dmon-run1-cache1',
+          context: { config: testConfig({ subscriptionDenylist: [SUBSCRIPTION_ID] }), lease, leaseManager },
+        }),
+      GuardViolation
+    );
+    assert.equal(fake._requestLog.length, 0);
+    assert.deepEqual(ledger.activeResources(), ['dmon-run1-cache1']); // untouched
+  });
+});
+
+test('deleteOwnedResource/reverseCleanup proceed normally when the subscription is not denylisted', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+    const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');
+
+    await assert.doesNotReject(() =>
+      reverseCleanup({
+        ledger,
+        adapter,
+        config: testConfig({ subscriptionDenylist: ['66666666-7777-8888-9999-aaaaaaaaaaaa'] }), // unrelated
+        lease,
+        leaseManager,
+      })
+    );
+    assert.deepEqual(ledger.activeResources(), []);
+  });
+});
+
+test('reverseCleanup subscription denylist is not confused with the resource-name denylist', async () => {
+  await withTempLedger(async (ledger) => {
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    ledger.append('created', 'dmon-run1-cache1');
+    const { leaseManager, lease } = exclusiveLeaseFor('dmon-run1-cache1');
+
+    // The resource-name denylist coincidentally contains our subscription
+    // ID string, and the subscription denylist coincidentally contains a
+    // resource-name-shaped string -- neither must cross-trigger the other.
+    await assert.doesNotReject(() =>
+      reverseCleanup({
+        ledger,
+        adapter,
+        config: testConfig({ denylist: [SUBSCRIPTION_ID], subscriptionDenylist: ['dmon-run1-cache1'] }),
+        lease,
+        leaseManager,
+      })
+    );
+    assert.deepEqual(ledger.activeResources(), []);
+  });
+});
+
 test('reverseCleanup requires config + a lease and leaseManager for real (non-dry-run) mutations', async () => {
   await withTempLedger(async (ledger) => {
     const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
