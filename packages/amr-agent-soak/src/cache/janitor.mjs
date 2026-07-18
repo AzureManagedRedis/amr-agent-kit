@@ -7,11 +7,13 @@
 // alive AND actually the process it claims to be -- not merely "some
 // process is alive under this PID number", which is vulnerable to PID
 // reuse after a crash -- via atomic exclusive file creation with safe
-// stale replacement; see claimJanitorIdentity), heartbeat emission, an
-// orphan-reconciliation pass that actually DELETES (not merely re-labels
-// as active) tag-expired crash orphans, and a "zero-orphan evidence"
-// report proving that, after a fresh re-list, the ledger and the live RP
-// agree on every resource this run owns.
+// stale replacement; see claimJanitorIdentity), identity-safe heartbeat
+// emission (writeJanitorHeartbeat/isJanitorHeartbeatReady -- the same
+// PID-reuse gap closed for readiness/liveness checks, not just claiming),
+// an orphan-reconciliation pass that actually DELETES (not merely
+// re-labels as active) tag-expired crash orphans, and a "zero-orphan
+// evidence" report proving that, after a fresh re-list, the ledger and the
+// live RP agree on every resource this run owns.
 //
 // The standalone process is expected to run indefinitely: its interval
 // timer stays ref'd by default so Node keeps the event loop (and the
@@ -291,6 +293,16 @@ export function readJanitorIdentity(identityFilePath) {
   return readJanitorIdentityRaw(identityFilePath);
 }
 
+/**
+ * LEGACY / PID-ONLY -- kept for backward compatibility (and non-live
+ * embedded/test usage) but NO LONGER USED on the live standalone path (see
+ * startJanitor, which now calls writeJanitorHeartbeat with the same
+ * identity that won the claim). A bare `{pid, ts}` heartbeat cannot
+ * distinguish "this exact process is still alive" from "some unrelated
+ * process now happens to run under this reused PID number" -- see
+ * writeJanitorHeartbeat/isJanitorHeartbeatReady for the identity-safe
+ * replacement.
+ */
 export function writeHeartbeat(heartbeatFilePath, { pid = process.pid, now = () => Date.now() } = {}) {
   ensureDirFor(heartbeatFilePath);
   const record = { pid, ts: now() };
@@ -301,6 +313,115 @@ export function writeHeartbeat(heartbeatFilePath, { pid = process.pid, now = () 
 export function readHeartbeat(heartbeatFilePath) {
   if (!existsSync(heartbeatFilePath)) return null;
   return JSON.parse(readFileSync(heartbeatFilePath, 'utf8'));
+}
+
+// ---- Identity-safe heartbeat: closes the same PID-reuse gap for
+// liveness/readiness checks that claimJanitorIdentity closed for claiming ----
+
+/** Default freshness window: comfortably larger than the default 30s tick
+ * interval, so a couple of missed/slow ticks don't spuriously read as
+ * "stale", while a genuinely wedged/dead janitor is still caught quickly. */
+export const DEFAULT_HEARTBEAT_MAX_AGE_MS = 90000;
+
+function isValidIdentityShape(obj) {
+  return (
+    Boolean(obj) &&
+    typeof obj === 'object' &&
+    typeof obj.pid === 'number' &&
+    typeof obj.startedAt === 'number' &&
+    typeof obj.name === 'string' &&
+    typeof obj.executablePath === 'string'
+  );
+}
+
+function assertValidIdentityShape(identity) {
+  if (!isValidIdentityShape(identity)) {
+    throw new JanitorError(
+      'Invalid janitor identity: expected {pid:number, startedAt:number, name:string, executablePath:string[, commandHash]}, ' +
+        `got ${JSON.stringify(identity)}.`
+    );
+  }
+}
+
+function isValidHeartbeatShape(obj) {
+  return isValidIdentityShape(obj) && typeof obj.ts === 'number';
+}
+
+/**
+ * Identity-safe heartbeat: persists a structured
+ * `{pid, startedAt, name, executablePath[, commandHash], ts}` record --
+ * the SAME identity shape claimJanitorIdentity uses for the claim itself,
+ * plus a timestamp -- instead of a bare `{pid, ts}`. This lets a reader
+ * determine not just "was a heartbeat written recently" but "was it
+ * written by THIS exact process instance"; a stale heartbeat left behind
+ * by a since-crashed janitor whose PID got reused by an unrelated process
+ * must never be mistaken for a live one. Validates `identity`'s shape and
+ * fails closed (throws JanitorError) on anything malformed, rather than
+ * silently persisting a heartbeat readers cannot trust.
+ */
+export function writeJanitorHeartbeat(heartbeatFilePath, { identity = buildOwnIdentity(), now = () => Date.now() } = {}) {
+  assertValidIdentityShape(identity);
+  ensureDirFor(heartbeatFilePath);
+  const record = { ...identity, ts: now() };
+  writeFileSync(heartbeatFilePath, JSON.stringify(record), 'utf8');
+  return record;
+}
+
+/** Reads and schema-validates a janitor heartbeat file. Returns `null` if
+ * absent, corrupt/unparseable, or missing required identity/timestamp
+ * fields -- fails closed to "no usable heartbeat" rather than throwing on
+ * malformed content written by some other tool/version. */
+export function readJanitorHeartbeat(heartbeatFilePath) {
+  if (!existsSync(heartbeatFilePath)) return null;
+  const raw = readJanitorIdentityRaw(heartbeatFilePath);
+  if (!isValidHeartbeatShape(raw)) return null;
+  return raw;
+}
+
+/** True if `heartbeat.ts` is within `maxAgeMs` of `now()` (and not itself
+ * in the future, which would indicate clock skew/tampering rather than a
+ * genuinely fresh heartbeat). */
+export function isHeartbeatFresh(heartbeat, { now = () => Date.now(), maxAgeMs = DEFAULT_HEARTBEAT_MAX_AGE_MS } = {}) {
+  if (!heartbeat || typeof heartbeat.ts !== 'number') return false;
+  const nowMs = now();
+  const age = nowMs - heartbeat.ts;
+  return age >= 0 && age <= maxAgeMs;
+}
+
+/**
+ * True if `heartbeat`'s identity fields match `identity`, using the exact
+ * same comparison semantics as claimJanitorIdentity (pid + executablePath +
+ * name exact match, startedAt within tolerance, commandHash exact if
+ * either side supplies it). A heartbeat recording the SAME pid but a
+ * DIFFERENT startedAt/name/executablePath (the signature of PID reuse by
+ * an unrelated process since the original janitor crashed) is correctly
+ * NOT a match.
+ */
+export function heartbeatMatchesIdentity(heartbeat, identity, opts = {}) {
+  return identitiesMatch(heartbeat, identity, opts);
+}
+
+/**
+ * Combined readiness check: the heartbeat file must exist, parse with a
+ * valid identity+timestamp shape, be fresh (within `maxAgeMs`), AND --
+ * when `identity` is supplied -- its identity must match `identity`. A
+ * stale heartbeat, OR a fresh one recorded under a reused PID with a
+ * different start time/name/executable, both correctly fail readiness;
+ * neither can be satisfied by PID number alone.
+ *
+ * @param {string} heartbeatFilePath
+ * @param {object} [opts]
+ * @param {object} [opts.identity] - the expected identity (e.g. the one this process just claimed); when supplied, the heartbeat's identity must match it.
+ * @param {() => number} [opts.now]
+ * @param {number} [opts.maxAgeMs]
+ * @param {number} [opts.startedAtToleranceMs]
+ */
+export function isJanitorHeartbeatReady(heartbeatFilePath, { identity, now = () => Date.now(), maxAgeMs = DEFAULT_HEARTBEAT_MAX_AGE_MS, startedAtToleranceMs } = {}) {
+  const heartbeat = readJanitorHeartbeat(heartbeatFilePath);
+  if (!heartbeat) return false;
+  if (!isHeartbeatFresh(heartbeat, { now, maxAgeMs })) return false;
+  if (identity && !heartbeatMatchesIdentity(heartbeat, identity, { startedAtToleranceMs })) return false;
+  return true;
 }
 
 function extractLiveRecordsByName(liveList, resourcePrefix) {
@@ -426,6 +547,25 @@ function defaultWriteEvidence(path, evidence) {
  * PID-reuse detection in production; the default only resolves this
  * process's own identity.
  */
+/**
+ * Runs the janitor loop: claims the identity file (see claimJanitorIdentity
+ * -- PID-reuse-safe, not merely PID-only), then on an interval writes an
+ * identity-safe heartbeat (using the SAME identity that won the claim --
+ * see writeJanitorHeartbeat) and performs a reconciliation pass, producing
+ * zero-orphan evidence each time. Returns a handle with `stop()`, the raw
+ * interval `timer` (for introspection), and the in-memory evidence log
+ * (also written to `evidencePath` when supplied).
+ *
+ * `unref` defaults to false: a standalone janitor process must stay alive
+ * indefinitely. Pass `unref: true` only from embedded/test callers that
+ * must not let this timer keep their process/test runner alive.
+ *
+ * `identity`/`resolveIdentity` are the integration points for a real host
+ * process manager: pass a `resolveIdentity` backed by the host's
+ * SystemProcessManager (or equivalent) to get genuine cross-process
+ * PID-reuse detection in production; the default only resolves this
+ * process's own identity.
+ */
 export async function startJanitor({
   pidFilePath,
   heartbeatFilePath,
@@ -444,7 +584,12 @@ export async function startJanitor({
   resolveIdentity,
   isAlive,
 }) {
-  claimJanitorIdentity(pidFilePath, {
+  // Capture whichever identity actually won the claim (either the
+  // caller-supplied one, or claimJanitorIdentity's own generated default)
+  // so every heartbeat this run emits uses that EXACT SAME identity --
+  // never a freshly-recomputed one that could subtly drift (e.g. a
+  // different startedAt reading).
+  const claimedIdentity = claimJanitorIdentity(pidFilePath, {
     ...(identity !== undefined ? { identity } : {}),
     ...(resolveIdentity !== undefined ? { resolveIdentity } : {}),
     ...(isAlive !== undefined ? { isAlive } : {}),
@@ -452,7 +597,7 @@ export async function startJanitor({
   const evidenceLog = [];
 
   const tick = async () => {
-    writeHeartbeat(heartbeatFilePath, { now });
+    writeJanitorHeartbeat(heartbeatFilePath, { identity: claimedIdentity, now });
     const evidence = await runJanitorPass({ ledger, adapter, config, leaseManager, killSwitch, now });
     evidenceLog.push(evidence);
     if (evidencePath) writeEvidence(evidencePath, evidence);
@@ -472,7 +617,7 @@ export async function startJanitor({
 
   signal?.addEventListener?.('abort', () => clearInterval(timer));
 
-  return { stop: () => clearInterval(timer), evidenceLog, tick, timer };
+  return { stop: () => clearInterval(timer), evidenceLog, tick, timer, identity: claimedIdentity };
 }
 
 const isMainModule = Boolean(process.argv[1]) && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));

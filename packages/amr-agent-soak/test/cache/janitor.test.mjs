@@ -17,6 +17,11 @@ import {
   claimJanitorIdentity,
   buildOwnIdentity,
   readJanitorIdentity,
+  writeJanitorHeartbeat,
+  readJanitorHeartbeat,
+  isHeartbeatFresh,
+  heartbeatMatchesIdentity,
+  isJanitorHeartbeatReady,
 } from '../../src/cache/janitor.mjs';
 import { GuardViolation } from '../../src/cache/guards.mjs';
 import { createFakeRp } from './fakes/fake-rp.mjs';
@@ -341,6 +346,206 @@ test('writeHeartbeat / readHeartbeat round-trip exact PID and timestamp', async 
 test('readHeartbeat returns null when no heartbeat has ever been written', async () => {
   await withTempDir((dir) => {
     assert.equal(readHeartbeat(join(dir, 'never-written.json')), null);
+  });
+});
+
+// ---- Final re-review finding: identity-safe heartbeat (not PID-only) --
+// closes the same PID-reuse gap for readiness/liveness checks ----
+
+test('writeJanitorHeartbeat / readJanitorHeartbeat round-trip the full structured identity plus timestamp', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    const identity = buildOwnIdentity({ pid: 555, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    const written = writeJanitorHeartbeat(hbPath, { identity, now: () => 123456 });
+    assert.deepEqual(written, { pid: 555, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node', ts: 123456 });
+    assert.deepEqual(readJanitorHeartbeat(hbPath), written);
+  });
+});
+
+test('writeJanitorHeartbeat round-trips an optional commandHash too', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    const identity = buildOwnIdentity({ pid: 555, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node', commandHash: 'abc123' });
+    writeJanitorHeartbeat(hbPath, { identity, now: () => 1 });
+    assert.equal(readJanitorHeartbeat(hbPath).commandHash, 'abc123');
+  });
+});
+
+test('writeJanitorHeartbeat fails closed (throws) on a malformed identity shape', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    assert.throws(() => writeJanitorHeartbeat(hbPath, { identity: { pid: 'not-a-number' } }), JanitorError);
+    assert.throws(() => writeJanitorHeartbeat(hbPath, { identity: {} }), JanitorError);
+    assert.equal(existsSync(hbPath), false); // nothing was ever written
+  });
+});
+
+test('readJanitorHeartbeat returns null when no heartbeat has ever been written', async () => {
+  await withTempDir((dir) => {
+    assert.equal(readJanitorHeartbeat(join(dir, 'never-written.json')), null);
+  });
+});
+
+test('readJanitorHeartbeat returns null (fails closed) for a corrupt/unparseable heartbeat file', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    writeFileSync(hbPath, 'not-json-at-all{{{', 'utf8');
+    assert.equal(readJanitorHeartbeat(hbPath), null);
+  });
+});
+
+test('readJanitorHeartbeat returns null (fails closed) for valid JSON missing required identity fields', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    writeFileSync(hbPath, JSON.stringify({ pid: 555, ts: 123 }), 'utf8'); // legacy shape -- no startedAt/name/executablePath
+    assert.equal(readJanitorHeartbeat(hbPath), null);
+  });
+});
+
+test('isHeartbeatFresh is true within maxAgeMs and false once stale', () => {
+  const heartbeat = { pid: 1, startedAt: 0, name: 'node', executablePath: '/usr/bin/node', ts: 100000 };
+  assert.equal(isHeartbeatFresh(heartbeat, { now: () => 150000, maxAgeMs: 90000 }), true); // 50s old, within 90s window
+  assert.equal(isHeartbeatFresh(heartbeat, { now: () => 250000, maxAgeMs: 90000 }), false); // 150s old -- stale
+});
+
+test('isHeartbeatFresh rejects a null/missing heartbeat and a heartbeat claiming to be from the future', () => {
+  assert.equal(isHeartbeatFresh(null), false);
+  assert.equal(isHeartbeatFresh({ ts: 999999 }, { now: () => 0 }), false); // ts is "in the future" relative to now()
+});
+
+test('heartbeatMatchesIdentity: a same PID with a different startedAt/name/executablePath (PID reuse) is NOT a match', () => {
+  const heartbeat = { pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node', ts: 5000 };
+  const reusedProcessIdentity = buildOwnIdentity({ pid: 111, startedAt: 999999, name: 'bash', executablePath: '/bin/bash' });
+  assert.equal(heartbeatMatchesIdentity(heartbeat, reusedProcessIdentity), false);
+});
+
+test('heartbeatMatchesIdentity: matching identity (same pid/startedAt/name/executablePath) is a match', () => {
+  const heartbeat = { pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node', ts: 5000 };
+  const sameIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+  assert.equal(heartbeatMatchesIdentity(heartbeat, sameIdentity), true);
+});
+
+test('isJanitorHeartbeatReady requires fresh AND identity-matching -- a stale heartbeat fails readiness even with matching identity', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    const identity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    writeJanitorHeartbeat(hbPath, { identity, now: () => 0 });
+
+    assert.equal(isJanitorHeartbeatReady(hbPath, { identity, now: () => 200000, maxAgeMs: 90000 }), false); // stale
+  });
+});
+
+test('isJanitorHeartbeatReady fails for a fresh heartbeat whose PID matches but identity does not (PID reuse) -- readiness is not satisfied by PID alone', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    const originalIdentity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    writeJanitorHeartbeat(hbPath, { identity: originalIdentity, now: () => 0 });
+
+    // A different process reused PID 111 and is now writing its OWN
+    // "fresh" heartbeats under that same file -- readiness must still
+    // fail against the ORIGINAL expected identity.
+    const reusedIdentity = buildOwnIdentity({ pid: 111, startedAt: 999999, name: 'bash', executablePath: '/bin/bash' });
+    writeJanitorHeartbeat(hbPath, { identity: reusedIdentity, now: () => 1000 });
+
+    assert.equal(isJanitorHeartbeatReady(hbPath, { identity: originalIdentity, now: () => 2000, maxAgeMs: 90000 }), false);
+  });
+});
+
+test('isJanitorHeartbeatReady succeeds for a fresh heartbeat with a matching identity', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    const identity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    writeJanitorHeartbeat(hbPath, { identity, now: () => 1000 });
+
+    assert.equal(isJanitorHeartbeatReady(hbPath, { identity, now: () => 2000, maxAgeMs: 90000 }), true);
+  });
+});
+
+test('isJanitorHeartbeatReady without an expected identity only checks freshness (backward-compatible readiness probe)', async () => {
+  await withTempDir((dir) => {
+    const hbPath = join(dir, 'janitor.heartbeat.json');
+    const identity = buildOwnIdentity({ pid: 111, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+    writeJanitorHeartbeat(hbPath, { identity, now: () => 1000 });
+
+    assert.equal(isJanitorHeartbeatReady(hbPath, { now: () => 2000, maxAgeMs: 90000 }), true);
+    assert.equal(isJanitorHeartbeatReady(hbPath, { now: () => 500000, maxAgeMs: 90000 }), false); // stale regardless
+  });
+});
+
+test('isJanitorHeartbeatReady returns false when no heartbeat has ever been written', async () => {
+  await withTempDir((dir) => {
+    assert.equal(isJanitorHeartbeatReady(join(dir, 'never-written.json'), { now: () => 1000 }), false);
+  });
+});
+
+test('startJanitor emits an identity-safe heartbeat (not the legacy {pid,ts} shape) using the claimed identity', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    const fake = createFakeRp({});
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+    const hbPath = join(dir, 'j.hb.json');
+    const identity = buildOwnIdentity({ pid: 4242, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node' });
+
+    const handle = await startJanitor({
+      pidFilePath: join(dir, 'j.json'),
+      heartbeatFilePath: hbPath,
+      ledger,
+      adapter,
+      config: testConfig(),
+      leaseManager,
+      intervalMs: 100000,
+      unref: true,
+      identity,
+      resolveIdentity: () => null,
+      isAlive: () => false,
+      now: () => 55555,
+    });
+    try {
+      const heartbeat = readJanitorHeartbeat(hbPath);
+      assert.deepEqual(heartbeat, { pid: 4242, startedAt: 1000, name: 'node', executablePath: '/usr/bin/node', ts: 55555 });
+      assert.deepEqual(handle.identity, identity);
+      // Readiness against the SAME identity that was claimed must hold.
+      assert.equal(isJanitorHeartbeatReady(hbPath, { identity, now: () => 55555 + 1000, maxAgeMs: 90000 }), true);
+      // ...but not against some unrelated identity (e.g. a reused PID).
+      const unrelated = buildOwnIdentity({ pid: 4242, startedAt: 999999, name: 'bash', executablePath: '/bin/bash' });
+      assert.equal(isJanitorHeartbeatReady(hbPath, { identity: unrelated, now: () => 55555 + 1000, maxAgeMs: 90000 }), false);
+    } finally {
+      handle.stop();
+    }
+  });
+});
+
+test('startJanitor heartbeat identity matches whatever claimJanitorIdentity actually returned, even when startJanitor was given no explicit identity', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    const fake = createFakeRp({});
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+    const hbPath = join(dir, 'j.hb.json');
+
+    const handle = await startJanitor({
+      pidFilePath: join(dir, 'j.json'),
+      heartbeatFilePath: hbPath,
+      ledger,
+      adapter,
+      config: testConfig(),
+      leaseManager,
+      intervalMs: 100000,
+      unref: true,
+      resolveIdentity: () => null,
+      isAlive: () => false,
+    });
+    try {
+      const heartbeat = readJanitorHeartbeat(hbPath);
+      assert.ok(heartbeat); // a valid, schema-conforming heartbeat exists
+      assert.equal(heartbeat.pid, process.pid); // default identity resolves to the current process
+      assert.deepEqual(readJanitorIdentity(join(dir, 'j.json')), handle.identity);
+      assert.equal(heartbeat.pid, handle.identity.pid);
+      assert.equal(heartbeat.startedAt, handle.identity.startedAt);
+    } finally {
+      handle.stop();
+    }
   });
 });
 
