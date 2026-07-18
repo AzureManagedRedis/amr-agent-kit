@@ -117,6 +117,7 @@ export class IntegrationReporter {
             safety_score: 0,
             passed: false,
           },
+          graders: artifact.grade?.details?.graders,
           timing: {
             duration_ms: durationMs(artifact),
             started_at: artifact.startedAt,

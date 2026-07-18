@@ -175,3 +175,92 @@ test('requires a reviewed module for external blind grading', async () => {
     /requires integration.grading.modulePath/,
   )
 })
+
+test('accepts only two distinct calibrated blind graders above the kappa gate', async () => {
+  const modulePath = 'packages/amr-agent-soak/test/integration/fixtures/fake-blind-grader.mjs'
+  const base = {
+    runId: 'blind-calibration',
+    repositoryRoot: repoRoot,
+    outputRoot: path.join(os.tmpdir(), 'blind-calibration'),
+    skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    repetitions: 3,
+    durationHours: 48,
+    integration: {
+      targetSkill: 'redis-code',
+      scenarioIds: ['scn-connection-auth-tls-entra'],
+      grading: {
+        mode: 'external-blind',
+        modulePath,
+        minimumKappa: 0.7,
+      },
+      liveCache: { enabled: false },
+    },
+  }
+  const modules = await createSoakModules({ config: base, processManager })
+  assert.deepEqual(modules.snapshot.graderInput.modelIds, ['model-a', 'model-b'])
+  assert.equal(modules.snapshot.graderInput.kappa, 0.9)
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        integration: {
+          ...base.integration,
+          grading: {
+            ...base.integration.grading,
+            testModelIds: ['same-model', 'same-model'],
+          },
+        },
+      },
+      processManager,
+    }),
+    /requires two distinct model ids/,
+  )
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        integration: {
+          ...base.integration,
+          grading: {
+            ...base.integration.grading,
+            testKappa: 0.4,
+          },
+        },
+      },
+      processManager,
+    }),
+    /kappa must be >= 0.7/,
+  )
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        integration: {
+          ...base.integration,
+          grading: {
+            ...base.integration.grading,
+            testModelIds: 'one-model',
+          },
+        },
+      },
+      processManager,
+    }),
+    /modelIds as a non-empty string array/,
+  )
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        integration: {
+          ...base.integration,
+          grading: {
+            ...base.integration.grading,
+            minimumKappa: 'high',
+          },
+        },
+      },
+      processManager,
+    }),
+    /minimumKappa must be a finite number/,
+  )
+})

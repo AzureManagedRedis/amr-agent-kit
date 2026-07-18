@@ -32,6 +32,7 @@ function safeSnapshot(config, runtime, evidence) {
     executionCache: config.executionCache?.enabled === true,
     liveCache: config.liveCache?.enabled === true,
     gradingMode: config.grading?.mode,
+    minimumGraderKappa: config.grading?.minimumKappa,
     report: {
       leaseClass: config.report?.leaseClass,
       namespace: config.report?.namespace,
@@ -112,10 +113,39 @@ export async function createSoakModules({ config, processManager }) {
       repositoryRoot,
     })
     if (typeof grader?.grade !== 'function') throw new Error('External blind grader does not implement grade()')
-    if (typeof grader.assertCalibration === 'function') await grader.assertCalibration(scenarios)
+    if (typeof grader.assertCalibration !== 'function') {
+      throw new Error('External blind grader must implement assertCalibration()')
+    }
+    const calibration = await grader.assertCalibration(scenarios)
+    const rawModelIds = calibration?.modelIds ?? calibration?.models
+    if (
+      !Array.isArray(rawModelIds) ||
+      !rawModelIds.every((id) => typeof id === 'string' && id.trim().length > 0)
+    ) {
+      throw new Error('External blind grader calibration must report modelIds as a non-empty string array')
+    }
+    const modelIds = [...new Set(rawModelIds.map((id) => id.trim().toLowerCase()))]
+    const minimumKappa = Number(gradingConfig.minimumKappa ?? 0.6)
+    if (!Number.isFinite(minimumKappa) || minimumKappa < 0 || minimumKappa > 1) {
+      throw new Error('integration.grading.minimumKappa must be a finite number from 0 through 1')
+    }
+    if (calibration?.passed !== true) throw new Error('External blind grader calibration did not pass')
+    if (modelIds.length < 2) throw new Error('External blind grader calibration requires two distinct model ids')
+    if (
+      !Number.isFinite(calibration?.kappa) ||
+      calibration.kappa < -1 ||
+      calibration.kappa > 1 ||
+      calibration.kappa < minimumKappa
+    ) {
+      throw new Error(`External blind grader kappa must be >= ${minimumKappa}`)
+    }
     graderInput = {
       module: path.basename(graderPath),
       sha256: createHash('sha256').update(await readFile(graderPath)).digest('hex'),
+      modelIds: modelIds.sort(),
+      kappa: calibration.kappa,
+      minimumKappa,
+      calibrationHash: createHash('sha256').update(JSON.stringify(calibration)).digest('hex'),
     }
   } else {
     grader = new RegistryGrader({ evidenceStore: evidence.store })

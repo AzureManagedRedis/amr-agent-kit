@@ -15,7 +15,16 @@ The committed example uses `integration.grading.mode=deterministic-preflight`.
 That mode is deliberately limited to at most one hour, two repetitions, and no
 live cache access. A 48-hour launch must set `mode=external-blind` and provide a
 reviewed, gitignored/local module exporting `createBlindGrader`; the module is
-content-hashed into the immutable run snapshot.
+content-hashed into the immutable run snapshot. `createBlindGrader` receives
+`runtime`, `evidenceStore`, `config`, and `repositoryRoot`, and returns a
+`SoakGrader` with:
+
+- `grade(artifact, scenario)`, whose `details.grading` is the adjudicated result
+  and whose `details.graders` contains both raw grader results; and
+- `assertCalibration(scenarios)`, returning `{ passed, modelIds, kappa }`.
+
+Launch fails unless calibration passes, `modelIds` contains at least two distinct
+models, and kappa meets `integration.grading.minimumKappa` (default `0.6`).
 
 ## Evidence hooks
 
