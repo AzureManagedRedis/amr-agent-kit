@@ -198,4 +198,6 @@ export interface SoakModules {
   readonly reporter?: SoakReporter;
   readonly probes?: ReadonlyArray<SoakProbe>;
   readonly processManager?: import("./process.js").ProcessManager;
+  /** Public-safe integration snapshot included in the immutable resume hash. */
+  readonly snapshot?: Readonly<Record<string, unknown>>;
 }

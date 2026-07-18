@@ -18,10 +18,9 @@
 // It can also be *executed directly* as its own process:
 //   node packages/amr-agent-soak/src/cache/janitor.mjs
 
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
 import { reconcileOnStartup } from './reconciliation.mjs';
 import { deleteOwnedResource } from './cleanup.mjs';
 import { evaluateCleanupEligibility } from './tags.mjs';
@@ -53,8 +52,9 @@ function ensureDirFor(filePath) {
  * would race a concurrent claimant. If the file already exists: re-claiming
  * our own PID is idempotent; a PID file owned by a different, *currently
  * alive* process causes a refusal to start a second janitor instance; a
- * stale PID file (owner no longer alive) is replaced via a temp-file +
- * atomic rename, never a direct overwrite.
+ * stale PID file (owner no longer alive) is removed and re-claimed with
+ * exclusive creation. The launch scripts are the single spawn authority;
+ * this file is a second defensive check, not a cross-host distributed lock.
  */
 export function claimPidFile(pidFilePath, { pid = process.pid, isAlive = defaultIsAlive } = {}) {
   ensureDirFor(pidFilePath);
@@ -74,12 +74,26 @@ export function claimPidFile(pidFilePath, { pid = process.pid, isAlive = default
     throw new JanitorError(`Janitor already running under PID ${existingPid}; refusing to start a second instance.`);
   }
 
-  // Stale: safely replace via temp file + atomic rename rather than a
-  // direct overwrite, which could race another claimant doing the same.
-  const tmpPath = `${pidFilePath}.${pid}.${randomUUID()}.tmp`;
-  writeFileSync(tmpPath, String(pid), 'utf8');
-  renameSync(tmpPath, pidFilePath);
-  return pid;
+  // Stale: remove the stale claim and compete for a fresh exclusive (`wx`)
+  // claim. The launch scripts serialize janitor creation. `wx` still prevents
+  // accidental overwrites, but this is intentionally not advertised as a
+  // distributed compare-and-swap lock for uncoordinated concurrent launchers.
+  try {
+    unlinkSync(pidFilePath);
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
+  }
+  try {
+    writeFileSync(pidFilePath, String(pid), { encoding: 'utf8', flag: 'wx' });
+    return pid;
+  } catch (err) {
+    if (err?.code !== 'EEXIST') throw err;
+    const winningPid = Number(readFileSync(pidFilePath, 'utf8').trim());
+    if (winningPid === pid) return pid;
+    throw new JanitorError(
+      `Janitor PID claim was won concurrently by PID ${winningPid}; refusing duplicate PID ${pid}.`
+    );
+  }
 }
 
 export function writeHeartbeat(heartbeatFilePath, { pid = process.pid, now = () => Date.now() } = {}) {

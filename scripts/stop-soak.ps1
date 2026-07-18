@@ -42,7 +42,9 @@ for ($attempt = 0; $attempt -lt $GraceSeconds; $attempt++) {
     Start-Sleep -Seconds 1
 }
 
-if ((Test-ProcessIdentity $pids.controller) -or (Test-ProcessIdentity $pids.janitor)) {
+if ((Test-ProcessIdentity $pids.controller) -or
+    (Test-ProcessIdentity $pids.janitor) -or
+    ($pids.resourceJanitor -and (Test-ProcessIdentity $pids.resourceJanitor))) {
     & (Get-Command node).Source $cliPath terminate --run-dir $resolvedRunDir
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to terminate verified process trees for $resolvedRunDir."
@@ -54,4 +56,5 @@ if ((Test-ProcessIdentity $pids.controller) -or (Test-ProcessIdentity $pids.jani
     stoppedAt = [DateTime]::UtcNow.ToString('o')
     controller = $pids.controller
     janitor = $pids.janitor
+    resourceJanitor = $pids.resourceJanitor
 } | ConvertTo-Json

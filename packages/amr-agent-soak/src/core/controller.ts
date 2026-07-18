@@ -131,7 +131,13 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     repositoryRoot: path.resolve(config.repositoryRoot),
     skillSnapshotPath: path.resolve(config.skillSnapshotPath),
   };
-  const configHash = hashJson(configSnapshot);
+  const modulesSnapshot = {
+    integration: modules.snapshot ?? {},
+    probes: (modules.probes ?? [])
+      .map((probe) => ({ id: probe.id, phase: probe.phase }))
+      .sort((left, right) => `${left.phase}:${left.id}`.localeCompare(`${right.phase}:${right.id}`)),
+  };
+  const configHash = hashJson({ config: configSnapshot, modules: modulesSnapshot });
   const skillHash = await hashTree(config.skillSnapshotPath);
   const preflightScenario: SoakScenario = { id: "preflight", prompt: "preflight", scaffold: {} };
   const preflightRoot = path.join(config.runDir, "preflight");
@@ -215,6 +221,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
       writeAtomicJson(path.join(config.runDir, "config.snapshot.json"), configSnapshot),
       writeAtomicJson(path.join(config.runDir, "scenarios.snapshot.json"), scenarios),
       writeAtomicJson(path.join(config.runDir, "executor.snapshot.json"), capabilities),
+      writeAtomicJson(path.join(config.runDir, "modules.snapshot.json"), modulesSnapshot),
       writeAtomicJson(path.join(config.runDir, "skill.snapshot.json"), {
         path: config.skillSnapshotPath,
         hash: skillHash,

@@ -21,10 +21,12 @@ import {
 import { ProcessRegistry, SystemProcessManager } from "../core/process.js";
 
 interface ControllerFile extends SoakConfig {
-  readonly scenarioModule: string;
+  readonly scenarioModule?: string;
   readonly cacheModule?: string;
   readonly graderModule?: string;
   readonly reporterModule?: string;
+  readonly integrationModule?: string;
+  readonly integration?: Readonly<Record<string, unknown>>;
   readonly copilotCommand?: string;
   readonly dotnetProbes?: ReadonlyArray<DotnetTestProbeConfig>;
 }
@@ -48,22 +50,53 @@ async function importExport<T>(modulePath: string, exportName: string): Promise<
 }
 
 async function controller(configPath: string): Promise<void> {
-  const config = JSON.parse(await readFile(path.resolve(configPath), "utf8")) as ControllerFile;
+  const resolvedConfigPath = path.resolve(configPath);
+  const config = JSON.parse(await readFile(resolvedConfigPath, "utf8")) as ControllerFile;
   const processManager = new SystemProcessManager();
+  const resolveModule = (modulePath: string): string =>
+    path.isAbsolute(modulePath)
+      ? modulePath
+      : path.resolve(config.repositoryRoot ?? path.dirname(resolvedConfigPath), modulePath);
+  const integrated = config.integrationModule
+    ? await importExport<
+        (context: {
+          readonly config: ControllerFile;
+          readonly configPath: string;
+          readonly processManager: SystemProcessManager;
+        }) => Promise<Partial<SoakModules>>
+      >(resolveModule(config.integrationModule), "createSoakModules").then((factory) =>
+        factory({ config, configPath: resolvedConfigPath, processManager }),
+      )
+    : {};
+  if (!integrated.scenarios && !config.scenarioModule) {
+    throw new Error("Config must include integrationModule or scenarioModule");
+  }
   const modules: SoakModules = {
-    scenarios: await importExport<ScenarioProvider>(config.scenarioModule, "scenarioProvider"),
-    executor: new CopilotCliExecutor(config.copilotCommand, { processManager }),
-    cache: config.cacheModule
-      ? await importExport<SoakCache>(config.cacheModule, "cacheModule")
-      : undefined,
-    grader: config.graderModule
-      ? await importExport<SoakGrader>(config.graderModule, "graderModule")
-      : undefined,
-    reporter: config.reporterModule
-      ? await importExport<SoakReporter>(config.reporterModule, "reporterModule")
-      : undefined,
-    probes: config.dotnetProbes?.map((probe) => new DotnetTestProbe(probe, processManager)),
+    scenarios:
+      integrated.scenarios ??
+      (await importExport<ScenarioProvider>(resolveModule(config.scenarioModule!), "scenarioProvider")),
+    executor: integrated.executor ?? new CopilotCliExecutor(config.copilotCommand, { processManager }),
+    cache:
+      integrated.cache ??
+      (config.cacheModule
+        ? await importExport<SoakCache>(resolveModule(config.cacheModule), "cacheModule")
+        : undefined),
+    grader:
+      integrated.grader ??
+      (config.graderModule
+        ? await importExport<SoakGrader>(resolveModule(config.graderModule), "graderModule")
+        : undefined),
+    reporter:
+      integrated.reporter ??
+      (config.reporterModule
+        ? await importExport<SoakReporter>(resolveModule(config.reporterModule), "reporterModule")
+        : undefined),
+    probes: [
+      ...(integrated.probes ?? []),
+      ...(config.dotnetProbes?.map((probe) => new DotnetTestProbe(probe, processManager)) ?? []),
+    ],
     processManager,
+    snapshot: integrated.snapshot,
   };
   const summary = await runSoak(config, modules);
   process.stdout.write(`${JSON.stringify(summary)}\n`);
@@ -103,6 +136,7 @@ async function preflight(configPath: string): Promise<void> {
 interface PidRecord {
   readonly controller: ProcessIdentity;
   readonly janitor: ProcessIdentity;
+  readonly resourceJanitor?: ProcessIdentity;
 }
 
 async function readPidRecord(runDir: string): Promise<PidRecord> {
@@ -126,6 +160,7 @@ async function terminateRun(runDir: string, includeSupervisors: boolean): Promis
   if (includeSupervisors) {
     const pids = await readPidRecord(runDir);
     roots.push(pids.controller, pids.janitor);
+    if (pids.resourceJanitor) roots.push(pids.resourceJanitor);
   }
   const handled = new Set<string>();
   for (const root of roots) {

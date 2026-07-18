@@ -3,4 +3,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 eval-runs/
+packages/amr-agent-soak/config/*.local.json
+packages/amr-agent-soak/config/.runtime/
 packages/amr-agent-soak/dist/

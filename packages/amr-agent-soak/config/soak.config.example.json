@@ -1,0 +1,37 @@
+{
+  "runId": "weekend-soak-example",
+  "repositoryRoot": ".",
+  "outputRoot": "eval-runs",
+  "skillSnapshotPath": "skills/redis-code",
+  "concurrency": 14,
+  "repetitions": 2,
+  "durationHours": 0.25,
+  "timeoutMinutes": 30,
+  "heartbeatSeconds": 5,
+  "probeConcurrency": 2,
+  "model": "gpt-5.6-sol",
+  "integrationModule": "packages/amr-agent-soak/src/integration/runtime.mjs",
+  "integration": {
+    "targetSkill": "redis-code",
+    "registryPath": "evals/soak/registry/registry.json",
+    "clientCorpusRoot": "samples/soak-clients",
+    "scenarioIds": [],
+    "executionCache": {
+      "enabled": false
+    },
+    "grading": {
+      "mode": "deterministic-preflight"
+    },
+    "evidence": {
+      "required": false,
+      "hooks": []
+    },
+    "report": {
+      "leaseClass": "dry-run",
+      "namespace": "soak:weekend-soak-example"
+    },
+    "liveCache": {
+      "enabled": false
+    }
+  }
+}

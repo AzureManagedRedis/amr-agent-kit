@@ -1,0 +1,10 @@
+{
+  "subscriptionId": "replace-in-local-file",
+  "tenantId": "replace-in-local-file",
+  "owner": "replace-in-local-file",
+  "runId": "replace-in-local-file",
+  "ackCustomerSubscription": true,
+  "denylist": [
+    "replace-with-each-backing-infrastructure-subscription"
+  ]
+}

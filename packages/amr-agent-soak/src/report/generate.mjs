@@ -175,7 +175,11 @@ export async function generateReport(input, {
     return counts
   }, {})
   const manifest = validateRunManifest(input.manifest ?? input.run_manifest)
-  const cleanupSuccess = ['deleted', 'terminal-deleted', 'deleted-terminal'].includes(manifest.cleanup_terminal_state.toLowerCase()) && manifest.orphan_count === 0
+  const cleanupState = manifest.cleanup_terminal_state.toLowerCase()
+  const cleanupSuccess = (
+    ['deleted', 'terminal-deleted', 'deleted-terminal'].includes(cleanupState) ||
+    (manifest.lease_class.toLowerCase() === 'dry-run' && cleanupState === 'not-applicable')
+  ) && manifest.orphan_count === 0
   manifest.cleanup_success = cleanupSuccess
   const benchmarkOutput = {
     schema_version: 1,
@@ -195,8 +199,12 @@ export async function generateReport(input, {
     'benchmark.md': `${redactedReport}\n`,
     'source-correctness.json': `${JSON.stringify(redactJson(sourceCorrectness), null, 2)}\n`,
     'safety.json': `${JSON.stringify(redactJson(safety), null, 2)}\n`,
+    'safety-report.json': `${JSON.stringify(redactJson(safety), null, 2)}\n`,
     'client-artifact-index.json': `${JSON.stringify(redactJson(artifactIndex), null, 2)}\n`,
     'candidate-fixes.json': `${JSON.stringify(redactJson({ schema_version: 1, fixes }), null, 2)}\n`,
+    'candidate-fixes.md': fixes.length === 0
+      ? '# Candidate Fixes\n\nNo candidate fixes were generated.\n'
+      : `# Candidate Fixes\n\n${fixes.map((fix) => `- ${redact(fix.fix)} (${redact(fix.eval_id)}/${redact(fix.run_id)})`).join('\n')}\n`,
     'review.html': reviewHtml(benchmarkOutput, redactedReport, safety, sourceCorrectness),
   }
   const outputWriter = atomicWriter ?? writer

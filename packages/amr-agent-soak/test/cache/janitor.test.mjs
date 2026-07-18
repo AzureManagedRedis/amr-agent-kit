@@ -41,8 +41,8 @@ function testConfig(overrides = {}) {
 
 // ---- Finding #9: atomic PID claim ----
 
-test('claimPidFile writes this process PID when no PID file exists yet (atomic exclusive create)', () => {
-  withTempDir((dir) => {
+test('claimPidFile writes this process PID when no PID file exists yet (atomic exclusive create)', async () => {
+  await withTempDir((dir) => {
     const pidPath = join(dir, 'janitor.pid');
     const claimed = claimPidFile(pidPath, { pid: 4242, isAlive: () => false });
     assert.equal(claimed, 4242);
@@ -50,8 +50,8 @@ test('claimPidFile writes this process PID when no PID file exists yet (atomic e
   });
 });
 
-test('claimPidFile replaces a stale PID file whose process is no longer alive, via temp-file + rename', () => {
-  withTempDir((dir) => {
+test('claimPidFile replaces a stale PID file whose process is no longer alive with a fresh exclusive claim', async () => {
+  await withTempDir((dir) => {
     const pidPath = join(dir, 'janitor.pid');
     claimPidFile(pidPath, { pid: 111, isAlive: () => false }); // first (dead) janitor
     const claimed = claimPidFile(pidPath, { pid: 222, isAlive: (pid) => (pid === 111 ? false : true) });
@@ -63,24 +63,24 @@ test('claimPidFile replaces a stale PID file whose process is no longer alive, v
   });
 });
 
-test('claimPidFile refuses a second janitor while the existing PID is genuinely alive', () => {
-  withTempDir((dir) => {
+test('claimPidFile refuses a second janitor while the existing PID is genuinely alive', async () => {
+  await withTempDir((dir) => {
     const pidPath = join(dir, 'janitor.pid');
     claimPidFile(pidPath, { pid: 111, isAlive: () => true });
     assert.throws(() => claimPidFile(pidPath, { pid: 222, isAlive: (pid) => pid === 111 }), JanitorError);
   });
 });
 
-test('claimPidFile is idempotent for exactly the same PID (re-claiming your own PID succeeds)', () => {
-  withTempDir((dir) => {
+test('claimPidFile is idempotent for exactly the same PID (re-claiming your own PID succeeds)', async () => {
+  await withTempDir((dir) => {
     const pidPath = join(dir, 'janitor.pid');
     claimPidFile(pidPath, { pid: 111, isAlive: () => true });
     assert.doesNotThrow(() => claimPidFile(pidPath, { pid: 111, isAlive: () => true }));
   });
 });
 
-test('writeHeartbeat / readHeartbeat round-trip exact PID and timestamp', () => {
-  withTempDir((dir) => {
+test('writeHeartbeat / readHeartbeat round-trip exact PID and timestamp', async () => {
+  await withTempDir((dir) => {
     const hbPath = join(dir, 'janitor.heartbeat.json');
     const written = writeHeartbeat(hbPath, { pid: 555, now: () => 123456 });
     assert.deepEqual(written, { pid: 555, ts: 123456 });
@@ -88,8 +88,8 @@ test('writeHeartbeat / readHeartbeat round-trip exact PID and timestamp', () => 
   });
 });
 
-test('readHeartbeat returns null when no heartbeat has ever been written', () => {
-  withTempDir((dir) => {
+test('readHeartbeat returns null when no heartbeat has ever been written', async () => {
+  await withTempDir((dir) => {
     assert.equal(readHeartbeat(join(dir, 'never-written.json')), null);
   });
 });
@@ -195,8 +195,8 @@ test('runJanitorPass never reports resources outside our prefix as orphans (isol
   });
 });
 
-test('janitor evidence path files exist after claimPidFile + writeHeartbeat are exercised together', () => {
-  withTempDir((dir) => {
+test('janitor evidence path files exist after claimPidFile + writeHeartbeat are exercised together', async () => {
+  await withTempDir((dir) => {
     const pidPath = join(dir, 'janitor.pid');
     const hbPath = join(dir, 'janitor.heartbeat.json');
     claimPidFile(pidPath, { pid: 999, isAlive: () => false });

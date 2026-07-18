@@ -45,6 +45,7 @@
     "efficacy:prepare": "node scripts\\prepare-efficacy-workspace.mjs",
     "soak:build": "npm --prefix packages\\amr-agent-soak run build",
     "soak:test": "npm --prefix packages\\amr-agent-soak test",
+    "soak:preflight": "npm --prefix packages\\amr-agent-soak run preflight:integration",
     "soak:status": "powershell -NoProfile -File scripts\\soak-status.ps1"
   }
 }

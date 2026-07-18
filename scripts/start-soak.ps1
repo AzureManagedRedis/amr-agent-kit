@@ -46,6 +46,8 @@ $controllerOut = Join-Path $runDir 'controller.stdout.log'
 $controllerErr = Join-Path $runDir 'controller.stderr.log'
 $janitorOut = Join-Path $runDir 'janitor.stdout.log'
 $janitorErr = Join-Path $runDir 'janitor.stderr.log'
+$resourceJanitorOut = Join-Path $runDir 'resource-janitor.stdout.log'
+$resourceJanitorErr = Join-Path $runDir 'resource-janitor.stderr.log'
 $controller = Start-Process -FilePath (Get-Command node).Source `
     -ArgumentList @("`"$cliPath`"", 'controller', '--config', "`"$resolvedConfig`"") `
     -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru `
@@ -56,6 +58,21 @@ $janitor = Start-Process -FilePath (Get-Command node).Source `
     -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru `
     -RedirectStandardOutput $janitorOut -RedirectStandardError $janitorErr
 $janitorIdentity = Get-ProcessIdentity $janitor.Id
+$resourceJanitor = $null
+$resourceJanitorIdentity = $null
+$liveCacheEnabled = $config.integration -and $config.integration.liveCache -and
+    ($config.integration.liveCache.enabled -eq $true)
+if ($liveCacheEnabled) {
+    $resourceJanitorPath = Join-Path $repoRoot 'packages\amr-agent-soak\src\integration\resource-janitor.mjs'
+    if (-not (Test-Path $resourceJanitorPath)) {
+        throw "Resource janitor integration is missing: $resourceJanitorPath"
+    }
+    $resourceJanitor = Start-Process -FilePath (Get-Command node).Source `
+        -ArgumentList @("`"$resourceJanitorPath`"", '--config', "`"$resolvedConfig`"", '--run-dir', "`"$runDir`"") `
+        -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru `
+        -RedirectStandardOutput $resourceJanitorOut -RedirectStandardError $resourceJanitorErr
+    $resourceJanitorIdentity = Get-ProcessIdentity $resourceJanitor.Id
+}
 
 $pidRecord = @{
     schemaVersion = 1
@@ -64,6 +81,9 @@ $pidRecord = @{
     startedAt = [DateTime]::UtcNow.ToString('o')
     controller = $controllerIdentity
     janitor = $janitorIdentity
+}
+if ($resourceJanitorIdentity) {
+    $pidRecord['resourceJanitor'] = $resourceJanitorIdentity
 }
 $pidPath = Join-Path $runDir 'pids.json'
 $pidTemp = "$pidPath.$PID.tmp"
@@ -83,14 +103,31 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
         $exitedProcess = 'janitor'
         break
     }
+    if ($resourceJanitor) {
+        $resourceJanitor.Refresh()
+        if ($resourceJanitor.HasExited) {
+            $exitedProcess = 'resource janitor'
+            break
+        }
+    }
     $heartbeatPath = Join-Path $runDir 'heartbeat.json'
     if (Test-Path $heartbeatPath) {
         $heartbeat = Get-Content -Raw $heartbeatPath | ConvertFrom-Json
         if (($heartbeat.controller.pid -eq $controllerIdentity.pid) -and
             ($heartbeat.controller.startedAt -eq $controllerIdentity.startedAt) -and
             ($heartbeat.controller.name -eq $controllerIdentity.name)) {
-            $responsive = $true
-            break
+            $resourceResponsive = -not $resourceJanitor
+            if ($resourceJanitor) {
+                $resourceHeartbeatPath = Join-Path $runDir 'resource-janitor.heartbeat.json'
+                if (Test-Path $resourceHeartbeatPath) {
+                    $resourceHeartbeat = Get-Content -Raw $resourceHeartbeatPath | ConvertFrom-Json
+                    $resourceResponsive = ($resourceHeartbeat.pid -eq $resourceJanitorIdentity.pid)
+                }
+            }
+            if ($resourceResponsive) {
+                $responsive = $true
+                break
+            }
         }
     }
     Start-Sleep -Seconds 1
@@ -98,7 +135,13 @@ for ($attempt = 0; $attempt -lt 30; $attempt++) {
 
 if (-not $responsive) {
     & (Get-Command node).Source $cliPath terminate --run-dir $runDir
-    $errorLog = if ($exitedProcess -eq 'janitor') { $janitorErr } else { $controllerErr }
+    $errorLog = if ($exitedProcess -eq 'janitor') {
+        $janitorErr
+    } elseif ($exitedProcess -eq 'resource janitor') {
+        $resourceJanitorErr
+    } else {
+        $controllerErr
+    }
     $subject = if ($exitedProcess) { $exitedProcess } else { 'controller' }
     throw "Soak $subject did not become responsive. Inspect $errorLog"
 }

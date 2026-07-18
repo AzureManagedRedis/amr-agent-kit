@@ -12,6 +12,9 @@
     "./executor": {
       "types": "./dist/src/executor/index.d.ts",
       "import": "./dist/src/executor/index.js"
+    },
+    "./integration": {
+      "import": "./src/integration/index.mjs"
     }
   },
   "engines": {
@@ -19,7 +22,12 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "npm run build && node --test dist/test/core/*.test.js",
+    "test": "npm run build && npm run test:core && npm run test:cache && npm run test:grading && npm run test:integration",
+    "test:core": "node --test dist/test/core/*.test.js",
+    "test:cache": "node --test test/cache/*.test.mjs",
+    "test:grading": "node --test test/grading-report/*.test.mjs",
+    "test:integration": "node --test test/integration/*.test.mjs",
+    "preflight:integration": "node src/integration/preflight.mjs",
     "soak": "node dist/src/cli/main.js"
   },
   "devDependencies": {

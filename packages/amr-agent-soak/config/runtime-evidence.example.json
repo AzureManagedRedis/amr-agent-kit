@@ -1,0 +1,12 @@
+{
+  "records": [
+    {
+      "id": "example-source-evidence",
+      "kind": "source",
+      "provider_id": "public-documentation",
+      "fact_id": "src-conn-tls-required",
+      "status": "unverified",
+      "public_statement": "Replace this example with a public-safe runtime evidence record."
+    }
+  ]
+}
