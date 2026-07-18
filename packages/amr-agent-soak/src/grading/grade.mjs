@@ -87,10 +87,18 @@ export function gradeAnswer(answer, metadata, { grader = 'deterministic' } = {})
 export function adjudicateTwoGraders(first, second) {
   const left = validateGrading(first, '$.grader_a')
   const right = validateGrading(second, '$.grader_b')
-  const byId = new Map(right.assertions.map((item) => [String(item.id ?? item.assertion_id), item]))
-  const assertions = left.assertions.map((item) => {
-    const id = String(item.id ?? item.assertion_id)
-    const other = byId.get(id)
+  const leftIds = left.assertions.map((item) => String(item.id ?? item.assertion_id))
+  const rightIds = right.assertions.map((item) => String(item.id ?? item.assertion_id))
+  if (new Set(leftIds).size !== leftIds.length || new Set(rightIds).size !== rightIds.length ||
+      leftIds.length !== rightIds.length || leftIds.some((id) => !rightIds.includes(id))) {
+    throw new Error('grader assertion IDs must match uniquely')
+  }
+  const canonicalIds = [...leftIds].sort((a, b) => a.localeCompare(b))
+  const leftById = new Map(left.assertions.map((item) => [String(item.id ?? item.assertion_id), item]))
+  const rightById = new Map(right.assertions.map((item) => [String(item.id ?? item.assertion_id), item]))
+  const assertions = canonicalIds.map((id) => {
+    const item = leftById.get(id)
+    const other = rightById.get(id)
     const leftPass = Boolean(item.pass ?? item.passed)
     const rightPass = Boolean(other?.pass ?? other?.passed)
     return {

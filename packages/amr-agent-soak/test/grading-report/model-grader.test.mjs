@@ -7,6 +7,7 @@ import {
   GraderConfigurationError,
   GraderProtocolError,
   GraderTimeoutError,
+  assertFiniteKappas,
   createBlindModelGrader,
 } from '../../src/grading/model-grader.mjs'
 
@@ -39,8 +40,8 @@ function pairs() {
   return [
     {
       bundle_id: 'pair-1',
-      with_skill: { answer: 'skill output', arm: 'with_skill', skill_contents: 'private skill text' },
-      without_skill: { answer: 'baseline output', arm: 'without_skill', skill_contents: 'private skill text' },
+      with_skill: { answer: 'skill output' },
+      without_skill: { answer: 'baseline output' },
     },
     {
       bundle_id: 'pair-2',
@@ -60,7 +61,10 @@ function grade(pass) {
 
 function response(request, pass = true, note) {
   return JSON.stringify({
-    grades: Object.fromEntries(request.arms.map((arm) => [arm.label, { ...grade(pass), ...(note ? { note } : {}) }])),
+    grades: Object.fromEntries(request.arms.map((arm) => [
+      arm.label,
+      { ...grade(typeof pass === 'function' ? pass(arm) : pass), ...(note ? { note } : {}) },
+    ])),
   })
 }
 
@@ -69,11 +73,9 @@ function grader(options = {}) {
   const artifacts = new Map()
   const modelExecutor = options.modelExecutor ?? (async (request, context) => {
     calls.push({ request, context })
-    const canaryPass = request.prompt !== 'known-bad'
-    const pass = context.phase === 'evaluation'
-      ? options.actualPassByModel?.[context.modelId] ?? canaryPass
-      : canaryPass
-    return response(request, pass)
+    return response(request, (arm) => arm.output.includes('canary')
+      ? !arm.output.includes('bad canary output')
+      : options.actualPassByModel?.[context.modelId] ?? true)
   })
   const instance = createBlindModelGrader({
     modelExecutor,
@@ -106,21 +108,26 @@ async function runGrader(options = {}) {
 
 test('executes two distinct blind graders and adjudicates paired outputs', async () => {
   const { calls, artifacts, result, instance } = await runGrader()
-  const evaluationCalls = calls.filter((call) => call.context.phase === 'evaluation')
-  assert.deepEqual(evaluationCalls.map((call) => call.context.modelId).sort(), ['grader-a', 'grader-b'])
+  assert.deepEqual(calls.map((call) => call.context.modelId).sort(), ['grader-a', 'grader-b'])
   for (const call of calls) {
     const serialized = JSON.stringify(call.request)
     assert.ok(!serialized.includes('with_skill'))
     assert.ok(!serialized.includes('without_skill'))
-    assert.ok(!serialized.includes('private skill text'))
-    assert.ok(call.request.arms.every((arm) => /^arm-[ab]$|^pair-\d+-arm-[ab]$/.test(arm.label)))
+    assert.ok(!serialized.includes('known-good'))
+    assert.ok(!serialized.includes('known-bad'))
+    assert.deepEqual(Object.keys(call.request).sort(), ['arms', 'output_artifacts', 'prompt', 'response_format', 'rubric', 'source_evidence'])
+    assert.ok(call.request.arms.every((arm) => /^pair-\d+-arm-[ab]$/.test(arm.label)))
+    assert.ok(call.context.phase === undefined)
   }
+  assert.equal(calls[0].request.arms.length, 8)
+  assert.ok(calls[0].request.arms.some((arm) => arm.output.includes('canary')))
+  assert.ok(calls[0].request.arms.some((arm) => !arm.output.includes('canary')))
   assert.equal(result.accepted, true)
   assert.equal(instance.deterministic, false)
   assert.equal(instance.preflightOnly, false)
   assert.equal(result.adjudicated.length, 4)
   assert.equal(result.kappa, 1)
-  assert.ok(artifacts.size >= 6)
+  assert.equal(artifacts.size, 2)
 })
 
 test('rejects missing, duplicate, or non-diverse grader identities', () => {
@@ -137,7 +144,6 @@ test('rejects missing, duplicate, or non-diverse grader identities', () => {
 test('rejects invalid JSON without a prose fallback', async () => {
   await assert.rejects(() => runGrader({
     modelExecutor: async (request, context) => {
-      if (context.phase === 'calibration') return response(request, request.prompt !== 'known-bad')
       return 'Here is the grade: {"score": 1}'
     },
   }), GraderProtocolError)
@@ -153,7 +159,18 @@ test('fails closed when calibration accuracy is below threshold', async () => {
     rubric,
     canaries: canaries(),
   }), CalibrationError)
-  assert.equal([...setup.calls].filter((call) => call.context.phase === 'evaluation').length, 0)
+})
+
+test('calibration inspects both arms and fails if either arm is wrong', async () => {
+  const setup = grader({
+    modelExecutor: async (request) => response(request, (arm) => arm.label.endsWith('arm-a')),
+  })
+  await assert.rejects(() => setup.instance.grade({
+    prompt: 'evaluation',
+    pairs: pairs(),
+    rubric,
+    canaries: canaries(),
+  }), CalibrationError)
 })
 
 test('fails closed below the configured kappa threshold', async () => {
@@ -166,12 +183,9 @@ test('does not average an individual low-kappa pair away', async () => {
   await assert.rejects(() => runGrader({
     agreementThreshold: 0.1,
     modelExecutor: async (request, context) => {
-      if (context.phase === 'calibration') return response(request, request.prompt !== 'known-bad')
-      const grades = Object.fromEntries(request.arms.map((arm) => [
-        arm.label,
-        grade(context.modelId === 'grader-a' || arm.label.includes('pair-1')),
-      ]))
-      return JSON.stringify({ grades })
+      return response(request, (arm) => arm.output.includes('canary')
+        ? !arm.output.includes('bad canary output')
+        : context.modelId === 'grader-a')
     },
   }), AgreementError)
 })
@@ -187,11 +201,62 @@ test('surfaces disagreements as contested claims when the threshold permits them
   assert.ok(result.adjudicated.every((item) => item.passed === false))
 })
 
+test('aligns reordered assertion IDs before kappa and adjudication', async () => {
+  const setup = grader({
+    modelExecutor: async (request, context) => {
+      const canary = request.arms.some((arm) => arm.output.includes('canary'))
+      if (canary) return response(request, (arm) => !arm.output.includes('bad canary output'))
+      const reverse = context.modelId === 'grader-b'
+      const assertions = reverse
+        ? [{ id: 'c2', statement: 'second', passed: false }, { id: 'c1', statement: 'first', passed: true }]
+        : [{ id: 'c1', statement: 'first', passed: true }, { id: 'c2', statement: 'second', passed: false }]
+      return JSON.stringify({
+        grades: Object.fromEntries(request.arms.map((arm) => [arm.label, { assertions, score: 0.5, passed: false }])),
+      })
+    },
+  })
+  const result = await setup.instance.grade({
+    prompt: 'evaluation',
+    pairs: pairs(),
+    rubric,
+    canaries: canaries(),
+    agreementThreshold: 0,
+  })
+  assert.equal(result.kappa, 1)
+  assert.ok(result.adjudicated.every((item) => item.disagreements.length === 0))
+})
+
+test('rejects custom identity fields and unknown rubric fields', async () => {
+  const setup = grader()
+  await assert.rejects(() => setup.instance.grade({
+    prompt: 'evaluation',
+    pairs: [{
+      with_skill: { answer: 'output', arm_label: 'treatment', skill_id: 'secret' },
+      without_skill: { answer: 'output' },
+    }],
+    rubric,
+    canaries: canaries(),
+  }), GraderProtocolError)
+  await assert.rejects(() => setup.instance.grade({
+    prompt: 'evaluation',
+    pairs: pairs(),
+    rubric: { ...rubric, unknown: 'field' },
+    canaries: canaries(),
+  }), GraderProtocolError)
+})
+
+test('rejects non-finite kappa values fail closed', () => {
+  assert.throws(() => assertFiniteKappas([1, Number.NaN]), AgreementError)
+  assert.throws(() => assertFiniteKappas([1, null]), AgreementError)
+})
+
 test('persists redacted transcripts with timing, hashes, model, and parsed results', async () => {
   const setup = grader({
     modelExecutor: async (request, context) => {
       setup?.calls?.push({ request, context })
-      return response(request, request.prompt !== 'known-bad', 'access_token=secret-value')
+      return response(request, (arm) => arm.output.includes('canary')
+        ? !arm.output.includes('bad canary output')
+        : true, 'access_token=secret-value')
     },
   })
   const result = await setup.instance.grade({
@@ -201,7 +266,7 @@ test('persists redacted transcripts with timing, hashes, model, and parsed resul
     canaries: canaries(),
   })
   assert.ok(result.accepted)
-  const transcript = [...setup.artifacts.values()].find((content) => content.includes('"phase": "evaluation"'))
+  const transcript = [...setup.artifacts.values()].find((content) => content.includes('"phase": "blind-batch"'))
   assert.ok(transcript)
   assert.ok(transcript.includes('"prompt_hash"'))
   assert.ok(transcript.includes('"module_hash": "test-module-hash"'))

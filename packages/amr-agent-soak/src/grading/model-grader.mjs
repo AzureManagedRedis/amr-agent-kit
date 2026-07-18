@@ -22,6 +22,13 @@ export class CalibrationError extends BlindModelGraderError {}
 export class AgreementError extends BlindModelGraderError {}
 export class GraderTimeoutError extends BlindModelGraderError {}
 
+export function assertFiniteKappas(values) {
+  if (!Array.isArray(values) || values.some((value) => !Number.isFinite(value))) {
+    throw new AgreementError('Cohen\'s kappa must be finite for every evaluated arm', { kappaByArm: values })
+  }
+  return values
+}
+
 function requiredString(value, name) {
   if (typeof value !== 'string' || value.length === 0) throw new GraderConfigurationError(`${name} is required`)
   return value
@@ -50,25 +57,60 @@ function redactJson(value) {
   return value
 }
 
-function stripIdentityFields(value) {
-  if (Array.isArray(value)) return value.map(stripIdentityFields)
-  if (!value || typeof value !== 'object') return typeof value === 'string' ? redact(value) : value
+const ARM_FIELDS = new Set(['output', 'answer', 'response', 'text', 'artifacts', 'output_artifacts'])
+const ARTIFACT_FIELDS = new Set(['path', 'relative_path', 'name', 'type', 'hash', 'sha256', 'transcript_hash', 'size', 'size_bytes', 'mime_type', 'content', 'url'])
+const EVIDENCE_FIELDS = new Set(['id', 'source_fact_ref', 'source_fact', 'fact', 'statement', 'text', 'value', 'citation', 'source', 'category', 'hash', 'sha256', 'evidence'])
+const RUBRIC_FIELDS = new Set(['id', 'kind', 'description', 'criteria', 'assertions', 'expectations', 'scoring', 'anti_patterns', 'minimum_skill_score', 'minimum_uplift', 'pass_threshold'])
+const CRITERION_FIELDS = new Set(['id', 'statement', 'description', 'text', 'weight', 'required', 'source_fact_ref', 'kind', 'terms', 'patterns'])
+const SCORING_FIELDS = new Set(['method', 'pass_threshold'])
+
+function allowObject(value, allowed, pathName, transform = (item) => item) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new GraderProtocolError(`${pathName} must be an object`)
   const output = {}
   for (const [key, item] of Object.entries(value)) {
-    if (/^(arm|true[_-]?arm|configuration|variant|skill(?:[_-].*)?|label|model[_-]?id)$/i.test(key)) continue
-    output[key] = stripIdentityFields(item)
+    if (!allowed.has(key)) throw new GraderProtocolError(`${pathName} contains an unknown or identity field: ${key}`)
+    output[key] = transform(item, key)
   }
   return output
+}
+
+function sanitizeArtifactData(value, pathName = '$.artifacts') {
+  if (Array.isArray(value)) return value.map((item, index) => sanitizeArtifactData(item, `${pathName}[${index}]`))
+  if (!value || typeof value !== 'object') return redact(value)
+  return allowObject(value, ARTIFACT_FIELDS, pathName, (item) => sanitizeArtifactData(item, `${pathName}.value`))
+}
+
+function sanitizeEvidence(value, pathName = '$.source_evidence') {
+  if (Array.isArray(value)) return value.map((item, index) => sanitizeEvidence(item, `${pathName}[${index}]`))
+  return allowObject(value, EVIDENCE_FIELDS, pathName, (item) => Array.isArray(item) ? item.map((entry) => sanitizeEvidence(entry, `${pathName}.value`)) : redact(item))
+}
+
+function sanitizeRubric(value) {
+  return allowObject(value, RUBRIC_FIELDS, '$.rubric', (item, key) => {
+    if (key === 'criteria' || key === 'assertions' || key === 'expectations') {
+      if (!Array.isArray(item)) throw new GraderProtocolError(`$.rubric.${key} must be an array`)
+      return item.map((criterion, index) => allowObject(criterion, CRITERION_FIELDS, `$.rubric.${key}[${index}]`, (entry) => Array.isArray(entry) ? entry.map(redact) : redact(entry)))
+    }
+    if (key === 'scoring') return allowObject(item, SCORING_FIELDS, '$.rubric.scoring', (entry) => redact(entry))
+    if (key === 'anti_patterns') {
+      if (!Array.isArray(item)) throw new GraderProtocolError('$.rubric.anti_patterns must be an array')
+      return item.map(redact)
+    }
+    return redact(item)
+  })
 }
 
 function outputPayload(member) {
   if (typeof member === 'string') return { output: redact(member) }
   if (!member || typeof member !== 'object') throw new GraderProtocolError('paired output must be an object or string')
+  for (const key of Object.keys(member)) {
+    if (!ARM_FIELDS.has(key)) throw new GraderProtocolError(`paired output contains an unknown or identity field: ${key}`)
+  }
   const output = member.output ?? member.answer ?? member.response ?? member.text
   if (typeof output !== 'string') throw new GraderProtocolError('paired output is missing answer/output text')
   return {
     output: redact(output),
-    artifacts: stripIdentityFields(member.artifacts ?? member.output_artifacts ?? {}),
+    artifacts: sanitizeArtifactData(member.artifacts ?? member.output_artifacts ?? {}),
   }
 }
 
@@ -84,8 +126,8 @@ function assertNoIdentityLeakage(request) {
   for (const forbidden of ['with_skill', 'without_skill', 'with-skill', 'without-skill']) {
     if (serialized.includes(forbidden)) throw new GraderProtocolError(`true arm identity leaked into grader request: ${forbidden}`)
   }
-  if (serialized.includes('skill_contents') || serialized.includes('skillcontents')) {
-    throw new GraderProtocolError('skill contents leaked into grader request')
+  for (const forbidden of ['arm_label', 'treatment', 'control', 'skill_id', 'skill_path', 'skill_contents', 'skillcontents']) {
+    if (serialized.includes(forbidden)) throw new GraderProtocolError(`identity field leaked into grader request: ${forbidden}`)
   }
 }
 
@@ -150,6 +192,30 @@ function pairedCanary(canary) {
   return canary.pair ?? canary
 }
 
+function expectedForCanary(canary, armLabel) {
+  const perArm = canary.expected_pass_by_arm ?? canary.expectedByArm
+  if (perArm && typeof perArm === 'object' && typeof perArm[armLabel] === 'boolean') return perArm[armLabel]
+  return canaryExpected(canary)
+}
+
+function interleaveEntries(canaryEntries, evaluationEntries) {
+  const entries = []
+  const count = Math.max(canaryEntries.length, evaluationEntries.length)
+  for (let index = 0; index < count; index += 1) {
+    if (canaryEntries[index]) entries.push(canaryEntries[index])
+    if (evaluationEntries[index]) entries.push(evaluationEntries[index])
+  }
+  return entries
+}
+
+function requestLabel(bundleIndex, arm) {
+  return `pair-${bundleIndex}-${arm.blind_label}`
+}
+
+function assertionIds(grading) {
+  return grading.assertions.map((assertion) => assertion.id)
+}
+
 async function defaultArtifactWriter(artifactDir, name, content) {
   if (!artifactDir) throw new GraderConfigurationError('artifactWriter or artifactDir is required')
   await mkdir(artifactDir, { recursive: true })
@@ -207,7 +273,7 @@ export function createBlindModelGrader({
     let failure = null
     try {
       raw = await Promise.race([
-        Promise.resolve(execute(request, { modelId, phase, index })),
+        Promise.resolve(execute(request, { modelId, index })),
         timeoutPromise(timeoutMs),
       ])
       parsedResult = parseGrades(raw, request.arms.map((arm) => arm.label))
@@ -245,36 +311,45 @@ export function createBlindModelGrader({
   async function grade({ prompt, pairs, rubric, sourceEvidence = {}, outputArtifacts = {}, canaries, seed } = {}) {
     validateCanaries(canaries)
     if (!Array.isArray(pairs) || pairs.length === 0) throw new GraderProtocolError('at least one paired output is required')
+    const safePrompt = requiredString(prompt, 'prompt')
     if (!rubric || typeof rubric !== 'object' || Array.isArray(rubric)) throw new GraderProtocolError('independent rubric is required')
-    const bundles = createBlindArmBundles(pairs, { seed })
+    const safeRubric = sanitizeRubric(rubric)
+    const safeEvidence = sanitizeEvidence(sourceEvidence)
+    const safeArtifacts = sanitizeArtifactData(outputArtifacts, '$.output_artifacts')
+    const evaluationBundles = createBlindArmBundles(pairs, { seed })
+    const canaryBundles = createBlindArmBundles(canaries.map(pairedCanary), { seed: Number.isInteger(seed) ? seed + 1 : undefined })
+    const entries = interleaveEntries(
+      canaryBundles.map((bundle, index) => ({ kind: 'canary', bundle, canary: canaries[index] })),
+      evaluationBundles.map((bundle) => ({ kind: 'evaluation', bundle })),
+    )
+    const request = {
+      prompt: redact(safePrompt),
+      arms: entries.flatMap((entry, bundleIndex) => requestArms(entry.bundle, `pair-${bundleIndex}-`)),
+      rubric: safeRubric,
+      source_evidence: safeEvidence,
+      output_artifacts: safeArtifacts,
+      response_format: 'strict-json-grades',
+    }
+    const graderResults = await Promise.all(models.map((modelId, graderIndex) => invoke({
+      modelId,
+      request,
+      phase: 'blind-batch',
+      index: graderIndex,
+    })))
     const calibrationResults = []
-    for (let canaryIndex = 0; canaryIndex < canaries.length; canaryIndex += 1) {
-      const canaryBundle = createBlindArmBundles([pairedCanary(canaries[canaryIndex])], { seed: Number.isInteger(seed) ? seed + canaryIndex : undefined })[0]
-      const request = {
-        prompt: canaries[canaryIndex].prompt ?? prompt,
-        arms: requestArms(canaryBundle),
-        rubric: stripIdentityFields(rubric),
-        source_evidence: stripIdentityFields(sourceEvidence),
-        output_artifacts: stripIdentityFields(outputArtifacts),
-        response_format: 'strict-json-grades',
-      }
-      const graderResults = await Promise.all(models.map((modelId, graderIndex) => invoke({
-        modelId,
-        request,
-        phase: 'calibration',
-        index: canaryIndex * models.length + graderIndex,
-      })))
-      const expected = canaryExpected(canaries[canaryIndex])
-      const outcomes = graderResults.map((grader) => {
-        const grade = Object.values(grader.parsed)[0]
-        return Boolean(grade.passed ?? (grade.score >= 0.5)) === expected
+    for (const entry of entries.filter((item) => item.kind === 'canary')) {
+      const bundleIndex = entries.indexOf(entry)
+      const arms = entry.bundle.arms.map((arm) => {
+        const label = requestLabel(bundleIndex, arm)
+        const expected = expectedForCanary(entry.canary, arm.label)
+        const outcomes = graderResults.map((grader) => Boolean(grader.parsed[label].passed ?? (grader.parsed[label].score >= 0.5)) === expected)
+        return { arm: arm.label, expected, outcomes, correct: outcomes.filter(Boolean).length, total: outcomes.length }
       })
       calibrationResults.push({
-        id: canaries[canaryIndex].id,
-        expected,
-        outcomes,
-        correct: outcomes.filter(Boolean).length,
-        total: outcomes.length,
+        id: entry.canary.id,
+        arms,
+        correct: arms.reduce((sum, arm) => sum + arm.correct, 0),
+        total: arms.reduce((sum, arm) => sum + arm.total, 0),
         transcripts: graderResults.map((grader) => grader.transcript),
       })
     }
@@ -285,36 +360,25 @@ export function createBlindModelGrader({
       throw new CalibrationError(`calibration accuracy ${calibrationAccuracy} is below ${calibrationThreshold}`, { calibrationResults, calibrationAccuracy })
     }
 
-    const request = {
-      prompt,
-      arms: bundles.flatMap((bundle, bundleIndex) => requestArms(bundle, `pair-${bundleIndex}-`)),
-      rubric: stripIdentityFields(rubric),
-      source_evidence: stripIdentityFields(sourceEvidence),
-      output_artifacts: stripIdentityFields(outputArtifacts),
-      response_format: 'strict-json-grades',
-    }
-    const graderResults = await Promise.all(models.map((modelId, graderIndex) => invoke({
-      modelId,
-      request,
-      phase: 'evaluation',
-      index: graderIndex,
-    })))
     const adjudicated = []
     const contestedClaims = []
-    for (const bundle of bundles) {
+    for (const entry of entries.filter((item) => item.kind === 'evaluation')) {
+      const bundle = entry.bundle
       const firstGrades = {}
       const secondGrades = {}
-      const bundleIndex = bundles.indexOf(bundle)
+      const bundleIndex = entries.indexOf(entry)
       for (const arm of bundle.arms) {
-        const requestLabel = `pair-${bundleIndex}-${arm.blind_label}`
-        firstGrades[arm.label] = graderResults[0].parsed[requestLabel]
-        secondGrades[arm.label] = graderResults[1].parsed[requestLabel]
+        const label = requestLabel(bundleIndex, arm)
+        firstGrades[arm.label] = graderResults[0].parsed[label]
+        secondGrades[arm.label] = graderResults[1].parsed[label]
       }
       for (const arm of bundle.arms) {
         const first = firstGrades[arm.label]
         const second = secondGrades[arm.label]
-        const ids = new Set(first.assertions.map((item) => item.id))
-        if (ids.size !== second.assertions.length || second.assertions.some((item) => !ids.has(item.id))) {
+        const firstIds = assertionIds(first)
+        const secondIds = assertionIds(second)
+        if (new Set(firstIds).size !== firstIds.length || new Set(secondIds).size !== secondIds.length ||
+            firstIds.length !== secondIds.length || firstIds.some((id) => !secondIds.includes(id))) {
           throw new AgreementError(`grader assertion sets differ for ${bundle.bundle_id}/${arm.label}`)
         }
         const result = adjudicateTwoGraders(first, second)
@@ -332,7 +396,8 @@ export function createBlindModelGrader({
         }
       }
     }
-    const allKappas = adjudicated.map((result) => result.kappa).filter((value) => Number.isFinite(value))
+    const allKappas = adjudicated.map((result) => result.kappa)
+    assertFiniteKappas(allKappas)
     const meanKappa = allKappas.length === 0 ? null : allKappas.reduce((sum, value) => sum + value, 0) / allKappas.length
     const kappa = allKappas.length === 0 ? null : Math.min(...allKappas)
     if (kappa === null || kappa < agreementThreshold) {
@@ -343,7 +408,8 @@ export function createBlindModelGrader({
       accepted: true,
       calibration: { accuracy: calibrationAccuracy, threshold: calibrationThreshold, results: calibrationResults },
       grader_models: models,
-      bundles,
+      bundles: evaluationBundles,
+      blind_batch: entries.map((entry) => ({ kind: entry.kind, bundle_id: entry.bundle.bundle_id })),
       grader_results: graderResults,
       adjudicated,
       kappa,
