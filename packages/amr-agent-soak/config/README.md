@@ -58,6 +58,9 @@ until `integration.liveCache.reviewedReady=true` is set after that clearance.
 `createPollTimeoutMs` and `deletePollTimeoutMs` are explicit bounded overall
 deadlines for the multi-minute local-RP operations. ARM list calls follow
 same-origin `nextLink` pages with a maximum-page guard.
+`denylist` protects resource names/prefixes. `subscriptionDenylist` is a
+separate required list of backing/infrastructure subscription IDs; the target
+subscription is rejected before adapter import or any list/read/mutation call.
 
 When live mode is enabled, `scripts/start-soak.ps1` launches a third, independent
 resource janitor and records its verified process identity beside the controller and

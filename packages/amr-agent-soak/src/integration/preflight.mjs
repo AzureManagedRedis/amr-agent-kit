@@ -102,6 +102,7 @@ async function fakeCacheSmoke(root) {
     runId: 'integration',
     resourcePrefix: 'preflight-integration-',
     denylist: ['infrastructure-subscription'],
+    subscriptionDenylist: ['backing-infrastructure-subscription'],
     acknowledgedCustomerSubscription: true,
   }
   const catalogProvider = async () => ({

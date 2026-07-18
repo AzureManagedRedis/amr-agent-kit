@@ -297,6 +297,7 @@ test('instantiates the reviewed ARM adapter from gitignored runtime configuratio
     apiVersion: '2024-09-01-preview',
     ackCustomerSubscription: true,
     denylist: ['backing-infrastructure-subscription'],
+    subscriptionDenylist: ['different-backing-subscription'],
   }, null, 2)}\n`, 'utf8')
   try {
     const config = {
@@ -328,6 +329,34 @@ test('instantiates the reviewed ARM adapter from gitignored runtime configuratio
     assert.equal(modules.snapshot.liveAdapterValidation.createPollTimeoutMs, 1800000)
     assert.equal(modules.snapshot.liveAdapterValidation.deletePollTimeoutMs, 1200000)
     assert.equal(modules.snapshot.liveInputs.length, 2)
+
+    await writeFile(runtimeConfigPath, `${JSON.stringify({
+      subscriptionId: 'customer-subscription',
+      tenantId: 'test-tenant',
+      owner: 'tester',
+      runId: 'arm-adapter-factory',
+      resourceGroup: 'test-resource-group',
+      apiVersion: '2024-09-01-preview',
+      ackCustomerSubscription: true,
+      denylist: ['protected-resource-*'],
+      subscriptionDenylist: ['customer-subscription'],
+    }, null, 2)}\n`, 'utf8')
+    await assert.rejects(
+      () => createSoakModules({
+        config: {
+          ...config,
+          integration: {
+            ...config.integration,
+            liveCache: {
+              ...config.integration.liveCache,
+              adapterModule: 'packages/amr-agent-soak/test/integration/fixtures/throwing-arm-adapter.mjs',
+            },
+          },
+        },
+        processManager,
+      }),
+      /present in the runtime subscription denylist/,
+    )
   } finally {
     await rm(root, { recursive: true, force: true })
   }

@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
   KillSwitch,
   LeaseManager,
   ResourceLedger,
   loadRuntimeConfig,
   startJanitor,
+  readJanitorIdentity,
 } from '../cache/index.mjs'
+import { assertLiveRuntimeConfig } from './live-runtime.mjs'
 
 function option(args, name) {
   const index = args.indexOf(name)
@@ -16,7 +18,39 @@ function option(args, name) {
   return args[index + 1]
 }
 
-async function main() {
+function toClaimIdentity(identity) {
+  const startedAt = Date.parse(identity.startedAt)
+  return {
+    pid: identity.pid,
+    startedAt: Number.isFinite(startedAt) ? startedAt : identity.startedAt,
+    name: identity.name,
+    executablePath: identity.executablePath,
+    ...(identity.commandLineHash ? { commandHash: identity.commandLineHash } : {}),
+  }
+}
+
+export async function resolveJanitorClaim(identityFilePath, processManager) {
+  const own = toClaimIdentity(await processManager.identify(process.pid))
+  const existing = readJanitorIdentity(identityFilePath)
+  let resolvedExisting = null
+  if (existing && typeof existing.pid === 'number') {
+    try {
+      resolvedExisting = toClaimIdentity(await processManager.identify(existing.pid))
+    } catch {
+      resolvedExisting = null
+    }
+  }
+  return {
+    identity: own,
+    resolveIdentity(pid) {
+      if (pid === own.pid) return own
+      if (existing?.pid === pid) return resolvedExisting
+      return null
+    },
+  }
+}
+
+export async function main() {
   const args = process.argv.slice(2)
   const configPath = path.resolve(option(args, '--config'))
   const runDir = path.resolve(option(args, '--run-dir'))
@@ -41,16 +75,7 @@ async function main() {
     AMR_SOAK_KILL_SWITCH_PATH: path.join(runDir, 'KILL-SWITCH'),
   })
   if (runtimeConfig.runId !== controllerConfig.runId) throw new Error('Runtime cache config runId does not match controller runId')
-  if (!runtimeConfig.resourceGroup) throw new Error('Live cache runtime config requires resourceGroup')
-  if (runtimeConfig.denylist.length === 0) {
-    throw new Error('Live cache runtime config requires a non-empty infrastructure-subscription denylist')
-  }
-  if (!Number.isFinite(runtimeConfig.createPollTimeoutMs) || runtimeConfig.createPollTimeoutMs < 1000) {
-    throw new Error('Live cache runtime config requires createPollTimeoutMs >= 1000')
-  }
-  if (!Number.isFinite(runtimeConfig.deletePollTimeoutMs) || runtimeConfig.deletePollTimeoutMs < 1000) {
-    throw new Error('Live cache runtime config requires deletePollTimeoutMs >= 1000')
-  }
+  assertLiveRuntimeConfig(runtimeConfig)
   const configuredAdapter = live.adapterModule ??
     'packages/amr-agent-soak/src/cache/http-adapter.mjs'
   const adapterModulePath = path.isAbsolute(configuredAdapter)
@@ -77,8 +102,11 @@ async function main() {
   const cancellation = new AbortController()
   process.once('SIGTERM', () => cancellation.abort())
   process.once('SIGINT', () => cancellation.abort())
+  const { SystemProcessManager } = await import('../../dist/src/core/process.js')
+  const identityPath = path.join(runDir, 'resource-janitor.pid')
+  const claim = await resolveJanitorClaim(identityPath, new SystemProcessManager())
   await startJanitor({
-    pidFilePath: path.join(runDir, 'resource-janitor.pid'),
+    pidFilePath: identityPath,
     heartbeatFilePath: path.join(runDir, 'resource-janitor.heartbeat.json'),
     evidencePath: path.join(runDir, 'resource-janitor.evidence.json'),
     ledger,
@@ -88,10 +116,16 @@ async function main() {
     killSwitch,
     intervalMs: Number(live.janitorIntervalMs ?? 30_000),
     signal: cancellation.signal,
+    identity: claim.identity,
+    resolveIdentity: claim.resolveIdentity,
   })
 }
 
-main().catch((error) => {
-  process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`)
-  process.exitCode = 1
-})
+const isMain = process.argv[1] &&
+  path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))
+if (isMain) {
+  main().catch((error) => {
+    process.stderr.write(`${error instanceof Error ? error.stack ?? error.message : String(error)}\n`)
+    process.exitCode = 1
+  })
+}

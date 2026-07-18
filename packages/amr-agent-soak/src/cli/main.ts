@@ -18,7 +18,11 @@ import {
   DotnetTestProbe,
   type DotnetTestProbeConfig,
 } from "../executor/dotnet-test-probe.js";
-import { ProcessRegistry, SystemProcessManager } from "../core/process.js";
+import {
+  ProcessRegistry,
+  SystemProcessManager,
+  readActiveProcessRoots,
+} from "../core/process.js";
 
 interface ControllerFile extends SoakConfig {
   readonly scenarioModule?: string;
@@ -155,20 +159,29 @@ async function readPidRecord(runDir: string): Promise<PidRecord> {
 
 async function terminateRun(runDir: string, includeSupervisors: boolean): Promise<void> {
   const manager = new SystemProcessManager();
-  const registry = new ProcessRegistry(path.join(runDir, "processes.jsonl"));
-  const roots = [...(await registry.readActive())];
+  const primaryRegistryPath = path.join(runDir, "processes.jsonl");
+  const registered = [...(await readActiveProcessRoots([
+    primaryRegistryPath,
+    path.join(runDir, "blind-grader-processes.jsonl"),
+  ]))];
   if (includeSupervisors) {
     const pids = await readPidRecord(runDir);
-    roots.push(pids.controller, pids.janitor);
-    if (pids.resourceJanitor) roots.push(pids.resourceJanitor);
+    registered.push(
+      { identity: pids.controller, registryPath: primaryRegistryPath },
+      { identity: pids.janitor, registryPath: primaryRegistryPath },
+    );
+    if (pids.resourceJanitor) {
+      registered.push({ identity: pids.resourceJanitor, registryPath: primaryRegistryPath });
+    }
   }
   const handled = new Set<string>();
-  for (const root of roots) {
+  for (const { identity: root, registryPath } of registered) {
     const key = `${root.pid}\0${root.startedAt}`;
     if (handled.has(key)) {
       continue;
     }
     handled.add(key);
+    const registry = new ProcessRegistry(registryPath);
     const result = await manager.terminateTree(root, async (identities) => {
       for (const identity of identities) {
         await registry.recordStarted(`termination:${root.pid}`, identity);

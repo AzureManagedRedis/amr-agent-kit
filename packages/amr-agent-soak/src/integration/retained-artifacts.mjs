@@ -58,7 +58,7 @@ async function writeScaffold(root, scaffold) {
   }
 }
 
-async function copyArm(bundleRoot, arm, artifact) {
+async function copyArm(bundleRoot, arm, artifact, mode) {
   const armRoot = path.join(bundleRoot, arm)
   await mkdir(armRoot, { recursive: true })
   if (artifact?.trace?.cwd) {
@@ -80,6 +80,20 @@ async function copyArm(bundleRoot, arm, artifact) {
       contamination: artifact?.trace?.contamination ?? [],
     }, null, 2)}\n`,
   )
+  if (mode === 'live') {
+    const projectRoot = artifact?.trace?.cwd
+    if (!projectRoot) throw new Error(`Live ${arm} artifact has no project workspace`)
+    const configured = artifact.liveResultPath ?? 'live-result.json'
+    const source = path.isAbsolute(configured)
+      ? configured
+      : childPath(projectRoot, configured)
+    const relative = path.relative(projectRoot, source)
+    if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error(`Live ${arm} result escapes its project workspace`)
+    }
+    if (!(await stat(source)).isFile()) throw new Error(`Live ${arm} result is not a file`)
+    await cp(source, path.join(armRoot, 'live-result.json'), { force: true })
+  }
 }
 
 function reproductionScript(runId) {
@@ -104,6 +118,7 @@ export async function materializeRetainedBundle({
   scenario,
   artifacts,
   runtime,
+  mode = 'offline',
 }) {
   const bundleRoot = childPath(artifactRoot, path.join('retained-clients', pairId))
   await mkdir(bundleRoot, { recursive: true })
@@ -127,8 +142,8 @@ export async function materializeRetainedBundle({
   }
 
   await Promise.all([
-    copyArm(bundleRoot, 'with-skill', artifacts['with-skill']),
-    copyArm(bundleRoot, 'without-skill', artifacts['without-skill']),
+    copyArm(bundleRoot, 'with-skill', artifacts['with-skill'], mode),
+    copyArm(bundleRoot, 'without-skill', artifacts['without-skill'], mode),
   ])
   const patchesRoot = path.join(bundleRoot, 'patches')
   await mkdir(patchesRoot, { recursive: true })
@@ -150,7 +165,7 @@ export async function materializeRetainedBundle({
     runId: pairId.toLowerCase().replace(/[^a-z0-9-]+/g, '-'),
     client: clientInput?.clientId ?? 'source-guidance',
     scenario: scenario.id,
-    mode: 'offline',
+    mode,
     referenceGood: 'reference-good',
     bad: 'input-bad',
     withSkill: 'with-skill',
@@ -171,6 +186,7 @@ export async function materializeRetainedBundle({
     client_id: `${manifest.client}:${pairId}`,
     scenario: scenario.id,
     language: clientInput?.language ?? 'n/a',
+    mode,
     root: path.relative(artifactRoot, bundleRoot),
     variants: {
       'input-bad': 'input-bad',

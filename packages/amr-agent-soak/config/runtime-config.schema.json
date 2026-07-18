@@ -10,7 +10,8 @@
     "runId",
     "resourceGroup",
     "ackCustomerSubscription",
-    "denylist"
+    "denylist",
+    "subscriptionDenylist"
   ],
   "properties": {
     "subscriptionId": { "type": "string", "minLength": 1 },
@@ -23,6 +24,11 @@
     "deletePollTimeoutMs": { "type": "integer", "minimum": 1000 },
     "ackCustomerSubscription": { "type": "boolean", "const": true },
     "denylist": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "subscriptionDenylist": {
       "type": "array",
       "minItems": 1,
       "items": { "type": "string", "minLength": 1 }

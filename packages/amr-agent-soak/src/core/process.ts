@@ -481,3 +481,27 @@ export class ProcessRegistry {
     return [...active.values()];
   }
 }
+
+export interface RegisteredProcessRoot {
+  readonly identity: ProcessIdentity;
+  readonly registryPath: string;
+}
+
+export async function readActiveProcessRoots(
+  registryPaths: ReadonlyArray<string>,
+): Promise<ReadonlyArray<RegisteredProcessRoot>> {
+  const roots: RegisteredProcessRoot[] = [];
+  const seen = new Set<string>();
+  for (const registryPath of registryPaths) {
+    const registry = new ProcessRegistry(registryPath);
+    for (const identity of await registry.readActive()) {
+      const key = identityKey(identity);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      roots.push({ identity, registryPath });
+    }
+  }
+  return roots;
+}

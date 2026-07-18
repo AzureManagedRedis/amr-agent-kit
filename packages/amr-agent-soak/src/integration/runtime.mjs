@@ -6,6 +6,7 @@ import { FileExecutionArtifactCache, IntegrationReporter } from './adapters.mjs'
 import { loadRuntimeConfig } from '../cache/config.mjs'
 import { createEvidenceRuntime } from './evidence.mjs'
 import { RegistryGrader } from './grading-adapter.mjs'
+import { assertLiveRuntimeConfig } from './live-runtime.mjs'
 import { loadSoakRegistry, RegistryScenarioProvider, defaults } from './registry.mjs'
 
 async function hashTree(root) {
@@ -100,14 +101,7 @@ export async function createSoakModules({ config, processManager }) {
       AMR_SOAK_RUNTIME_CONFIG_PATH: runtimeConfigPath,
       AMR_SOAK_RUN_ID: config.runId,
     })
-    if (!runtimeConfig.resourceGroup) throw new Error('Live cache runtime config requires resourceGroup')
-    if (runtimeConfig.denylist.length === 0) throw new Error('Live cache runtime config requires a non-empty infrastructure-subscription denylist')
-    if (!Number.isFinite(runtimeConfig.createPollTimeoutMs) || runtimeConfig.createPollTimeoutMs < 1000) {
-      throw new Error('Live cache runtime config requires createPollTimeoutMs >= 1000')
-    }
-    if (!Number.isFinite(runtimeConfig.deletePollTimeoutMs) || runtimeConfig.deletePollTimeoutMs < 1000) {
-      throw new Error('Live cache runtime config requires deletePollTimeoutMs >= 1000')
-    }
+    assertLiveRuntimeConfig(runtimeConfig)
     const adapterPath = resolvePath(repositoryRoot, adapterModule)
     const adapterExports = await import(pathToFileURL(adapterPath).href)
     const adapter = typeof adapterExports.createLocalRpAdapter === 'function'

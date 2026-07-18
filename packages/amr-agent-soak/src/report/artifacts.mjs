@@ -83,7 +83,9 @@ export async function checkArtifactCompleteness(root, client) {
     }
   }
   for (const arm of ['with-skill', 'without-skill']) {
-    for (const artifact of ['transcript.md', 'build-result.json']) {
+    const armArtifacts = ['transcript.md', 'build-result.json']
+    if (normalized.mode === 'live') armArtifacts.push('live-result.json')
+    for (const artifact of armArtifacts) {
       const relative = path.join(normalized.variants[arm] ?? arm, artifact)
       try {
         await stat(childPath(root, path.join(normalized.root, relative)))
@@ -125,7 +127,9 @@ export async function buildClientArtifactIndex({ root, clients = [] }) {
         patches: path.join(normalized.root, normalized.patches ?? 'patches'),
         transcripts: ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'transcript.md')),
         build_logs: ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'build-result.json')),
-        live_logs: ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'live-result.json')),
+        live_logs: normalized.mode === 'live'
+          ? ['with-skill', 'without-skill'].map((arm) => path.join(normalized.root, normalized.variants[arm] ?? arm, 'live-result.json'))
+          : [],
         hashes: path.join(normalized.root, normalized.hashes ?? 'hashes.json'),
         reproduction: path.join(normalized.root, normalized.reproduction ?? 'reproduce.ps1'),
       },

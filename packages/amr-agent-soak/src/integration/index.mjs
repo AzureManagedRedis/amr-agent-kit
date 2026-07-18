@@ -1,6 +1,7 @@
 export * from './adapters.mjs'
 export * from './evidence.mjs'
 export * from './grading-adapter.mjs'
+export * from './live-runtime.mjs'
 export * from './registry.mjs'
 export * from './retained-artifacts.mjs'
 export { createSoakModules } from './runtime.mjs'

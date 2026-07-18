@@ -15,6 +15,18 @@ const GRADING_DEPENDENCIES = [
   path.join(PACKAGE_ROOT, 'src', 'grading', 'schema.mjs'),
   path.join(PACKAGE_ROOT, 'src', 'grading', 'statistics.mjs'),
   path.join(PACKAGE_ROOT, 'src', 'report', 'artifacts.mjs'),
+  path.join(PACKAGE_ROOT, 'src', 'executor', 'copilot-cli.ts'),
+  path.join(PACKAGE_ROOT, 'src', 'core', 'isolation.ts'),
+  path.join(PACKAGE_ROOT, 'src', 'core', 'process.ts'),
+  path.join(PACKAGE_ROOT, 'src', 'core', 'hash.ts'),
+  path.join(PACKAGE_ROOT, 'src', 'core', 'atomic.ts'),
+  path.join(PACKAGE_ROOT, 'dist', 'src', 'executor', 'copilot-cli.js'),
+  path.join(PACKAGE_ROOT, 'dist', 'src', 'core', 'isolation.js'),
+  path.join(PACKAGE_ROOT, 'dist', 'src', 'core', 'process.js'),
+  path.join(PACKAGE_ROOT, 'dist', 'src', 'core', 'hash.js'),
+  path.join(PACKAGE_ROOT, 'dist', 'src', 'core', 'atomic.js'),
+  path.join(PACKAGE_ROOT, 'package-lock.json'),
+  path.join(PACKAGE_ROOT, 'tsconfig.json'),
 ]
 
 async function loadCoreRuntime() {
@@ -26,12 +38,21 @@ async function loadCoreRuntime() {
   return { CopilotCliExecutor, createIsolatedWorkspace, ProcessRegistry }
 }
 
-async function combinedModuleHash() {
+async function combinedModuleProvenance() {
   const current = fileURLToPath(import.meta.url)
   const hash = createHash('sha256')
-  hash.update(await readFile(current))
-  for (const dependency of GRADING_DEPENDENCIES) hash.update(await readFile(dependency))
-  return hash.digest('hex')
+  const dependencies = []
+  for (const dependency of [current, ...GRADING_DEPENDENCIES]) {
+    const bytes = await readFile(dependency)
+    const sha256 = createHash('sha256').update(bytes).digest('hex')
+    hash.update(path.relative(PACKAGE_ROOT, dependency).split(path.sep).join('/'))
+    hash.update(bytes)
+    dependencies.push({
+      file: path.relative(PACKAGE_ROOT, dependency).split(path.sep).join('/'),
+      sha256,
+    })
+  }
+  return { moduleHash: hash.digest('hex'), dependencies }
 }
 
 function safePart(value) {
@@ -119,7 +140,8 @@ export async function createBlindGrader({
   if (!Array.isArray(modelIds) || modelIds.length !== 2) {
     throw new Error('Copilot blind grader requires exactly two configured modelIds')
   }
-  const moduleHash = await combinedModuleHash()
+  const provenance = await combinedModuleProvenance()
+  const moduleHash = provenance.moduleHash
   const injectedModelExecutor = typeof config.modelExecutor === 'function' ? config.modelExecutor : undefined
   const core = injectedModelExecutor ? undefined : await loadCoreRuntime()
   const registry = core
@@ -236,6 +258,7 @@ export async function createBlindGrader({
       moduleHash,
       apiVersion: direct.apiVersion,
       modelIds: [...modelIds],
+      dependencies: provenance.dependencies,
     },
     async assertCalibration(scenarios) {
       const results = []

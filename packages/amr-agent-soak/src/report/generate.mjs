@@ -109,11 +109,17 @@ function reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement 
       `[without-skill transcript](${htmlEscape(entry.links.transcripts[1])})`,
       `[with-skill build log](${htmlEscape(entry.links.build_logs[0])})`,
       `[without-skill build log](${htmlEscape(entry.links.build_logs[1])})`,
-      `[with-skill live log](${htmlEscape(entry.links.live_logs[0])})`,
-      `[without-skill live log](${htmlEscape(entry.links.live_logs[1])})`,
       `[hashes](${htmlEscape(entry.links.hashes)})`,
       `[reproduce](${htmlEscape(entry.links.reproduction)})`,
     ]
+    if (entry.links.live_logs.length === 2) {
+      links.splice(
+        links.length - 2,
+        0,
+        `[with-skill live log](${htmlEscape(entry.links.live_logs[0])})`,
+        `[without-skill live log](${htmlEscape(entry.links.live_logs[1])})`,
+      )
+    }
     lines.splice(lines.length - 2, 0, `- \`${htmlEscape(entry.client_id)}\`: ${links.join(', ')}`)
   }
   if (fixes.length === 0) lines.push('No candidate fixes were generated.')

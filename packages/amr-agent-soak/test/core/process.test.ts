@@ -9,6 +9,7 @@ import {
   identityMatches,
   planTermination,
   ProcessRegistry,
+  readActiveProcessRoots,
   type ProcessSnapshot,
   type KillableChild,
   waitForChildTermination,
@@ -69,6 +70,24 @@ test("durably tracks process start and exit identities", async (context) => {
   const resumedIdentity = processSnapshot(124, 1, "2026-07-17T00:01:00.000Z");
   await registry.recordStarted("resumed", resumedIdentity);
   assert.deepEqual(await registry.readActive(), [resumedIdentity]);
+});
+
+test("reconciles active roots from controller and blind-grader registries", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "amr-soak-process-registries-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const primaryPath = path.join(root, "processes.jsonl");
+  const graderPath = path.join(root, "blind-grader-processes.jsonl");
+  const primary = new ProcessRegistry(primaryPath);
+  const grader = new ProcessRegistry(graderPath);
+  const controllerChild = processSnapshot(301, 1, "2026-07-17T00:00:00.000Z");
+  const graderChild = processSnapshot(302, 1, "2026-07-17T00:00:01.000Z");
+  await primary.recordStarted("controller", controllerChild);
+  await grader.recordStarted("grader", graderChild);
+  const roots = await readActiveProcessRoots([primaryPath, graderPath]);
+  assert.deepEqual(
+    roots.map((entry) => [entry.identity.pid, path.basename(entry.registryPath)]).sort(),
+    [[301, "processes.jsonl"], [302, "blind-grader-processes.jsonl"]],
+  );
 });
 
 test("abort falls back to exact direct-child escalation and has a hard deadline", async () => {

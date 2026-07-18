@@ -131,6 +131,7 @@ export class IntegrationReporter {
         scenario,
         artifacts,
         runtime: this.runtime,
+        mode: this.integrationConfig.liveCache?.enabled === true ? 'live' : 'offline',
       }))
     }
     const metadata = scenarios.map((scenario) => scenario.metadata.evalMetadata)

@@ -173,7 +173,7 @@ test('fails calibration canaries instead of silently accepting drift', () => {
   assert.throws(() => assertCalibrationCanaries(badCanary), /Calibration canary failure/)
 })
 
-async function createRetainedClient(root) {
+async function createRetainedClient(root, { mode = 'offline', includeLiveResults = false } = {}) {
   const clientRoot = path.join(root, 'client-1')
   for (const variant of ['input-bad', 'reference-good', 'with-skill', 'without-skill']) {
     await mkdir(path.join(clientRoot, variant), { recursive: true })
@@ -186,8 +186,11 @@ async function createRetainedClient(root) {
   for (const arm of ['with-skill', 'without-skill']) {
     await writeFile(path.join(clientRoot, arm, 'transcript.md'), 'redacted transcript')
     await writeFile(path.join(clientRoot, arm, 'build-result.json'), '{}')
+    if (includeLiveResults) {
+      await writeFile(path.join(clientRoot, arm, 'live-result.json'), '{"status":"ok"}')
+    }
   }
-  return { client_id: 'client-1', root: 'client-1' }
+  return { client_id: 'client-1', root: 'client-1', mode }
 }
 
 test('reports incomplete retained artifact trees', async () => {
@@ -195,6 +198,24 @@ test('reports incomplete retained artifact trees', async () => {
   const index = await buildClientArtifactIndex({ root, clients: [{ client_id: 'missing', root: 'missing' }] })
   assert.equal(index.complete, false)
   assert.ok(index.entries[0].completeness.missing.includes('reference-good'))
+})
+
+test('requires live results only for live retained bundles and omits offline live links', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'amr-soak-live-artifacts-'))
+  const offline = await createRetainedClient(root)
+  const offlineIndex = await buildClientArtifactIndex({ root, clients: [offline] })
+  assert.equal(offlineIndex.complete, true)
+  assert.deepEqual(offlineIndex.entries[0].links.live_logs, [])
+
+  const live = { ...offline, mode: 'live' }
+  const missingLive = await buildClientArtifactIndex({ root, clients: [live] })
+  assert.equal(missingLive.complete, false)
+  assert.ok(missingLive.entries[0].completeness.missing.includes('with-skill/live-result.json'))
+  await writeFile(path.join(root, 'client-1', 'with-skill', 'live-result.json'), '{}')
+  await writeFile(path.join(root, 'client-1', 'without-skill', 'live-result.json'), '{}')
+  const completeLive = await buildClientArtifactIndex({ root, clients: [live] })
+  assert.equal(completeLive.complete, true)
+  assert.equal(completeLive.entries[0].links.live_logs.length, 2)
 })
 
 test('generates complete reports with excluded runs and escaped static HTML', async () => {
@@ -236,6 +257,7 @@ test('generates complete reports with excluded runs and escaped static HTML', as
   assert.ok(!written.get('benchmark.md').includes('do-not-publish'))
   assert.ok(written.get('report.md').includes('0.85'))
   assert.ok(written.get('report.md').includes('0.20'))
+  assert.ok(!written.get('report.md').includes('live log'))
 })
 
 test('deterministic grader separates safety from efficacy', () => {

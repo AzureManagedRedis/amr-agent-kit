@@ -9,6 +9,9 @@
   "deletePollTimeoutMs": 1200000,
   "ackCustomerSubscription": true,
   "denylist": [
-    "replace-with-each-backing-infrastructure-subscription"
+    "replace-with-protected-resource-name-or-prefix*"
+  ],
+  "subscriptionDenylist": [
+    "replace-with-each-backing-infrastructure-subscription-id"
   ]
 }

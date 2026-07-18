@@ -64,6 +64,15 @@ test('bridges paired model grading through calibration and preserves both raw gr
     assert.equal(calibration.passed, true)
     assert.deepEqual(calibration.modelIds, ['grader-a', 'grader-b'])
     assert.equal(calibration.kappa, 1)
+    const provenanceFiles = new Set(grader.snapshot.dependencies.map((item) => item.file))
+    for (const required of [
+      'src/core/hash.ts',
+      'src/core/atomic.ts',
+      'dist/src/core/hash.js',
+      'dist/src/core/atomic.js',
+    ]) {
+      assert.ok(provenanceFiles.has(required), required)
+    }
 
     const good = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'pass').answer_excerpt
     const bad = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail').answer_excerpt
