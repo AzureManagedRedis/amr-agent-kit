@@ -1,0 +1,2 @@
+{ "invariant": "live-fact-requires-probe", "expect": "fail", "description": "NoCluster live-probe-resolved fact but no live probe declared for evidence.",
+  "input": { "referencesLiveProbeFact": true, "hasLiveProbe": false } }

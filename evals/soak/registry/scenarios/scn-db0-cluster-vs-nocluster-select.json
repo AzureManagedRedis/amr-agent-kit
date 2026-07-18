@@ -27,7 +27,7 @@
   "correctness_rubric_ref": "rub-db0-cor",
   "actionability_rubric_ref": "rub-db0-act",
   "baseline_leakage_canaries": ["blc-db0-baseline", "blc-db0-internal-leak"],
-  "grader_canaries": ["grc-db0-good", "grc-db0-bad"],
+  "grader_canaries": ["grc-db0-good", "grc-db0-bad", "grc-db0-blanketdb0"],
   "mutation_selection_ref": "mut-db0",
   "acceptance_ref": "acc-strict"
 }

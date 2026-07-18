@@ -145,7 +145,10 @@ const INVARIANTS = {
   },
   // 7. Every probe cohort_ref must be declared in the scenario's probe_cohorts (no under-declaration).
   "no-under-declared-cohort": (i) =>
-    (i.probeCohortRefs || []).filter((c) => !(i.declaredCohorts || []).includes(c)).map((c) => `probe cohort '${c}' not declared in scenario probe_cohorts`)
+    (i.probeCohortRefs || []).filter((c) => !(i.declaredCohorts || []).includes(c)).map((c) => `probe cohort '${c}' not declared in scenario probe_cohorts`),
+  // 8. A scenario grounded in a live-probe-resolved fact (e.g. NoCluster SELECT) must declare a live probe for evidence.
+  "live-fact-requires-probe": (i) =>
+    i.referencesLiveProbeFact && !i.hasLiveProbe ? ["scenario references a live-probe-resolved fact but declares no live_probes for evidence"] : []
 };
 
 
@@ -304,6 +307,9 @@ for (const { scn, entry } of scenarios) {
 
   const referencesContestedFact = facts.some((f) => !!f.contested);
   inv("scenario-contested-authority", { referencesContestedFact, authority: scn.authority }, w);
+
+  const referencesLiveProbeFact = facts.some((f) => locatorKindById[f.locator_ref] === "live-probe");
+  inv("live-fact-requires-probe", { referencesLiveProbeFact, hasLiveProbe: (scn.live_probes || []).length > 0 }, w);
 
   const defectRefs = [];
   for (const art of scn.input_artifacts || []) for (const d of art.embedded_defects || []) defectRefs.push(d.source_fact_ref);

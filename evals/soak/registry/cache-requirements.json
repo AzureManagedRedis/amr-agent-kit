@@ -24,7 +24,7 @@
     "applies_when": "Memory/OOM sizing and pure-cache workloads.",
     "verification": "Answer selects and justifies an eviction policy rather than leaving it defaulted or noeviction by accident." },
   { "id": "cch-hashtag-colocation", "category": "key-design", "severity": "high",
-    "requirement": "Keys used together in multi-key or Lua operations share a hash tag so they colocate on one slot under a clustered policy.",
-    "applies_when": "Clustered cache policy with multi-key or transactional access.",
-    "verification": "Answer uses {hash-tag} colocation for co-accessed keys and avoids cross-slot multi-key ops." }
+    "requirement": "Keys used together in atomic transactions, Lua scripts using KEYS, or STORE/destination-key operations share a hash tag so they colocate on one slot under a clustered policy.",
+    "applies_when": "Clustered cache policy with atomic multi-key, transactional, Lua-with-KEYS, or STORE access.",
+    "verification": "Answer uses {hash-tag} colocation for co-accessed keys in atomic/transaction/Lua/STORE operations and does not assume every non-atomic multi-key command needs one." }
 ]

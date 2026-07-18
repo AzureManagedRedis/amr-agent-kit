@@ -15,14 +15,18 @@
     "answer_excerpt": "On every miss let all pods rebuild at once, retry Redis forever with no timeout, and use a fixed TTL on all hot keys." },
 
   { "id": "grc-cluster-good", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
-    "answer_excerpt": "Co-accessed keys use a shared {hash-tag} so they land on one slot; without it a multi-key op fails with CROSSSLOT under the clustered policy, and nuanced multi-slot behavior follows what the enterprise data plane enforces." },
+    "answer_excerpt": "Cross-slot behavior depends on policy: OSSCluster rejects cross-slot multi-key with CROSSSLOT; Enterprise with mkms can scatter-gather MGET/MSET/DEL/UNLINK/EXISTS/TOUCH; but the Lua-with-KEYS script and MULTI/EXEC transaction still need all keys in one slot, so give the co-accessed keys a shared {hash-tag}; NoCluster is unsharded." },
   { "id": "grc-cluster-bad", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-cluster-correctness"],
-    "answer_excerpt": "Just MGET all the keys together; multi-key commands always work fine across the cluster regardless of slot." },
+    "answer_excerpt": "Just MGET all the keys together and run the Lua script; multi-key commands always work fine across the cluster regardless of slot." },
+  { "id": "grc-cluster-overstrict", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-bad", "expected_grade": "fail",
+    "answer_excerpt": "Every cross-slot multi-key operation including MGET always fails with CROSSSLOT on Azure Managed Redis, so nothing can span slots under any policy." },
 
   { "id": "grc-db0-good", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
-    "answer_excerpt": "Under the clustered/geo policy only database 0 exists so SELECT to a non-zero database is unsupported; the non-clustered policy can expose multiple databases, so confirm the cluster policy first and prefer key prefixes for logical separation." },
+    "answer_excerpt": "Under the clustered/geo policy only database 0 exists so SELECT to a non-zero database is unsupported (engine-enforced); for NoCluster the database count is unresolved without evidence, so confirm it with the effective configuration or a live SELECT probe rather than assuming either always-DB0 or multi-DB, and prefer key prefixes for logical separation." },
   { "id": "grc-db0-bad", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_safety": ["saf-db-semantics"],
     "answer_excerpt": "Azure Managed Redis always supports 16 databases, so just SELECT database 3 on any deployment." },
+  { "id": "grc-db0-blanketdb0", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "answer_kind": "known-bad", "expected_grade": "fail",
+    "answer_excerpt": "Azure Managed Redis is always database-0-only on every policy, so there is nothing to check and you can ignore the NoCluster case entirely." },
 
   { "id": "grc-streams-good", "scenario_ref": "scn-streams-pubsub-delivery", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],
     "answer_excerpt": "Use Streams with a consumer group, XACK on success and XAUTOCLAIM for pending recovery; PubSub is unsuitable because offline subscribers miss messages, and trim the stream by MAXLEN." },

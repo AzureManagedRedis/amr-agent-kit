@@ -8,7 +8,7 @@
   { "id": "blc-cluster-baseline", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
     "signal": "enterprise data plane enforces" },
   { "id": "blc-db0-baseline", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
-    "signal": "non-clustered policy can expose multiple databases" },
+    "signal": "unresolved without the effective configuration or a live SELECT probe" },
   { "id": "blc-streams-baseline", "scenario_ref": "scn-streams-pubsub-delivery", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
     "signal": "XAUTOCLAIM for pending recovery" },
   { "id": "blc-mem-baseline", "scenario_ref": "scn-memory-oom-eviction", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",

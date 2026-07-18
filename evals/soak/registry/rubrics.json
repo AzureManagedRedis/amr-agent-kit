@@ -41,8 +41,8 @@
   { "id": "rub-cluster-cor", "kind": "correctness", "description": "Cluster-policy correctness.",
     "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.85 },
     "criteria": [
-      { "id": "c1", "statement": "Explains that multi-key ops across slots fail with CROSSSLOT under a clustered policy.", "weight": 0.4, "required": true, "source_fact_ref": "src-cluster-crossslot" },
-      { "id": "c2", "statement": "Uses hash tags to colocate co-accessed keys for multi-key/Lua operations.", "weight": 0.3, "required": true, "source_fact_ref": "src-cluster-hashtag" },
+      { "id": "c1", "statement": "Explains that cross-slot multi-key behavior is policy-parameterized: OSSCluster strictly rejects it with CROSSSLOT, Enterprise with mkms can scatter-gather selected non-atomic commands, and transactions/Lua-with-KEYS/STORE commands still require one slot.", "weight": 0.4, "required": true, "source_fact_ref": "src-cluster-crossslot" },
+      { "id": "c2", "statement": "Uses hash tags to co-locate keys for the atomic, transactional, Lua-with-KEYS, or STORE cross-key operations that require a single slot.", "weight": 0.3, "required": true, "source_fact_ref": "src-cluster-hashtag" },
       { "id": "c3", "statement": "Defers nuanced multi-key multi-slot behavior to what the enterprise data plane enforces rather than the OSS assumption.", "weight": 0.3, "required": false, "source_fact_ref": "src-cluster-mkms-nuance" }
     ] },
   { "id": "rub-cluster-act", "kind": "actionability", "description": "Cluster actionability.",
@@ -55,7 +55,7 @@
     "scoring": { "method": "weighted-with-required-gate", "pass_threshold": 0.9 },
     "criteria": [
       { "id": "c1", "statement": "States that a clustered/geo/CRDB deployment is database-0-only and SELECT to non-zero is unsupported.", "weight": 0.4, "required": true, "source_fact_ref": "src-db0-clustered-single-db" },
-      { "id": "c2", "statement": "Correctly qualifies that a non-clustered policy may expose multiple databases, rejecting the blanket always-DB0 assumption.", "weight": 0.4, "required": true, "source_fact_ref": "src-db0-nocluster-select" },
+      { "id": "c2", "statement": "Treats NoCluster multi-database availability as unresolved without effective-config or live-SELECT evidence, rejecting BOTH the blanket always-database-0 and the blanket multi-database claims.", "weight": 0.4, "required": true, "source_fact_ref": "src-db0-nocluster-select" },
       { "id": "c3", "statement": "Recommends key prefixes for logical separation instead of relying on multiple databases.", "weight": 0.2, "required": false, "source_fact_ref": "src-db0-keyprefix-guidance" }
     ] },
   { "id": "rub-db0-act", "kind": "actionability", "description": "DB0 actionability.",

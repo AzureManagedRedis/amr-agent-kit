@@ -1,0 +1,2 @@
+{ "invariant": "live-fact-requires-probe", "expect": "pass", "description": "Scenario grounded in a live-probe-resolved fact declares a live probe for evidence.",
+  "input": { "referencesLiveProbeFact": true, "hasLiveProbe": true } }

@@ -52,6 +52,9 @@ derivations cannot silently drift):
 7. **`no-under-declared-cohort`** — every cohort a live probe binds must be declared in its
    scenario's `probe_cohorts` (extra declared cohorts are allowed; see over-declaration
    below).
+8. **`live-fact-requires-probe`** — a scenario grounded in a fact that resolves through the
+   `live-probe` locator (e.g. NoCluster `SELECT` availability) must declare a live probe, so
+   the truth is never graded without live/effective-config evidence.
 
 ## Correctness vs. efficacy — two separate things
 
@@ -91,11 +94,21 @@ Every fact declares an `authority`: `cp-unit-test`, `dp-behavior`, `redisinc-ent
 is marked `contested` and carries a `contested` block that lists the competing claims, names the
 **winning authority**, and records the rationale. Examples in this registry:
 
-- **DB0 vs SELECT** (`src-db0-nocluster-select`): the common assumption "AMR is always
-  database-0-only" loses to the CP unit test, which distinguishes clustered database-0-only
-  behavior from non-clustered multi-database behavior.
+- **NoCluster DB0 vs SELECT** (`src-db0-nocluster-select`): both the blanket "AMR is always
+  database-0-only" assumption and a blanket "NoCluster has multiple databases" claim lose to a
+  **live SELECT probe / effective configuration**. The control and data planes are silent on the
+  database count; a standalone non-clustered engine defaults to multiple databases absent an
+  override, but the effective AMR/ACRE behavior is unresolved until probed — so neither extreme is
+  graded as verified without evidence. The clustered/CRDB database-0-only rule
+  (`src-db0-clustered-single-db`) is separately engine-proven (`redisinc-enterprise`).
+- **Cross-slot multi-key** (`src-cluster-crossslot`): policy-parameterized and attributed to the
+  Redis Enterprise engine. OSSCluster strictly rejects cross-slot multi-key with CROSSSLOT;
+  Enterprise with effective mkms can scatter-gather selected non-atomic commands
+  (MGET/MSET/DEL/UNLINK/EXISTS/TOUCH); transactions, Lua-with-KEYS, and STORE commands still need
+  one slot; NoCluster is unsharded. Hash tags (`src-cluster-hashtag`) are the portable co-location
+  mechanism required for the atomic/transaction/Lua/STORE cases, not for every non-atomic command.
 - **Multi-key multi-slot** (`src-cluster-mkms-nuance`): the generic OSS-cluster assumption loses
-  to what the enterprise data plane actually enforces.
+  to what the enterprise engine actually enforces.
 - **SKU sizing** (`src-sku-metric-based`): mapping a legacy SKU label loses to metric-based
   sizing per AMR docs.
 - **CRDB consistency** (`src-crdb-active-active`): "strong single-primary" loses to the

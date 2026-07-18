@@ -19,10 +19,10 @@
   { "id": "src-stampede-ttl-jitter", "domain": "stampede", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
     "statement": "Cache TTLs need per-key jitter to prevent synchronized expiry of many hot keys at once." },
 
-  { "id": "src-cluster-crossslot", "domain": "cluster-policy", "authority": "dp-behavior", "locator_ref": "loc-dp-source", "stability": "stable", "public_safe": true,
-    "statement": "Under a clustered cache policy, a multi-key operation whose keys map to different slots is rejected with a CROSSSLOT error." },
+  { "id": "src-cluster-crossslot", "domain": "cluster-policy", "authority": "redisinc-enterprise", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
+    "statement": "Cross-slot multi-key behavior is policy-parameterized: OSSCluster strictly rejects cross-slot multi-key operations with CROSSSLOT; Enterprise clustering with effective multi-key-multi-slot support can scatter-gather selected non-atomic commands (MGET, MSET, DEL, UNLINK, EXISTS, TOUCH) across slots; MULTI/EXEC/WATCH transactions, Lua scripts that use KEYS, and commands with a STORE or destination key still require all keys in one slot; a NoCluster deployment is unsharded so the concept does not apply." },
   { "id": "src-cluster-hashtag", "domain": "cluster-policy", "authority": "redis-oss-docs", "locator_ref": "loc-redis-oss-docs", "stability": "stable", "public_safe": true,
-    "statement": "A hash tag colocates keys onto a single slot so multi-key and Lua operations can execute together." },
+    "statement": "A hash tag is the portable mechanism for co-locating keys on a single slot and is required for atomic transactions, Lua scripts that use KEYS, and STORE or destination-key commands across keys; it is not required for the selected non-atomic multi-key commands that Enterprise clustering can scatter-gather." },
   { "id": "src-cluster-mkms-nuance", "domain": "cluster-policy", "authority": "contested", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
     "statement": "Whether specific multi-key, multi-slot commands are permitted is determined by what the enterprise data plane enforces, not by the generic OSS-cluster assumption.",
     "contested": {
@@ -33,17 +33,17 @@
       "winning_authority": "redisinc-enterprise",
       "rationale": "The observable behavior is set by the enterprise data plane the deployment runs, so its enforcement is authoritative over the generic OSS assumption." } },
 
-  { "id": "src-db0-clustered-single-db", "domain": "db0-select", "authority": "cp-unit-test", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
-    "statement": "Under a clustered cache policy (including geo/CRDB), only logical database 0 is available and SELECT to a non-zero database is unsupported." },
-  { "id": "src-db0-nocluster-select", "domain": "db0-select", "authority": "contested", "locator_ref": "loc-cp-unit-test", "stability": "stable", "public_safe": true,
-    "statement": "Under a non-clustered cache policy, multiple logical databases and SELECT may be available, contrary to a blanket assumption that Azure Managed Redis is always database-0-only.",
+  { "id": "src-db0-clustered-single-db", "domain": "db0-select", "authority": "redisinc-enterprise", "locator_ref": "loc-redisinc-source", "stability": "stable", "public_safe": true,
+    "statement": "Under a clustered cache policy (including geo/CRDB), only logical database 0 is available and SELECT to a non-zero database is unsupported; this database-0-only behavior is enforced by the Redis Enterprise engine." },
+  { "id": "src-db0-nocluster-select", "domain": "db0-select", "authority": "contested", "locator_ref": "loc-live-probe", "stability": "volatile", "public_safe": true,
+    "statement": "Under a non-clustered (NoCluster) policy, multi-database SELECT availability is unresolved without evidence: the control and data planes are silent on the database count, and although a standalone non-clustered Redis engine defaults to multiple logical databases absent an override, the effective AMR/ACRE behavior must be confirmed by the effective configuration or a live SELECT probe.",
     "contested": {
       "competing_claims": [
         { "claim": "Azure Managed Redis is always database-0-only regardless of cluster policy.", "asserted_by": "common-assumption" },
-        { "claim": "Multi-database SELECT availability depends on the cluster policy; the non-clustered policy can expose multiple databases.", "asserted_by": "cp-unit-test" }
+        { "claim": "A standalone non-clustered engine defaults to multiple logical databases unless the database count is overridden.", "asserted_by": "redisinc-enterprise" }
       ],
-      "winning_authority": "cp-unit-test",
-      "rationale": "The control-plane validation asserted by unit tests distinguishes clustered database-0-only behavior from non-clustered multi-database behavior." } },
+      "winning_authority": "live-probe",
+      "rationale": "Neither the control plane nor the data plane asserts a database count for NoCluster; only the effective configuration or a live SELECT probe resolves whether multiple databases are available, so neither a blanket database-0-only nor a blanket multi-database claim is verified without that evidence." } },
   { "id": "src-db0-keyprefix-guidance", "domain": "db0-select", "authority": "amr-docs", "locator_ref": "loc-amr-docs", "stability": "stable", "public_safe": true,
     "statement": "Use key prefixes for logical separation rather than relying on multiple logical databases." },
 

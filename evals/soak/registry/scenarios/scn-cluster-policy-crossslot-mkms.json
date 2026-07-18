@@ -11,11 +11,11 @@
     {
       "name": "access-pattern.txt",
       "kind": "code",
-      "content": "policy=clustered; keys: cart:{userA}, coupon:{promoX}, inventory:{skuY}; op: MGET across all three; also a Lua script mutating all three atomically; assumption: 'multi-key commands always work across the cluster'",
+      "content": "policy=clustered (Enterprise); keys: cart:{userA}, coupon:{promoX}, inventory:{skuY}; ops: MGET across all three; a Lua script using KEYS mutating all three atomically; a MULTI/EXEC transaction over all three; assumption: 'multi-key commands always work across the cluster'",
       "embedded_defects": [
-        { "id": "d1", "defect": "MGET and a Lua script span keys on different slots and will hit CROSSSLOT.", "source_fact_ref": "src-cluster-crossslot" },
-        { "id": "d2", "defect": "No shared hash tag colocates the co-accessed keys.", "source_fact_ref": "src-cluster-hashtag" },
-        { "id": "d3", "defect": "Assumes generic OSS multi-key behavior instead of what the enterprise data plane enforces.", "source_fact_ref": "src-cluster-mkms-nuance" }
+        { "id": "d1", "defect": "The Lua-with-KEYS script and MULTI/EXEC transaction require all keys in one slot; they are not covered by Enterprise non-atomic scatter-gather and fail across slots. The bare assumption also ignores that OSSCluster would reject even MGET here.", "source_fact_ref": "src-cluster-crossslot" },
+        { "id": "d2", "defect": "No shared hash tag colocates the co-accessed keys for the atomic and transactional operations that require a single slot.", "source_fact_ref": "src-cluster-hashtag" },
+        { "id": "d3", "defect": "Assumes generic OSS multi-key behavior instead of the policy-parameterized behavior the enterprise engine enforces.", "source_fact_ref": "src-cluster-mkms-nuance" }
       ]
     }
   ],
@@ -27,7 +27,7 @@
   "correctness_rubric_ref": "rub-cluster-cor",
   "actionability_rubric_ref": "rub-cluster-act",
   "baseline_leakage_canaries": ["blc-cluster-baseline", "blc-cluster-internal-leak"],
-  "grader_canaries": ["grc-cluster-good", "grc-cluster-bad"],
+  "grader_canaries": ["grc-cluster-good", "grc-cluster-bad", "grc-cluster-overstrict"],
   "mutation_selection_ref": "mut-cluster",
   "acceptance_ref": "acc-strict"
 }
