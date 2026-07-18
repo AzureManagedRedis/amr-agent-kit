@@ -102,6 +102,12 @@ export async function createSoakModules({ config, processManager }) {
     })
     if (!runtimeConfig.resourceGroup) throw new Error('Live cache runtime config requires resourceGroup')
     if (runtimeConfig.denylist.length === 0) throw new Error('Live cache runtime config requires a non-empty infrastructure-subscription denylist')
+    if (!Number.isFinite(runtimeConfig.createPollTimeoutMs) || runtimeConfig.createPollTimeoutMs < 1000) {
+      throw new Error('Live cache runtime config requires createPollTimeoutMs >= 1000')
+    }
+    if (!Number.isFinite(runtimeConfig.deletePollTimeoutMs) || runtimeConfig.deletePollTimeoutMs < 1000) {
+      throw new Error('Live cache runtime config requires deletePollTimeoutMs >= 1000')
+    }
     const adapterPath = resolvePath(repositoryRoot, adapterModule)
     const adapterExports = await import(pathToFileURL(adapterPath).href)
     const adapter = typeof adapterExports.createLocalRpAdapter === 'function'
@@ -117,6 +123,8 @@ export async function createSoakModules({ config, processManager }) {
     liveAdapterValidation = {
       module: path.basename(adapterPath),
       apiVersion: runtimeConfig.apiVersion,
+      createPollTimeoutMs: runtimeConfig.createPollTimeoutMs,
+      deletePollTimeoutMs: runtimeConfig.deletePollTimeoutMs,
       methods,
     }
   }

@@ -31,8 +31,10 @@ function response(status, body) {
 function fakeRp() {
   const caches = new Map()
   const databases = new Set()
+  let paginationRequests = 0
   return {
     caches,
+    get paginationRequests() { return paginationRequests },
     async fetchImpl(url, init = {}) {
       const parsed = new URL(url)
       const method = init.method ?? 'GET'
@@ -43,7 +45,14 @@ function fakeRp() {
       const name = match[1] ? decodeURIComponent(match[1]) : undefined
       const databaseRequest = parsed.pathname.endsWith('/databases/default')
       if (!name && method === 'GET') {
-        return response(200, { value: [...caches.values()] })
+        paginationRequests += 1
+        if (parsed.searchParams.get('page') === '2') {
+          return response(200, { value: [...caches.values()] })
+        }
+        return response(200, {
+          value: [],
+          nextLink: `http://localhost:8443${parsed.pathname}?page=2&api-version=2024-09-01-preview`,
+        })
       }
       if (databaseRequest && method === 'GET') {
         return databases.has(name)
@@ -87,6 +96,8 @@ async function fakeCacheSmoke(root) {
     tenantId: 'test-tenant',
     resourceGroup: 'test-resource-group',
     apiVersion: '2024-09-01-preview',
+    createPollTimeoutMs: 1800000,
+    deletePollTimeoutMs: 1200000,
     ownerAlias: 'preflight',
     runId: 'integration',
     resourcePrefix: 'preflight-integration-',
@@ -128,7 +139,8 @@ async function fakeCacheSmoke(root) {
   leaseManager.release(deleteLease.id)
   const evidence = await runJanitorPass({ ledger, adapter, config, leaseManager })
   if (!evidence.zeroOrphans || fake.caches.size !== 0) throw new Error('Fake RP smoke left an orphan')
-  return evidence
+  if (fake.paginationRequests < 2) throw new Error('Fake RP smoke did not follow ARM list pagination')
+  return { ...evidence, paginationRequests: fake.paginationRequests }
 }
 
 function fakeArtifact({ runId, scenario, arm, answer, projectDir, grading }) {
@@ -262,6 +274,7 @@ export async function runIntegrationPreflight({
     cache_smoke: {
       zero_orphans: cacheEvidence.zeroOrphans,
       checked_live: cacheEvidence.checkedLive,
+      pagination_requests: cacheEvidence.paginationRequests,
     },
     report_files: Object.keys(report.files),
   }

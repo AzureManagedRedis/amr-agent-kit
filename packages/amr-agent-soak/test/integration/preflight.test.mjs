@@ -10,6 +10,7 @@ test('runs fake-RP lifecycle and produces a linked miniature paired report', asy
   try {
     const result = await runIntegrationPreflight({ outDir: root })
     assert.equal(result.cache_smoke.zero_orphans, true)
+    assert.ok(result.cache_smoke.pagination_requests >= 2)
     assert.equal(result.paired_runs, 2)
     assert.equal(result.retained_clients, 2)
     assert.ok(result.report_files.includes('review.html'))

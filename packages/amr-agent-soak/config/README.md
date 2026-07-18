@@ -55,6 +55,9 @@ guards. Live remains disabled until cache-owner review/PID follow-up and the
 runtime prerequisites are cleared.
 Even with `enabled=true`, both controller and resource janitor reject startup
 until `integration.liveCache.reviewedReady=true` is set after that clearance.
+`createPollTimeoutMs` and `deletePollTimeoutMs` are explicit bounded overall
+deadlines for the multi-minute local-RP operations. ARM list calls follow
+same-origin `nextLink` pages with a maximum-page guard.
 
 When live mode is enabled, `scripts/start-soak.ps1` launches a third, independent
 resource janitor and records its verified process identity beside the controller and

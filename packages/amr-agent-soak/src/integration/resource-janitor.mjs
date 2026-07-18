@@ -45,6 +45,12 @@ async function main() {
   if (runtimeConfig.denylist.length === 0) {
     throw new Error('Live cache runtime config requires a non-empty infrastructure-subscription denylist')
   }
+  if (!Number.isFinite(runtimeConfig.createPollTimeoutMs) || runtimeConfig.createPollTimeoutMs < 1000) {
+    throw new Error('Live cache runtime config requires createPollTimeoutMs >= 1000')
+  }
+  if (!Number.isFinite(runtimeConfig.deletePollTimeoutMs) || runtimeConfig.deletePollTimeoutMs < 1000) {
+    throw new Error('Live cache runtime config requires deletePollTimeoutMs >= 1000')
+  }
   const configuredAdapter = live.adapterModule ??
     'packages/amr-agent-soak/src/cache/http-adapter.mjs'
   const adapterModulePath = path.isAbsolute(configuredAdapter)

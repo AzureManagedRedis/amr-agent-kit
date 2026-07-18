@@ -325,6 +325,8 @@ test('instantiates the reviewed ARM adapter from gitignored runtime configuratio
     const modules = await createSoakModules({ config, processManager })
     assert.equal(modules.snapshot.liveAdapterValidation.module, 'http-adapter.mjs')
     assert.ok(modules.snapshot.liveAdapterValidation.methods.includes('createDatabase'))
+    assert.equal(modules.snapshot.liveAdapterValidation.createPollTimeoutMs, 1800000)
+    assert.equal(modules.snapshot.liveAdapterValidation.deletePollTimeoutMs, 1200000)
     assert.equal(modules.snapshot.liveInputs.length, 2)
   } finally {
     await rm(root, { recursive: true, force: true })

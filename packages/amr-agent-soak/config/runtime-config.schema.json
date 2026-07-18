@@ -19,6 +19,8 @@
     "runId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
     "resourceGroup": { "type": "string", "minLength": 1 },
     "apiVersion": { "type": "string", "minLength": 1 },
+    "createPollTimeoutMs": { "type": "integer", "minimum": 1000 },
+    "deletePollTimeoutMs": { "type": "integer", "minimum": 1000 },
     "ackCustomerSubscription": { "type": "boolean", "const": true },
     "denylist": {
       "type": "array",

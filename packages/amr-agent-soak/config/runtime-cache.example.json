@@ -5,6 +5,8 @@
   "runId": "replace-in-local-file",
   "resourceGroup": "replace-in-local-file",
   "apiVersion": "2024-09-01-preview",
+  "createPollTimeoutMs": 1800000,
+  "deletePollTimeoutMs": 1200000,
   "ackCustomerSubscription": true,
   "denylist": [
     "replace-with-each-backing-infrastructure-subscription"
