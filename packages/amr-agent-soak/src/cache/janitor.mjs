@@ -26,7 +26,7 @@
 import { readFileSync, writeFileSync, unlinkSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { reconcileOnStartup } from './reconciliation.mjs';
+import { reconcileOnStartup, confirmCandidateLiveness } from './reconciliation.mjs';
 import { deleteOwnedResource } from './cleanup.mjs';
 import { evaluateCleanupEligibility } from './tags.mjs';
 import { assertSubscriptionNotDenylisted } from './guards.mjs';
@@ -505,10 +505,28 @@ export async function runJanitorPass({ ledger, adapter, config, leaseManager, ki
   }
 
   // Step 3: re-list fresh -- never trust the pre-deletion snapshot for the
-  // final zero-orphan claim.
-  const liveNames = new Set(extractLiveRecordsByName(await adapter.listClusters(listCoords), resourcePrefix).keys());
+  // final zero-orphan claim. Also never trust the list response ALONE as
+  // proof of liveness for anything it reports that the ledger does NOT
+  // consider active: a real local-RP list index can lag well behind a
+  // completed DELETE, still reporting a "ghost" entry (in some stale
+  // non-terminal state) long after the resource itself already 404s on a
+  // direct GET. Every such orphan CANDIDATE is confirmed via a bounded
+  // direct getCluster before it is ever counted/reported as a genuine
+  // orphan -- a confirmed-absent candidate is excluded entirely; a
+  // confirmed-live (or ambiguously-unconfirmable) candidate is still
+  // fully reported, never silently dropped.
+  const finalLiveRecords = extractLiveRecordsByName(await adapter.listClusters(listCoords), resourcePrefix);
+  const liveNames = new Set(finalLiveRecords.keys());
   const activeInLedger = new Set(ledger.activeResources());
-  const orphans = [...liveNames].filter((name) => !activeInLedger.has(name));
+  const orphanCandidates = [...liveNames].filter((name) => !activeInLedger.has(name));
+
+  const orphans = [];
+  for (const name of orphanCandidates) {
+    const coords = { subscriptionId: config.subscriptionId, resourceGroup: config.resourceGroup, name };
+    const liveness = await confirmCandidateLiveness(() => adapter.getCluster(coords));
+    if (liveness === 'absent') continue; // stale list ghost -- already gone, exclude from orphan reporting.
+    orphans.push(name); // confirmed 'live', or verification was 'ambiguous' -- report either way.
+  }
 
   return {
     ts: now(),

@@ -11,6 +11,7 @@ import {
   buildResourceProvisioningStateCheck,
   buildDeletionCheck,
   buildAsyncOperationCheck,
+  confirmCandidateLiveness,
   ReconciliationError,
 } from '../../src/cache/reconciliation.mjs';
 import { GuardViolation } from '../../src/cache/guards.mjs';
@@ -50,6 +51,73 @@ test('a prefix-matching live resource with ZERO ledger evidence is unconditional
     assert.deepEqual(report.confirmedIntents, []);
     assert.deepEqual(report.quarantined, [{ resourceName: 'dmon-run1-cache1', reason: 'no-creation-intent-evidence' }]);
     assert.deepEqual(ledger.activeResources(), []); // never adopted/tracked
+  });
+});
+
+// ---- Final launch-blocking finding: a stale list "ghost" (already 404 on
+// direct GET) must never be quarantined as an unrecognized live resource ----
+
+test('confirmCandidateLiveness classifies a 404 GET as absent', async () => {
+  const getResource = async () => {
+    const err = new Error('not found');
+    err.status = 404;
+    throw err;
+  };
+  assert.equal(await confirmCandidateLiveness(getResource), 'absent');
+});
+
+test('confirmCandidateLiveness classifies a terminal "Deleted" provisioningState as absent', async () => {
+  const getResource = async () => ({ properties: { provisioningState: 'Deleted' } });
+  assert.equal(await confirmCandidateLiveness(getResource), 'absent');
+});
+
+test('confirmCandidateLiveness classifies any other successful response as live', async () => {
+  const getResource = async () => ({ properties: { provisioningState: 'Deleting' } });
+  assert.equal(await confirmCandidateLiveness(getResource), 'live');
+  const getResourceSucceeded = async () => ({ properties: { provisioningState: 'Succeeded' } });
+  assert.equal(await confirmCandidateLiveness(getResourceSucceeded), 'live');
+});
+
+test('confirmCandidateLiveness classifies a non-404 error (network/timeout) as ambiguous, not absent', async () => {
+  const getResource = async () => {
+    throw new Error('simulated network failure');
+  };
+  assert.equal(await confirmCandidateLiveness(getResource), 'ambiguous');
+
+  const getResourceTimeout = async () => {
+    const err = new Error('timed out');
+    err.name = 'AbortError';
+    throw err;
+  };
+  assert.equal(await confirmCandidateLiveness(getResourceTimeout), 'ambiguous');
+});
+
+test('reconcileOnStartup does NOT quarantine a stale list "ghost" that direct GET confirms is already gone (404)', async () => {
+  await withTempLedger(async (ledger) => {
+    // No creation-intent evidence at all for this name (a real orphan
+    // candidate), but the list response is stale: it still reports the
+    // resource in "Deleting" even though it does not really exist any
+    // more (the fake's `clusters` map has no such entry -- a direct GET
+    // 404s, exactly like the real observed local-RP bug).
+    const fake = createFakeRp({ staleListGhosts: [{ name: 'dmon-run1-ghost-cache' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.quarantined, []); // never reported -- it doesn't really exist
+    assert.deepEqual(ledger.activeResources(), []);
+  });
+});
+
+test('reconcileOnStartup DOES quarantine a genuinely live resource with zero ledger evidence, confirmed by both list and direct GET', async () => {
+  await withTempLedger(async (ledger) => {
+    // Present in BOTH the list response AND the underlying clusters map --
+    // a direct GET confirms it is genuinely live, so it must still be
+    // quarantined (reported, never adopted).
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-real-orphan' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+
+    const report = await reconcileOnStartup({ ledger, adapter, subscriptionId: SUBSCRIPTION_ID, resourcePrefix: 'dmon-run1-' });
+    assert.deepEqual(report.quarantined, [{ resourceName: 'dmon-run1-real-orphan', reason: 'no-creation-intent-evidence' }]);
   });
 });
 

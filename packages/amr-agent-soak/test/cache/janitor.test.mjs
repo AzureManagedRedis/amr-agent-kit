@@ -629,6 +629,70 @@ test('runJanitorPass quarantines (never adopts) a live resource with zero ledger
   });
 });
 
+// ---- Final launch-blocking finding: real local-RP list endpoints can lag
+// well behind a completed DELETE (a stale "ghost" entry can persist in a
+// non-terminal list state for a long time after direct GET already 404s);
+// the final orphan computation must never trust list membership alone ----
+
+test('runJanitorPass reports zero orphans when the only "orphan candidate" is a stale list ghost that direct GET confirms is already gone (404)', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    // The ledger has never heard of this name (a real orphan candidate by
+    // list-membership alone), but the list response is stale: it still
+    // reports the resource in "Deleting" even though direct GET 404s
+    // (the fake's clusters map has no such entry at all).
+    const fake = createFakeRp({ staleListGhosts: [{ name: 'dmon-run1-ghost-cache' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+
+    const evidence = await runJanitorPass({ ledger, adapter, config: testConfig(), leaseManager });
+    assert.equal(evidence.zeroOrphans, true);
+    assert.equal(evidence.orphanCount, 0);
+    assert.deepEqual(evidence.orphans, []);
+    assert.deepEqual(evidence.quarantined, []); // also never reported as an unrecognized resource
+  });
+});
+
+test('runJanitorPass still reports a genuine orphan when BOTH the list AND a direct GET confirm it is actually live', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    // Present in BOTH the list response AND the underlying clusters map --
+    // a direct GET confirms it is genuinely live, so it must remain a
+    // reported orphan (and quarantined candidate) -- never silently
+    // dropped just because SOME list entries are stale ghosts elsewhere.
+    const fake = createFakeRp({
+      initialClusters: [{ name: 'dmon-run1-real-orphan' }],
+      staleListGhosts: [{ name: 'dmon-run1-ghost-cache' }], // an unrelated stale ghost in the same list response
+    });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const leaseManager = new LeaseManager();
+
+    const evidence = await runJanitorPass({ ledger, adapter, config: testConfig(), leaseManager });
+    assert.equal(evidence.zeroOrphans, false);
+    assert.deepEqual(evidence.orphans, ['dmon-run1-real-orphan']); // the ghost is excluded, the real one is not
+    assert.deepEqual(evidence.quarantined, [{ resourceName: 'dmon-run1-real-orphan', reason: 'no-creation-intent-evidence' }]);
+  });
+});
+
+test('runJanitorPass still reports an orphan candidate when its confirming GET fails ambiguously (fails safe, never silently hidden)', async () => {
+  await withTempDir(async (dir) => {
+    const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });
+    const fake = createFakeRp({ initialClusters: [{ name: 'dmon-run1-cache1' }] });
+    const adapter = new LocalRpHttpAdapter({ fetchImpl: fake.fetchImpl });
+    const originalGetCluster = adapter.getCluster.bind(adapter);
+    let getClusterCalls = 0;
+    adapter.getCluster = async (...args) => {
+      getClusterCalls += 1;
+      throw new Error('simulated transient network failure during confirmation');
+    };
+    const leaseManager = new LeaseManager();
+
+    const evidence = await runJanitorPass({ ledger, adapter, config: testConfig(), leaseManager });
+    assert.ok(getClusterCalls > 0); // the confirmation GET was actually attempted
+    assert.deepEqual(evidence.orphans, ['dmon-run1-cache1']); // ambiguous verification -- still reported, not dropped
+  });
+});
+
 test('runJanitorPass confirms an intent-evidenced crash orphan (legitimate recovery case) and reports zero orphans', async () => {
   await withTempDir(async (dir) => {
     const ledger = new ResourceLedger({ path: join(dir, 'ledger.jsonl') });

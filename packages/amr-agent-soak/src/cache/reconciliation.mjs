@@ -30,6 +30,16 @@
 // polling until a DELETE resolves to 404/Deleted (buildDeletionCheck), or
 // following a Location/Azure-AsyncOperation header when the RP happens to
 // provide one (buildAsyncOperationCheck).
+//
+// listClusters is never trusted alone as the final word on liveness: a
+// real local-RP list index can lag well behind a completed DELETE, still
+// reporting a "ghost" entry (in a stale non-terminal state) for a long
+// time after the resource itself already 404s on a direct GET.
+// confirmCandidateLiveness performs that bounded direct-GET confirmation
+// for any list-returned candidate this module would otherwise quarantine
+// as an unrecognized resource -- see reconcileOnStartup's quarantine
+// branch, and janitor.mjs's final orphan computation, which uses the same
+// helper.
 
 import { assertOwnedResource, assertSubscriptionNotDenylisted } from './guards.mjs';
 import { evaluateCleanupEligibility } from './tags.mjs';
@@ -44,6 +54,12 @@ export class ReconciliationError extends Error {
 const TERMINAL_STATES = new Set(['Succeeded', 'Failed', 'Canceled']);
 const TRANSIENT_REQUEST_ERROR_NAMES = new Set(['AbortError', 'TimeoutError']);
 
+/** provisioningState values that, if reported by a direct GET, mean the
+ * resource is effectively gone even though the RP didn't 404 (some RPs
+ * report a terminal "Deleted" state briefly instead of immediately
+ * 404ing). See confirmCandidateLiveness. */
+const CANDIDATE_ABSENT_STATES = new Set(['Deleted']);
+
 function extractLiveRecords(liveList, resourcePrefix) {
   const rawList = Array.isArray(liveList) ? liveList : (liveList?.value ?? []);
   const byName = new Map();
@@ -54,6 +70,42 @@ function extractLiveRecords(liveList, resourcePrefix) {
     }
   }
   return byName;
+}
+
+/**
+ * Confirms whether a list-returned candidate resource is ACTUALLY still
+ * live via a direct, bounded GET -- never trusting `listClusters` alone as
+ * the final word on liveness. Real local-RP list endpoints can lag well
+ * behind a completed DELETE: a "ghost" entry can persist in the list
+ * response (reporting a stale non-terminal state like "Deleting") for a
+ * long time after the resource itself already 404s on a direct GET.
+ * Treating list membership alone as proof of liveness would falsely
+ * report/quarantine/orphan a resource that is actually already gone.
+ *
+ * Returns:
+ *   - 'absent' -- the direct GET 404d, or reported a terminal "Deleted"
+ *     provisioningState. Safe to exclude from orphan/quarantine reporting.
+ *   - 'live' -- the direct GET succeeded and did NOT report a
+ *     deleted/absent state. A genuine live resource -- must still be
+ *     reported (never silently dropped).
+ *   - 'ambiguous' -- the confirming GET itself failed for some OTHER
+ *     reason (network error, timeout, non-404 error). Fails safe: treated
+ *     the same as 'live' by every caller, so a transient verification
+ *     failure can never silently hide a potentially real orphan/unowned
+ *     resource.
+ *
+ * @param {() => Promise<object>} getResource - typically `() => adapter.getCluster(coords, { timeoutMs })`; the bound/timeout is the caller's responsibility (the adapter itself already applies a default AbortController timeout).
+ * @param {Set<string>} [absentStates]
+ */
+export async function confirmCandidateLiveness(getResource, absentStates = CANDIDATE_ABSENT_STATES) {
+  try {
+    const resource = await getResource();
+    const state = resource?.properties?.provisioningState;
+    return absentStates.has(state) ? 'absent' : 'live';
+  } catch (err) {
+    if (err?.status === 404) return 'absent';
+    return 'ambiguous';
+  }
 }
 
 /**
@@ -101,6 +153,16 @@ export async function reconcileOnStartup({
     if (!ledger.hasCreationEvidence(liveName)) {
       // Zero durable evidence that this run ever intended to create this
       // resource -- a prefix (or tag) match alone is never sufficient.
+      // Before quarantining, confirm via a direct GET: the list response
+      // can be a stale "ghost" (already gone in reality, but still
+      // reported in a non-terminal state by a lagging list index) -- a
+      // confirmed-absent candidate is not an unrecognized live resource
+      // at all, and must never be reported as one.
+      const liveness = await confirmCandidateLiveness(() =>
+        adapter.getCluster({ subscriptionId, resourceGroup, name: liveName })
+      );
+      if (liveness === 'absent') continue; // stale list ghost -- already gone, nothing to quarantine.
+
       // Fail closed: quarantine unconditionally, never adopt.
       report.quarantined.push({ resourceName: liveName, reason: 'no-creation-intent-evidence' });
       continue;

@@ -18,6 +18,13 @@
 // exercised deterministically. `listPageSize`, when set, paginates cluster
 // list GETs into chunks via a synthetic `_page` query param + `nextLink`, so
 // listClusters' nextLink-following can be exercised deterministically too.
+// `staleListGhosts` simulates a real local-RP list index lagging well
+// behind a completed DELETE: these entries are ALWAYS included (in a
+// "Deleting" state, by default) in every list response, even though they
+// do NOT exist in the underlying `clusters` map -- so a direct GET/DELETE
+// for one of them correctly 404s, exactly like the real observed bug this
+// exists to exercise (confirmCandidateLiveness in reconciliation.mjs /
+// janitor.mjs).
 
 const CLUSTER_LIST_RE = /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise$/;
 const CLUSTER_RE = /^\/subscriptions\/([^/]+)(?:\/resourceGroups\/([^/]+))?\/providers\/Microsoft\.Cache\/redisEnterprise\/([^/]+)$/;
@@ -34,6 +41,7 @@ export function createFakeRp({
   clusterCreateOutcomes = {}, // { [clusterName]: 'Failed' | 'Canceled' } -- overrides the normal 'Succeeded' terminal state.
   databaseCreateOutcomes = {}, // { [clusterName]: 'Failed' | 'Canceled' }
   listPageSize, // when set, cluster list GETs are paginated into chunks of this size via a synthetic `_page` query param + nextLink.
+  staleListGhosts = [], // [{name[, location, tags, sku, properties]}] -- entries ALWAYS included in list responses (simulating a real local-RP list index lagging well behind a completed DELETE) even though they do NOT exist in the `clusters` map, so a direct GET/DELETE for them correctly 404s.
 } = {}) {
   const clusters = new Map(
     initialClusters.map((c) => [
@@ -151,7 +159,14 @@ export function createFakeRp({
     // deterministically) ----
     const listMatch = u.pathname.match(CLUSTER_LIST_RE);
     if (listMatch && method === 'GET') {
-      const allItems = [...clusters.values()].map(sanitizeCluster);
+      const ghostItems = staleListGhosts.map((g) => ({
+        name: g.name,
+        location: g.location ?? 'eastus',
+        tags: g.tags ?? {},
+        sku: g.sku ?? { name: 'Balanced_B1', capacity: 1 },
+        properties: { provisioningState: 'Deleting', ...(g.properties ?? {}) },
+      }));
+      const allItems = [...clusters.values()].map(sanitizeCluster).concat(ghostItems);
       if (!listPageSize || allItems.length <= listPageSize) {
         return jsonResponse(200, { value: allItems });
       }
