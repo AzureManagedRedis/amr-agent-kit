@@ -32,7 +32,7 @@
 // nothing they "authorize" ever reaches the real adapter.
 
 import { randomUUID } from 'node:crypto';
-import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, renameSync, unlinkSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { KillSwitch } from './kill-switch.mjs';
 
@@ -106,9 +106,20 @@ function persistFencingCounter(path, lastIssuedToken) {
   const dir = dirname(path);
   if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
   // Write-then-rename: never leaves a torn/partial counter file behind, even
-  // if the process is killed mid-write.
+  // if the process is killed mid-write. The destination is unlinked first
+  // (rather than renaming directly onto it) because Windows `renameSync`
+  // cannot reliably replace an existing destination file and can raise
+  // EPERM -- a real failure mode, not merely a flaky one -- unlike POSIX
+  // rename, which is atomic-and-replacing by design. This file is only
+  // ever written by this single-threaded persistFencingCounter call path,
+  // so the brief unlink-then-rename window is safe here.
   const tmpPath = `${path}.${process.pid}.tmp`;
   writeFileSync(tmpPath, JSON.stringify({ lastIssuedToken }), 'utf8');
+  try {
+    unlinkSync(path);
+  } catch (err) {
+    if (err?.code !== 'ENOENT') throw err;
+  }
   renameSync(tmpPath, path);
 }
 

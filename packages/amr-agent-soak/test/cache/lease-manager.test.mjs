@@ -304,12 +304,12 @@ test('with a fencingStatePath, the fencing counter survives across LeaseManager 
   }
 });
 
-test('the persisted fencing counter monotonically increases across many acquisitions and restarts', () => {
+test('the persisted fencing counter monotonically increases across many acquisitions and restarts (Windows regression: unlink-before-rename)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'amr-soak-fencing-'));
   try {
     const fencingStatePath = join(dir, 'fencing.json');
     let lastToken = 0;
-    for (let i = 0; i < 3; i += 1) {
+    for (let i = 0; i < 25; i += 1) {
       const m = new LeaseManager({ connectionBudget: 100, fencingStatePath });
       const lease = m.acquire({ class: 'shared' });
       assert.ok(lease.fencingToken > lastToken);

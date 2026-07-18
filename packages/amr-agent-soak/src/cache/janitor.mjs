@@ -46,54 +46,65 @@ function ensureDirFor(filePath) {
   if (dir && !existsSync(dir)) mkdirSync(dir, { recursive: true });
 }
 
+const DEFAULT_MAX_CLAIM_ATTEMPTS = 5;
+
 /**
  * Verifies (and claims) the janitor PID file using atomic exclusive file
- * creation (`wx`) for the initial claim -- never a read-then-write, which
+ * creation (`wx`) for every claim attempt -- never a read-then-write, which
  * would race a concurrent claimant. If the file already exists: re-claiming
  * our own PID is idempotent; a PID file owned by a different, *currently
  * alive* process causes a refusal to start a second janitor instance; a
- * stale PID file (owner no longer alive) is removed and re-claimed with
- * exclusive creation. The launch scripts are the single spawn authority;
+ * stale PID file (owner no longer alive) is removed and the exclusive
+ * create is retried. The launch scripts are the single spawn authority;
  * this file is a second defensive check, not a cross-host distributed lock.
+ *
+ * Deliberately NEVER renames a temp file onto an existing destination to
+ * replace it: on Windows, `renameSync` cannot reliably replace an existing
+ * destination file and can raise EPERM (a real, not merely flaky, failure
+ * mode) -- unlike POSIX rename, which is atomic-and-replacing by design.
+ * Unlink-then-retry-the-exclusive-create is fully portable and never hits
+ * that failure mode, while still preventing two claimants from both
+ * winning: if another process wins the race and creates the file before
+ * our retry, our next `wx` attempt fails with EEXIST again and we correctly
+ * detect its (alive) PID instead of overwriting it.
  */
-export function claimPidFile(pidFilePath, { pid = process.pid, isAlive = defaultIsAlive } = {}) {
+export function claimPidFile(pidFilePath, { pid = process.pid, isAlive = defaultIsAlive, unlink = unlinkSync, maxAttempts = DEFAULT_MAX_CLAIM_ATTEMPTS } = {}) {
   ensureDirFor(pidFilePath);
 
-  try {
-    writeFileSync(pidFilePath, String(pid), { encoding: 'utf8', flag: 'wx' });
-    return pid;
-  } catch (err) {
-    if (err?.code !== 'EEXIST') throw err;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      writeFileSync(pidFilePath, String(pid), { encoding: 'utf8', flag: 'wx' });
+      return pid;
+    } catch (err) {
+      if (err?.code !== 'EEXIST') throw err;
+    }
+
+    let existingPid;
+    try {
+      existingPid = Number(readFileSync(pidFilePath, 'utf8').trim());
+    } catch (readErr) {
+      if (readErr?.code === 'ENOENT') continue; // Vanished between our wx attempt and this read -- just retry.
+      throw readErr;
+    }
+
+    if (existingPid === pid) {
+      return pid; // Idempotent re-claim of our own PID.
+    }
+    if (isAlive(existingPid)) {
+      throw new JanitorError(`Janitor already running under PID ${existingPid}; refusing to start a second instance.`);
+    }
+
+    // Stale: remove it and retry the exclusive create on the next loop
+    // iteration rather than renaming onto it.
+    try {
+      unlink(pidFilePath);
+    } catch (unlinkErr) {
+      if (unlinkErr?.code !== 'ENOENT') throw unlinkErr;
+      // Already gone (another claimant's cleanup got there first) -- fine, just retry.
+    }
   }
 
-  const existingPid = Number(readFileSync(pidFilePath, 'utf8').trim());
-  if (existingPid === pid) {
-    return pid; // Idempotent re-claim of our own PID.
-  }
-  if (isAlive(existingPid)) {
-    throw new JanitorError(`Janitor already running under PID ${existingPid}; refusing to start a second instance.`);
-  }
-
-  // Stale: remove the stale claim and compete for a fresh exclusive (`wx`)
-  // claim. The launch scripts serialize janitor creation. `wx` still prevents
-  // accidental overwrites, but this is intentionally not advertised as a
-  // distributed compare-and-swap lock for uncoordinated concurrent launchers.
-  try {
-    unlinkSync(pidFilePath);
-  } catch (err) {
-    if (err?.code !== 'ENOENT') throw err;
-  }
-  try {
-    writeFileSync(pidFilePath, String(pid), { encoding: 'utf8', flag: 'wx' });
-    return pid;
-  } catch (err) {
-    if (err?.code !== 'EEXIST') throw err;
-    const winningPid = Number(readFileSync(pidFilePath, 'utf8').trim());
-    if (winningPid === pid) return pid;
-    throw new JanitorError(
-      `Janitor PID claim was won concurrently by PID ${winningPid}; refusing duplicate PID ${pid}.`
-    );
-  }
+  throw new JanitorError(`Failed to claim PID file "${pidFilePath}" after ${maxAttempts} attempts (repeated concurrent claims).`);
 }
 
 export function writeHeartbeat(heartbeatFilePath, { pid = process.pid, now = () => Date.now() } = {}) {

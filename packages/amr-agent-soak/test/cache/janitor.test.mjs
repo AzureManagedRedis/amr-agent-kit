@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync, unlinkSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ResourceLedger } from '../../src/cache/ledger.mjs';
@@ -50,14 +50,14 @@ test('claimPidFile writes this process PID when no PID file exists yet (atomic e
   });
 });
 
-test('claimPidFile replaces a stale PID file whose process is no longer alive with a fresh exclusive claim', async () => {
+test('claimPidFile replaces a stale PID file whose process is no longer alive (unlink + retry, never rename-onto-existing)', async () => {
   await withTempDir((dir) => {
     const pidPath = join(dir, 'janitor.pid');
     claimPidFile(pidPath, { pid: 111, isAlive: () => false }); // first (dead) janitor
     const claimed = claimPidFile(pidPath, { pid: 222, isAlive: (pid) => (pid === 111 ? false : true) });
     assert.equal(claimed, 222);
     assert.equal(readFileSync(pidPath, 'utf8').trim(), '222');
-    // No leftover temp files from the rename-based replacement.
+    // No temp files are ever created by this implementation (no rename-onto-existing-destination step).
     const leftoverTemps = readdirSync(dir).filter((f) => f.endsWith('.tmp'));
     assert.deepEqual(leftoverTemps, []);
   });
@@ -79,6 +79,42 @@ test('claimPidFile is idempotent for exactly the same PID (re-claiming your own 
   });
 });
 
+// ---- Windows regression: renameSync cannot reliably replace an existing
+// destination file (raises EPERM); claimPidFile must never rely on that. ----
+
+test('claimPidFile reliably replaces a stale PID file across many repeated cycles (Windows regression)', async () => {
+  await withTempDir((dir) => {
+    const pidPath = join(dir, 'janitor.pid');
+    claimPidFile(pidPath, { pid: 1000, isAlive: () => false });
+    for (let pid = 1001; pid <= 1025; pid += 1) {
+      const claimed = claimPidFile(pidPath, { pid, isAlive: () => false });
+      assert.equal(claimed, pid);
+      assert.equal(readFileSync(pidPath, 'utf8').trim(), String(pid));
+    }
+  });
+});
+
+test('claimPidFile never lets two concurrent claimants both win a stale replacement (regression)', async () => {
+  await withTempDir((dir) => {
+    const pidPath = join(dir, 'janitor.pid');
+    claimPidFile(pidPath, { pid: 111, isAlive: () => false }); // a stale, dead janitor's leftover file
+
+    // Simulate a genuine concurrent claimant: the instant our stale file is
+    // unlinked, another process's exclusive create "wins" the race and
+    // plants its own (alive) PID before we get to retry ours.
+    const unlink = (targetPath) => {
+      unlinkSync(targetPath);
+      writeFileSync(targetPath, '333', 'utf8');
+    };
+
+    assert.throws(
+      () => claimPidFile(pidPath, { pid: 222, isAlive: (candidatePid) => candidatePid === 333, unlink }),
+      JanitorError
+    );
+    // The concurrent claimant's file must be left completely untouched by us.
+    assert.equal(readFileSync(pidPath, 'utf8').trim(), '333');
+  });
+});
 test('writeHeartbeat / readHeartbeat round-trip exact PID and timestamp', async () => {
   await withTempDir((dir) => {
     const hbPath = join(dir, 'janitor.heartbeat.json');
