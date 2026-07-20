@@ -59,6 +59,50 @@ function safePart(value) {
   return String(value).replace(/[^A-Za-z0-9._-]+/g, '_')
 }
 
+function createBoundedSemaphore(limit) {
+  let active = 0
+  const waiters = []
+  const dispatch = () => {
+    while (active < limit && waiters.length > 0) {
+      active += 1
+      const resolve = waiters.shift()
+      let released = false
+      resolve(() => {
+        if (released) return
+        released = true
+        active -= 1
+        dispatch()
+      })
+    }
+  }
+  return {
+    acquire() {
+      return new Promise((resolve) => {
+        waiters.push(resolve)
+        dispatch()
+      })
+    },
+  }
+}
+
+function trackModelExecutions(modelExecutor) {
+  const pending = new Set()
+  return {
+    execute(request, context) {
+      const execution = Promise.resolve().then(() => modelExecutor(request, context))
+      pending.add(execution)
+      void execution.then(
+        () => pending.delete(execution),
+        () => pending.delete(execution),
+      )
+      return execution
+    },
+    async settle() {
+      await Promise.allSettled([...pending])
+    },
+  }
+}
+
 async function writeAtomic(filePath, content) {
   await mkdir(path.dirname(filePath), { recursive: true })
   const temporary = `${filePath}.tmp-${process.pid}-${Date.now()}`
@@ -140,6 +184,18 @@ export async function createBlindGrader({
   if (!Array.isArray(modelIds) || modelIds.length !== 2) {
     throw new Error('Copilot blind grader requires exactly two configured modelIds')
   }
+  const maxConcurrentPairs = config.maxConcurrentPairs ?? 4
+  if (!Number.isInteger(maxConcurrentPairs) || maxConcurrentPairs < 1 || maxConcurrentPairs > 4) {
+    throw new Error('integration.grading.maxConcurrentPairs must be an integer from 1 through 4')
+  }
+  const controllerPairWorkers = Number(controllerConfig.concurrency ?? 12)
+  const maximumActiveModelProcesses = controllerPairWorkers + maxConcurrentPairs
+  if (!Number.isInteger(controllerPairWorkers) || maximumActiveModelProcesses > 16) {
+    throw new Error(
+      'controller concurrency plus integration.grading.maxConcurrentPairs must not exceed 16',
+    )
+  }
+  const pairGradingSemaphore = createBoundedSemaphore(maxConcurrentPairs)
   const provenance = await combinedModuleProvenance()
   const moduleHash = provenance.moduleHash
   const injectedModelExecutor = typeof config.modelExecutor === 'function' ? config.modelExecutor : undefined
@@ -256,8 +312,12 @@ export async function createBlindGrader({
   }
   const modelExecutor = injectedModelExecutor ?? copilotModelExecutor
 
-  const engineConfig = (scope, agreementMode = 'return-contested') => ({
-    modelExecutor,
+  const engineConfig = (
+    scope,
+    agreementMode = 'return-contested',
+    selectedModelExecutor = modelExecutor,
+  ) => ({
+    modelExecutor: selectedModelExecutor,
     graderModelIds: modelIds,
     executorModelId: controllerConfig.model,
     policy: {
@@ -278,48 +338,13 @@ export async function createBlindGrader({
   if (direct.apiVersion !== external.apiVersion) throw new Error('Blind grader factory API versions disagree')
 
   let calibrationSummary
-  const api = {
-    snapshot: {
-      moduleHash,
-      apiVersion: direct.apiVersion,
-      modelIds: [...modelIds],
-      dependencies: provenance.dependencies,
-    },
-    async assertCalibration(scenarios) {
-      const results = []
-      for (const scenario of scenarios) {
-        const good = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'pass')
-        const bad = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail')
-        if (!good || !bad) throw new Error(`Scenario ${scenario.id} is missing good/bad grader canaries`)
-        const result = await runBlindModelGrading(
-          engineConfig(`calibration-${scenario.id}`, 'throw'),
-          {
-            prompt: scenario.prompt,
-            pairs: [{
-              bundle_id: `calibration-${scenario.id}`,
-              with_skill: { answer: good.answer_excerpt },
-              without_skill: { answer: bad.answer_excerpt },
-            }],
-            rubric: rubricForScenario(scenario),
-            canaries: canariesForScenario(scenario),
-            sourceEvidence: sourceEvidenceForScenario(scenario, evidenceStore),
-            seed: Number.parseInt(createHash('sha256').update(scenario.id).digest('hex').slice(0, 8), 16),
-          },
-        )
-        results.push({ scenarioId: scenario.id, kappa: result.kappa, accuracy: result.calibration.accuracy })
-      }
-      calibrationSummary = {
-        passed: true,
-        modelIds: [...modelIds],
-        kappa: Math.min(...results.map((item) => item.kappa)),
-        scenarios: results,
-      }
-      return calibrationSummary
-    },
-    async gradePair(artifacts, scenario, pairId) {
-      if (!calibrationSummary?.passed) throw new Error('Blind grader pair grading requires successful startup calibration')
+  const gradePair = async (artifacts, scenario, pairId) => {
+    if (!calibrationSummary?.passed) throw new Error('Blind grader pair grading requires successful startup calibration')
+    const release = await pairGradingSemaphore.acquire()
+    const executions = trackModelExecutions(modelExecutor)
+    try {
       const result = await runBlindModelGrading(
-        engineConfig(`pair-${pairId}`, 'return-contested'),
+        engineConfig(`pair-${pairId}`, 'return-contested', executions.execute),
         {
           prompt: scenario.prompt,
           pairs: [{
@@ -398,7 +423,53 @@ export async function createBlindGrader({
         throw new Error(`Blind grader did not return both arms for ${pairId}`)
       }
       return grades
+    } finally {
+      await executions.settle()
+      release()
+    }
+  }
+  const api = {
+    snapshot: {
+      moduleHash,
+      apiVersion: direct.apiVersion,
+      modelIds: [...modelIds],
+      maxConcurrentPairs,
+      controllerPairWorkers,
+      maximumActiveModelProcesses,
+      dependencies: provenance.dependencies,
     },
+    async assertCalibration(scenarios) {
+      const results = []
+      for (const scenario of scenarios) {
+        const good = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'pass')
+        const bad = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail')
+        if (!good || !bad) throw new Error(`Scenario ${scenario.id} is missing good/bad grader canaries`)
+        const result = await runBlindModelGrading(
+          engineConfig(`calibration-${scenario.id}`, 'throw'),
+          {
+            prompt: scenario.prompt,
+            pairs: [{
+              bundle_id: `calibration-${scenario.id}`,
+              with_skill: { answer: good.answer_excerpt },
+              without_skill: { answer: bad.answer_excerpt },
+            }],
+            rubric: rubricForScenario(scenario),
+            canaries: canariesForScenario(scenario),
+            sourceEvidence: sourceEvidenceForScenario(scenario, evidenceStore),
+            seed: Number.parseInt(createHash('sha256').update(scenario.id).digest('hex').slice(0, 8), 16),
+          },
+        )
+        results.push({ scenarioId: scenario.id, kappa: result.kappa, accuracy: result.calibration.accuracy })
+      }
+      calibrationSummary = {
+        passed: true,
+        modelIds: [...modelIds],
+        kappa: Math.min(...results.map((item) => item.kappa)),
+        scenarios: results,
+      }
+      return calibrationSummary
+    },
+    gradePair,
   }
   return api
 }

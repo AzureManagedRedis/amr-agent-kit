@@ -220,6 +220,9 @@ test('accepts only two distinct calibrated blind graders above the kappa gate', 
   const modules = await createSoakModules({ config: base, processManager })
   assert.deepEqual(modules.snapshot.graderInput.modelIds, ['model-a', 'model-b'])
   assert.equal(modules.snapshot.graderInput.kappa, 0.9)
+  assert.equal(modules.snapshot.graderInput.maxConcurrentPairs, 4)
+  assert.equal(modules.snapshot.graderInput.maximumActiveModelProcesses, 16)
+  assert.equal(modules.snapshot.maxConcurrentGradingPairs, 4)
   await assert.rejects(
     () => createSoakModules({
       config: {
@@ -283,6 +286,39 @@ test('accepts only two distinct calibrated blind graders above the kappa gate', 
       processManager,
     }),
     /minimumKappa must be a finite number/,
+  )
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        integration: {
+          ...base.integration,
+          grading: {
+            ...base.integration.grading,
+            maxConcurrentPairs: 5,
+          },
+        },
+      },
+      processManager,
+    }),
+    /maxConcurrentPairs must be an integer from 1 through 4/,
+  )
+  await assert.rejects(
+    () => createSoakModules({
+      config: {
+        ...base,
+        concurrency: 13,
+        integration: {
+          ...base.integration,
+          grading: {
+            ...base.integration.grading,
+            maxConcurrentPairs: 4,
+          },
+        },
+      },
+      processManager,
+    }),
+    /controller concurrency plus integration\.grading\.maxConcurrentPairs must not exceed 16/,
   )
 })
 

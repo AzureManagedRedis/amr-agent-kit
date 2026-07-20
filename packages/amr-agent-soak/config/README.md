@@ -29,6 +29,13 @@ models, and kappa meets `integration.grading.minimumKappa` (default `0.6`).
 `blind-grading.example.json` shows the production shape using the committed
 Copilot CLI bridge. Both grader model IDs must also differ from the configured
 scenario-executor model when `requireExecutorDiversity` is true.
+`integration.grading.maxConcurrentPairs` is an integer from 1 through 4 and
+defaults to 4. Calibration runs before pair workers and is not semaphore-bound.
+Evaluation pair grading acquires one permit and always releases it after both
+model callbacks settle. With 12 controller workers, the default bounds active
+executor and grader model processes at 16: `12 - g + (2 * g)`, where `g <= 4`.
+External grading also fails closed unless controller concurrency plus
+`maxConcurrentPairs` is at most 16.
 
 ## Evidence hooks
 

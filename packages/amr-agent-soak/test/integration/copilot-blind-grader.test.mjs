@@ -85,6 +85,8 @@ test('bridges paired model grading through calibration and preserves both raw gr
     assert.equal(calibration.passed, true)
     assert.deepEqual(calibration.modelIds, ['grader-a', 'grader-b'])
     assert.equal(calibration.kappa, 1)
+    assert.equal(grader.snapshot.maxConcurrentPairs, 4)
+    assert.equal(grader.snapshot.maximumActiveModelProcesses, 16)
     const provenanceFiles = new Set(grader.snapshot.dependencies.map((item) => item.file))
     for (const required of [
       'src/core/hash.ts',
@@ -313,6 +315,102 @@ test('throws on calibration disagreement but retains low-kappa pairs as inconclu
       assert.ok(grade.details.blind.pairKappa < 0.8)
       assert.ok(grade.details.blind.contestedClaims.length > 0)
     }
+  } finally {
+    await rm(runDir, { recursive: true, force: true })
+  }
+})
+
+test('bounds concurrent pair grading and rejects invalid semaphore limits', async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), 'copilot-grader-semaphore-'))
+  try {
+    const runtime = await loadSoakRegistry()
+    const [scenario] = await new RegistryScenarioProvider(runtime, {
+      targetSkill: 'redis-code',
+      scenarioIds: ['scn-connection-auth-tls-entra'],
+      runId: 'blind-semaphore-test',
+    }).listScenarios()
+    let trackEvaluation = false
+    let activeModelCalls = 0
+    let maximumModelCalls = 0
+    let startedModelCalls = 0
+    let releaseFirstWave
+    const firstWave = new Promise((resolve) => {
+      releaseFirstWave = resolve
+    })
+    const grader = await createBlindGrader({
+      runtime,
+      evidenceStore: new EvidenceStore(runtime),
+      config: {
+        modelIds: ['grader-a', 'grader-b'],
+        minimumKappa: 0.8,
+        maxConcurrentPairs: 2,
+        modelExecutor: async (request) => {
+          if (trackEvaluation) {
+            activeModelCalls += 1
+            startedModelCalls += 1
+            maximumModelCalls = Math.max(maximumModelCalls, activeModelCalls)
+            if (startedModelCalls === 4) queueMicrotask(releaseFirstWave)
+            await firstWave
+            activeModelCalls -= 1
+          }
+          return strictResponse(request)
+        },
+      },
+      repositoryRoot: repoRoot,
+      processManager: {},
+      controllerConfig: { runId: 'blind-semaphore-test', model: 'executor-model' },
+      runDir,
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    })
+    assert.equal(grader.snapshot.maxConcurrentPairs, 2)
+    await grader.assertCalibration([scenario])
+    trackEvaluation = true
+    await Promise.all(Array.from({ length: 6 }, (_, index) =>
+      grader.gradePair({
+        'with-skill': artifact(`safe EVAL_${index}`, 'with'),
+        'without-skill': artifact(`redis://unsafe EVAL_${index}`, 'without'),
+      }, scenario, `pair-${index}`),
+    ))
+    assert.equal(maximumModelCalls, 4)
+    assert.equal(activeModelCalls, 0)
+
+    const common = {
+      runtime,
+      evidenceStore: new EvidenceStore(runtime),
+      repositoryRoot: repoRoot,
+      processManager: {},
+      controllerConfig: { runId: 'blind-invalid-semaphore', model: 'executor-model' },
+      runDir: path.join(runDir, 'invalid'),
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    }
+    for (const maxConcurrentPairs of [0, 5, 1.5, '2', Number.POSITIVE_INFINITY]) {
+      await assert.rejects(
+        () => createBlindGrader({
+          ...common,
+          config: {
+            modelIds: ['grader-a', 'grader-b'],
+            maxConcurrentPairs,
+            modelExecutor: async (request) => strictResponse(request),
+          },
+        }),
+        /maxConcurrentPairs must be an integer from 1 through 4/,
+      )
+    }
+    await assert.rejects(
+      () => createBlindGrader({
+        ...common,
+        controllerConfig: {
+          ...common.controllerConfig,
+          concurrency: 13,
+        },
+        config: {
+          modelIds: ['grader-a', 'grader-b'],
+          maxConcurrentPairs: 4,
+          modelExecutor: async (request) => strictResponse(request),
+        },
+      }),
+      /controller concurrency plus integration\.grading\.maxConcurrentPairs must not exceed 16/,
+    )
   } finally {
     await rm(runDir, { recursive: true, force: true })
   }

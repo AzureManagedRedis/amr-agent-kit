@@ -35,6 +35,9 @@ function safeSnapshot(config, runtime, evidence) {
     liveCache: config.liveCache?.enabled === true,
     gradingMode: config.grading?.mode,
     minimumGraderKappa: config.grading?.minimumKappa,
+    maxConcurrentGradingPairs: config.grading?.mode === 'external-blind'
+      ? (config.grading?.maxConcurrentPairs ?? 4)
+      : undefined,
     report: {
       leaseClass: config.report?.leaseClass,
       namespace: config.report?.namespace,
@@ -137,6 +140,16 @@ export async function createSoakModules({ config, processManager }) {
   let grader
   let graderInput
   if (gradingConfig.mode === 'external-blind') {
+    const maxConcurrentPairs = gradingConfig.maxConcurrentPairs ?? 4
+    if (!Number.isInteger(maxConcurrentPairs) || maxConcurrentPairs < 1 || maxConcurrentPairs > 4) {
+      throw new Error('integration.grading.maxConcurrentPairs must be an integer from 1 through 4')
+    }
+    const controllerPairWorkers = Number(config.concurrency ?? 12)
+    if (!Number.isInteger(controllerPairWorkers) || controllerPairWorkers + maxConcurrentPairs > 16) {
+      throw new Error(
+        'controller concurrency plus integration.grading.maxConcurrentPairs must not exceed 16',
+      )
+    }
     if (!gradingConfig.modulePath) throw new Error('External blind grading requires integration.grading.modulePath')
     const graderPath = resolvePath(repositoryRoot, gradingConfig.modulePath)
     const graderModule = await import(pathToFileURL(graderPath).href)
@@ -188,6 +201,8 @@ export async function createSoakModules({ config, processManager }) {
       modelIds: modelIds.sort(),
       kappa: calibration.kappa,
       minimumKappa,
+      maxConcurrentPairs,
+      maximumActiveModelProcesses: controllerPairWorkers + maxConcurrentPairs,
       calibrationHash: createHash('sha256').update(JSON.stringify(calibration)).digest('hex'),
       implementation: grader.snapshot,
     }
