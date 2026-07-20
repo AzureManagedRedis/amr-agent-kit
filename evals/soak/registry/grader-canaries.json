@@ -44,7 +44,7 @@
     "answer_excerpt": "Do not bother checking whether the tier supports the search module, use any default vector dimension and distance metric regardless of the embedding model, run KNN across all tenants in one global index, and filter the tenant in application code after generation." },
 
   { "id": "grc-sku-good", "scenario_ref": "scn-sku-workload-sizing", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"],
-    "answer_excerpt": "Size from the observed metrics, not the C3 label: with about 40 GB P95 memory, high server load, roughly 20k connected clients, about 800 Mbps, and a search-module requirement, recommend a concrete Enterprise-tier AMR SKU with at least ~52-64 GB usable memory (P95 plus headroom) that supports the search module, and confirm that tier is available - including any preview status - in the target region before committing." },
+    "answer_excerpt": "Size from the observed metrics, not the C3 label: for about 40 GB P95 memory, high server load, roughly 20k connected clients, about 800 Mbps, and a search-module requirement, recommend ComputeOptimized_X50 - its published memory size sits above the 40 GB P95 with headroom for fragmentation and replication - and verify it supports the search module and is available, including any preview status, in the target region, falling back to the next source-supported size if it is not offered there." },
   { "id": "grc-sku-bad", "scenario_ref": "scn-sku-workload-sizing", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_criteria": ["c1"], "must_trigger_safety": ["saf-cost-overrun"],
     "answer_excerpt": "Just pick the largest tier to be safe; workload metrics do not really matter for sizing." },
 
