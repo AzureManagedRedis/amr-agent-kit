@@ -185,11 +185,12 @@ test("execute retry returns only the successful extraction-race attempt", async 
   const attempts: number[] = [];
   const cleanups: number[] = [];
   const delays: number[] = [];
+  let cleaned = false;
   const result = await runExtractionRetry(
     (attemptNumber) => {
       attempts.push(attemptNumber);
       return Promise.resolve(
-        attemptNumber === 1
+        attemptNumber === 1 || !cleaned
           ? { value: "failed-attempt", failed: true, stderr: extractionRace }
           : { value: "successful-attempt", failed: false, stderr: "" },
       );
@@ -197,6 +198,7 @@ test("execute retry returns only the successful extraction-race attempt", async 
     {
       cleanup: () => {
         cleanups.push(1);
+        cleaned = true;
         return Promise.resolve();
       },
       sleep: (delay) => {

@@ -232,22 +232,31 @@ async function captureSuccessful(
     env: NodeJS.ProcessEnv;
     timeoutMs: number;
     processManager: ProcessManager;
+    workspace: IsolatedWorkspace;
+    label: string;
   },
 ): Promise<CapturedProcess> {
-  let last: CapturedProcess | undefined;
-  const maxAttempts = 4;
-  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
-    last = await capture(command, args, options);
-    if (last.exitCode === 0) {
-      return last;
-    }
-    const extractionRace = isBundledExtractionRace(`${last.stderr}\n${last.stdout}`);
-    if (!extractionRace || attempt === maxAttempts - 1) {
-      break;
-    }
-    await new Promise((resolve) => setTimeout(resolve, preflightRetryDelayMs(attempt)));
-  }
-  return last!;
+  const captureRoot = path.join(options.workspace.root, "preflight-captures");
+  await mkdir(captureRoot, { recursive: true });
+  return runExtractionRetry(
+    async (attemptNumber) => {
+      const result = await capture(command, args, options);
+      const prefix = path.join(
+        captureRoot,
+        `${options.label}.attempt-${attemptNumber}`,
+      );
+      await Promise.all([
+        writeFile(`${prefix}.stdout.log`, result.stdout),
+        writeFile(`${prefix}.stderr.log`, result.stderr),
+      ]);
+      return {
+        value: result,
+        failed: result.exitCode !== 0,
+        stderr: result.stderr,
+      };
+    },
+    { cleanup: () => cleanExtractionDirectories(options.workspace) },
+  );
 }
 
 export function assertExecutorCapabilities(capabilities: ExecutorCapabilities): void {
@@ -443,12 +452,16 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       env: workspace.environment,
       timeoutMs: this.#preflightTimeoutMs,
       processManager: this.#processManager,
+      workspace,
+      label: "help",
     });
     const version = await captureSuccessful(executablePath, ["--version"], {
       cwd: workspace.projectDir,
       env: workspace.environment,
       timeoutMs: this.#preflightTimeoutMs,
       processManager: this.#processManager,
+      workspace,
+      label: "version",
     });
     const withoutSkills = await captureSuccessful(
       executablePath,
@@ -458,6 +471,8 @@ export class CopilotCliExecutor implements HeadlessExecutor {
         env: workspaces.withoutSkill.environment,
         timeoutMs: this.#preflightTimeoutMs,
         processManager: this.#processManager,
+        workspace: workspaces.withoutSkill,
+        label: "without-skill-list",
       },
     );
     const withSkills = await captureSuccessful(
@@ -468,6 +483,8 @@ export class CopilotCliExecutor implements HeadlessExecutor {
         env: workspaces.withSkill.environment,
         timeoutMs: this.#preflightTimeoutMs,
         processManager: this.#processManager,
+        workspace: workspaces.withSkill,
+        label: "with-skill-list",
       },
     );
     if (
@@ -553,6 +570,8 @@ export class CopilotCliExecutor implements HeadlessExecutor {
         env: calibration.workspace.environment,
         timeoutMs: this.#preflightTimeoutMs,
         processManager: this.#processManager,
+        workspace: calibration.workspace,
+        label: "calibration-warmup",
       });
       if (warmup.exitCode !== 0) {
         throw new Error(
