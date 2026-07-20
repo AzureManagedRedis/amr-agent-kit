@@ -5,9 +5,11 @@ import {
   assertCalibrationArtifact,
   assertCalibratedModels,
   assertExecutorCapabilities,
+  extractFinalResponseText,
   isBundledExtractionRace,
   preflightRetryDelayMs,
   responseTextFromEvents,
+  runExtractionRetry,
 } from "../../src/executor/copilot-cli.js";
 
 const capabilities: ExecutorCapabilities = {
@@ -94,6 +96,7 @@ test("calibration rejects parent session attachments and database failures", () 
       args: [],
       cwd: ".",
       pid: 1,
+      attemptNumber: 1,
       processIdentity: { pid: 1, startedAt: timestamp, name: "copilot" },
       descendants: [],
       startedAt: timestamp,
@@ -172,5 +175,89 @@ test("calibration rejects parent session attachments and database failures", () 
   assert.throws(
     () => assertCalibrationArtifact({ ...artifact, events: [{ type: "assistant.idle", data: {} }] }, [], "gpt-5.6-sol"),
     /did not report a served model/,
+  );
+});
+
+const extractionRace =
+  "Failed to extract bundled package: Error: EPERM: operation not permitted, rename '.extracting-1.0.69-2' -> '1.0.69-2'";
+
+test("execute retry returns only the successful extraction-race attempt", async () => {
+  const attempts: number[] = [];
+  const cleanups: number[] = [];
+  const delays: number[] = [];
+  const result = await runExtractionRetry(
+    (attemptNumber) => {
+      attempts.push(attemptNumber);
+      return Promise.resolve(
+        attemptNumber === 1
+          ? { value: "failed-attempt", failed: true, stderr: extractionRace }
+          : { value: "successful-attempt", failed: false, stderr: "" },
+      );
+    },
+    {
+      cleanup: () => {
+        cleanups.push(1);
+        return Promise.resolve();
+      },
+      sleep: (delay) => {
+        delays.push(delay);
+        return Promise.resolve();
+      },
+    },
+  );
+  assert.equal(result, "successful-attempt");
+  assert.deepEqual(attempts, [1, 2]);
+  assert.equal(cleanups.length, 1);
+  assert.deepEqual(delays, [500]);
+});
+
+test("execute retry does not retry ordinary failures", async () => {
+  let attempts = 0;
+  const result = await runExtractionRetry(
+    () => {
+      attempts += 1;
+      return Promise.resolve({
+        value: "ordinary-failure",
+        failed: true,
+        stderr: "model unavailable",
+      });
+    },
+    { cleanup: () => Promise.resolve(), sleep: () => Promise.resolve() },
+  );
+  assert.equal(result, "ordinary-failure");
+  assert.equal(attempts, 1);
+});
+
+test("execute extraction retry is bounded to four attempts", async () => {
+  let attempts = 0;
+  const delays: number[] = [];
+  const result = await runExtractionRetry(
+    () => {
+      attempts += 1;
+      return Promise.resolve({ value: attempts, failed: true, stderr: extractionRace });
+    },
+    {
+      cleanup: () => Promise.resolve(),
+      sleep: (delay) => {
+        delays.push(delay);
+        return Promise.resolve();
+      },
+    },
+  );
+  assert.equal(result, 4);
+  assert.equal(attempts, 4);
+  assert.deepEqual(delays, [500, 1_000, 2_000]);
+});
+
+test("extracts only the final assistant JSONL response", () => {
+  assert.equal(
+    extractFinalResponseText([
+      { type: "assistant.message_delta", data: { deltaContent: "RE" } },
+      { type: "assistant.message_delta", data: { deltaContent: "TRY_OK" } },
+      { type: "assistant.message", data: { content: "RETRY_OK" } },
+      { type: "assistant.turn_end", data: {} },
+      { type: "session.ended", message: "session closed" },
+    ]),
+    "RETRY_OK",
   );
 });

@@ -104,6 +104,7 @@ export interface ProcessTrace {
   readonly args: ReadonlyArray<string>;
   readonly cwd: string;
   readonly pid: number;
+  readonly attemptNumber: number;
   readonly processIdentity: ProcessIdentity;
   readonly descendants: ReadonlyArray<ProcessIdentity>;
   readonly startedAt: string;

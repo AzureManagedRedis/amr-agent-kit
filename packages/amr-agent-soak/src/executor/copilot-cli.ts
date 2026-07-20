@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import type {
@@ -33,6 +33,116 @@ export function isBundledExtractionRace(output: string): boolean {
 
 export function preflightRetryDelayMs(attempt: number): number {
   return 500 * 2 ** attempt;
+}
+
+interface RetryAttempt<T> {
+  readonly value: T;
+  readonly failed: boolean;
+  readonly stderr: string;
+}
+
+const EXTRACTION_RETRY_DELAYS_MS = [500, 1_000, 2_000] as const;
+
+export function isPackageExtractionRace(stderr: string): boolean {
+  return (
+    /failed to extract bundled package/i.test(stderr) &&
+    /\bEPERM\b/i.test(stderr) &&
+    /\brename\b/i.test(stderr) &&
+    /\.extracting-/i.test(stderr)
+  );
+}
+
+export async function runExtractionRetry<T>(
+  attempt: (attemptNumber: number) => Promise<RetryAttempt<T>>,
+  options: {
+    cleanup: () => Promise<void>;
+    sleep?: (delayMs: number) => Promise<void>;
+    shouldStop?: () => boolean;
+  },
+): Promise<T> {
+  const sleep =
+    options.sleep ??
+    ((delayMs: number) => new Promise<void>((resolve) => setTimeout(resolve, delayMs)));
+  let last: RetryAttempt<T> | undefined;
+  for (let attemptNumber = 1; attemptNumber <= 4; attemptNumber += 1) {
+    last = await attempt(attemptNumber);
+    if (
+      !last.failed ||
+      !isPackageExtractionRace(last.stderr) ||
+      attemptNumber === 4 ||
+      options.shouldStop?.()
+    ) {
+      return last.value;
+    }
+    await options.cleanup();
+    await sleep(EXTRACTION_RETRY_DELAYS_MS[attemptNumber - 1]);
+    if (options.shouldStop?.()) {
+      return last.value;
+    }
+  }
+  return last!.value;
+}
+
+export function extractFinalResponseText(events: ReadonlyArray<unknown>): string {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (!event || typeof event !== "object") {
+      continue;
+    }
+    const record = event as Record<string, unknown>;
+    if (record.type === "assistant.message") {
+      if (record.data && typeof record.data === "object") {
+        const content = (record.data as Record<string, unknown>).content;
+        if (typeof content === "string") {
+          return content;
+        }
+      }
+      if (typeof record.content === "string") {
+        return record.content;
+      }
+      if (typeof record.message === "string") {
+        return record.message;
+      }
+    }
+  }
+  return "";
+}
+
+async function cleanExtractionDirectories(workspace: IsolatedWorkspace): Promise<void> {
+  const localAppData = workspace.environment.LOCALAPPDATA;
+  if (!localAppData) {
+    return;
+  }
+  const root = path.resolve(localAppData);
+  async function visit(current: string, depth: number): Promise<void> {
+    if (depth > 6) {
+      return;
+    }
+    let entries;
+    try {
+      entries = await readdir(current, { withFileTypes: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return;
+      }
+      throw error;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const candidate = path.resolve(current, entry.name);
+      if (!candidate.startsWith(`${root}${path.sep}`)) {
+        throw new Error(`Refusing extraction cleanup outside isolated LOCALAPPDATA: ${candidate}`);
+      }
+      if (entry.name.startsWith(".extracting-")) {
+        await rm(candidate, { recursive: true, force: true });
+      } else {
+        await visit(candidate, depth + 1);
+      }
+    }
+  }
+  await visit(root, 0);
 }
 
 async function capture(
@@ -484,11 +594,54 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     capabilities: ExecutorCapabilities,
   ): Promise<ExecutionArtifact> {
     assertExecutorCapabilities(capabilities);
+    return runExtractionRetry(
+      async (attemptNumber) => {
+        const attemptRequest: ExecutionRequest = {
+          ...request,
+          workspace: {
+            ...request.workspace,
+            projectHash: await hashTree(request.workspace.projectDir),
+            profileHash: await hashTree(request.workspace.profileDir),
+          },
+        };
+        const artifact = await this.#executeAttempt(
+          attemptRequest,
+          capabilities,
+          attemptNumber,
+        );
+        const stderr = await readFile(artifact.trace.stderrFile, "utf8");
+        return {
+          value: artifact,
+          failed:
+            artifact.status === "failed" &&
+            artifact.trace.exitCode !== 0 &&
+            !artifact.trace.timedOut &&
+            !artifact.trace.cancelled,
+          stderr,
+        };
+      },
+      {
+        cleanup: () => cleanExtractionDirectories(request.workspace),
+        shouldStop: () => request.signal.aborted,
+      },
+    );
+  }
+
+  async #executeAttempt(
+    request: ExecutionRequest,
+    capabilities: ExecutorCapabilities,
+    attemptNumber: number,
+  ): Promise<ExecutionArtifact> {
     const startedAt = new Date().toISOString();
-    const stdoutFile = path.join(request.workspace.root, "stdout.jsonl");
-    const stderrFile = path.join(request.workspace.root, "stderr.log");
-    const traceFile = path.join(request.workspace.root, "process-trace.json");
-    await mkdir(request.workspace.root, { recursive: true });
+    const attemptSuffix = `attempt-${attemptNumber}`;
+    const stdoutFile = path.join(request.workspace.root, `stdout.${attemptSuffix}.jsonl`);
+    const stderrFile = path.join(request.workspace.root, `stderr.${attemptSuffix}.log`);
+    const traceFile = path.join(request.workspace.root, `process-trace.${attemptSuffix}.json`);
+    const attemptLogDir = path.join(request.workspace.logDir, attemptSuffix);
+    await Promise.all([
+      mkdir(request.workspace.root, { recursive: true }),
+      mkdir(attemptLogDir, { recursive: true }),
+    ]);
     await Promise.all([writeFile(stdoutFile, ""), writeFile(stderrFile, "")]);
 
     const args = [
@@ -508,7 +661,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       "--stream",
       "off",
       "--log-dir",
-      request.workspace.logDir,
+      attemptLogDir,
     ];
     if (request.model) {
       args.push("--model", request.model);
@@ -604,7 +757,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
           return { type: "unparsed", text: line };
         }
       });
-    const responseText = responseTextFromEvents(events);
+    const responseText = extractFinalResponseText(events);
 
     const status: ExecutionArtifact["status"] = timedOut
       ? "timed-out"
@@ -619,6 +772,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       args,
       cwd: request.workspace.projectDir,
       pid,
+      attemptNumber,
       processIdentity,
       descendants: outcome.terminationResult?.discovered ?? [],
       startedAt,

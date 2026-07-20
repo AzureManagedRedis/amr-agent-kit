@@ -68,6 +68,7 @@ class FakeExecutor implements HeadlessExecutor {
         args: [],
         cwd: request.workspace.projectDir,
         pid: process.pid,
+        attemptNumber: 1,
         processIdentity,
         descendants: [],
         startedAt: timestamp,
