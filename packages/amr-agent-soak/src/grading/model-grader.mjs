@@ -298,6 +298,16 @@ export function createBlindModelGrader({
   if (!Number.isInteger(timeoutMs) || timeoutMs <= 0) throw new GraderConfigurationError('timeoutMs must be a positive integer')
   const calibrationThreshold = policy.calibrationThreshold ?? 1
   const agreementThreshold = policy.agreementThreshold ?? 0.8
+  const configuredModes = typeof policy.agreementMode === 'string'
+    ? { evaluation: policy.agreementMode }
+    : (policy.agreementMode ?? {})
+  const agreementModes = {
+    calibration: configuredModes.calibration ?? policy.calibrationAgreementMode ?? 'throw',
+    evaluation: configuredModes.evaluation ?? policy.evaluationAgreementMode ?? 'return-contested',
+  }
+  if (agreementModes.calibration !== 'throw' || !['throw', 'return-contested'].includes(agreementModes.evaluation)) {
+    throw new GraderConfigurationError('agreement mode must use calibration=throw and evaluation=throw|return-contested')
+  }
   if (!Number.isFinite(calibrationThreshold) || calibrationThreshold < 0 || calibrationThreshold > 1) {
     throw new GraderConfigurationError('calibrationThreshold must be between 0 and 1')
   }
@@ -389,13 +399,22 @@ export function createBlindModelGrader({
         const label = requestLabel(bundleIndex, arm)
         const expected = expectedForCanary(entry.canary, arm.label)
         const outcomes = graderResults.map((grader) => Boolean(grader.parsed[label].passed ?? (grader.parsed[label].score >= 0.5)) === expected)
-        return { arm: arm.label, expected, outcomes, correct: outcomes.filter(Boolean).length, total: outcomes.length }
+        let kappa
+        try {
+          kappa = adjudicateTwoGraders(graderResults[0].parsed[label], graderResults[1].parsed[label]).kappa
+        } catch (error) {
+          throw new AgreementError(`calibration assertion agreement failed for ${entry.canary.id}/${arm.label}`, { cause: error })
+        }
+        assertFiniteKappas([kappa])
+        return { arm: arm.label, expected, outcomes, correct: outcomes.filter(Boolean).length, total: outcomes.length, kappa }
       })
       calibrationResults.push({
         id: entry.canary.id,
         arms,
         correct: arms.reduce((sum, arm) => sum + arm.correct, 0),
         total: arms.reduce((sum, arm) => sum + arm.total, 0),
+        kappa: Math.min(...arms.map((arm) => arm.kappa)),
+        kappa_by_arm: arms.map((arm) => arm.kappa),
         transcripts: graderResults.map((grader) => grader.transcript),
       })
     }
@@ -404,6 +423,16 @@ export function createBlindModelGrader({
     const calibrationAccuracy = calibrationTotal === 0 ? 0 : calibrationCorrect / calibrationTotal
     if (calibrationAccuracy < calibrationThreshold) {
       throw new CalibrationError(`calibration accuracy ${calibrationAccuracy} is below ${calibrationThreshold}`, { calibrationResults, calibrationAccuracy })
+    }
+    const calibrationKappas = calibrationResults.flatMap((result) => result.kappa_by_arm)
+    assertFiniteKappas(calibrationKappas)
+    const calibrationKappa = Math.min(...calibrationKappas)
+    if (calibrationKappa < agreementThreshold) {
+      throw new AgreementError(`calibration Cohen's kappa ${calibrationKappa} is below ${agreementThreshold}`, {
+        calibrationResults,
+        calibrationKappa,
+        agreementThreshold,
+      })
     }
 
     const adjudicated = []
@@ -446,13 +475,20 @@ export function createBlindModelGrader({
     assertFiniteKappas(allKappas)
     const meanKappa = allKappas.length === 0 ? null : allKappas.reduce((sum, value) => sum + value, 0) / allKappas.length
     const kappa = allKappas.length === 0 ? null : Math.min(...allKappas)
-    if (kappa === null || kappa < agreementThreshold) {
-      throw new AgreementError(`Cohen's kappa ${kappa ?? 'n/a'} is below ${agreementThreshold}`, { kappa, meanKappa, kappaByArm: allKappas, agreementThreshold, contestedClaims, adjudicated })
+    const agreementFailure = kappa === null || kappa < agreementThreshold
+    const agreementFailureReason = agreementFailure
+      ? `evaluation Cohen's kappa ${kappa ?? 'n/a'} is below ${agreementThreshold}`
+      : null
+    if (agreementFailure && agreementModes.evaluation === 'throw') {
+      throw new AgreementError(agreementFailureReason, { kappa, meanKappa, kappaByArm: allKappas, agreementThreshold, contestedClaims, adjudicated })
     }
     return {
       api_version: MODEL_GRADER_API_VERSION,
-      accepted: true,
-      calibration: { accuracy: calibrationAccuracy, threshold: calibrationThreshold, results: calibrationResults },
+      accepted: !agreementFailure,
+      inconclusive: agreementFailure,
+      agreement_failure_reason: agreementFailureReason,
+      agreement_mode: agreementModes,
+      calibration: { accuracy: calibrationAccuracy, threshold: calibrationThreshold, kappa: calibrationKappa, agreement_threshold: agreementThreshold, results: calibrationResults },
       grader_models: models,
       bundles: evaluationBundles,
       blind_batch: entries.map((entry) => ({ kind: entry.kind, bundle_id: entry.bundle.bundle_id })),

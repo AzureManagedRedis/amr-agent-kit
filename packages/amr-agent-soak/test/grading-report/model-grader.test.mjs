@@ -82,7 +82,12 @@ function grader(options = {}) {
     modelExecutor,
     graderModelIds: ['grader-a', 'grader-b'],
     executorModelId: options.executorModelId,
-    policy: { requireExecutorDiversity: options.requireExecutorDiversity ?? false, agreementThreshold: options.agreementThreshold ?? 0.8, calibrationThreshold: options.calibrationThreshold ?? 1 },
+    policy: {
+      requireExecutorDiversity: options.requireExecutorDiversity ?? false,
+      agreementThreshold: options.agreementThreshold ?? 0.8,
+      calibrationThreshold: options.calibrationThreshold ?? 1,
+      agreementMode: options.agreementMode ?? { calibration: 'throw', evaluation: 'return-contested' },
+    },
     moduleHash: 'test-module-hash',
     timeoutMs: options.timeoutMs ?? 100,
     artifactWriter: async (name, content) => {
@@ -212,19 +217,42 @@ test('calibration inspects both arms and fails if either arm is wrong', async ()
 })
 
 test('fails closed below the configured kappa threshold', async () => {
-  await assert.rejects(() => runGrader({
+  const { result } = await runGrader({
     actualPassByModel: { 'grader-a': true, 'grader-b': false },
-  }), AgreementError)
+  })
+  assert.equal(result.accepted, false)
+  assert.equal(result.inconclusive, true)
+  assert.match(result.agreement_failure_reason, /below/)
+  assert.equal(result.grader_results.length, 2)
 })
 
 test('does not average an individual low-kappa pair away', async () => {
-  await assert.rejects(() => runGrader({
+  const { result } = await runGrader({
     agreementThreshold: 0.1,
     modelExecutor: async (request, context) => {
       return response(request, (arm) => arm.output.includes('canary')
         ? !arm.output.includes('bad canary output')
         : context.modelId === 'grader-a')
     },
+  })
+  assert.equal(result.accepted, false)
+  assert.equal(result.inconclusive, true)
+  assert.ok(result.kappa_by_arm.some((value) => value < 0.1))
+})
+
+test('evaluation agreement can explicitly use throw mode', async () => {
+  await assert.rejects(() => runGrader({
+    actualPassByModel: { 'grader-a': true, 'grader-b': false },
+    agreementMode: { calibration: 'throw', evaluation: 'throw' },
+  }), AgreementError)
+})
+
+test('calibration kappa always fails closed before evaluation acceptance', async () => {
+  await assert.rejects(() => runGrader({
+    calibrationThreshold: 0,
+    modelExecutor: async (request, context) => response(request, (arm) => arm.output.includes('canary')
+      ? context.modelId === 'grader-a'
+      : true),
   }), AgreementError)
 })
 
@@ -269,7 +297,7 @@ test('aligns reordered assertion IDs before kappa and adjudication', async () =>
 })
 
 test('fails closed when reordered IDs contain opposite pass values', async () => {
-  await assert.rejects(() => runGrader({
+  const { result } = await runGrader({
     modelExecutor: async (request, context) => {
       const assertions = context.modelId === 'grader-b'
         ? [{ id: 'c2', statement: 'second', passed: true }, { id: 'c1', statement: 'first', passed: false }]
@@ -284,7 +312,10 @@ test('fails closed when reordered IDs contain opposite pass values', async () =>
         grades,
       })
     },
-  }), AgreementError)
+  })
+  assert.equal(result.accepted, false)
+  assert.equal(result.inconclusive, true)
+  assert.equal(result.kappa, -1)
 })
 
 test('rejects custom identity fields and unknown rubric fields', async () => {
