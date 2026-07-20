@@ -93,7 +93,13 @@ Move-Item -Force $pidTemp $pidPath
 
 $responsive = $false
 $exitedProcess = $null
-for ($attempt = 0; $attempt -lt 30; $attempt++) {
+$externalBlindGrading = $config.integration -and $config.integration.grading -and
+    ($config.integration.grading.mode -eq 'external-blind')
+# External blind grading calibrates every selected scenario before runSoak starts
+# emitting heartbeats. Keep this bounded, but do not apply the 30-second
+# deterministic-preflight window to a real multi-scenario calibration.
+$readinessAttempts = if ($externalBlindGrading) { 3600 } else { 30 }
+for ($attempt = 0; $attempt -lt $readinessAttempts; $attempt++) {
     $controller.Refresh()
     $janitor.Refresh()
     if ($controller.HasExited) {
