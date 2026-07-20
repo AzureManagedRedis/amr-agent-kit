@@ -127,7 +127,7 @@ function assertNoIdentityLeakage(request) {
   for (const forbidden of ['with_skill', 'without_skill', 'with-skill', 'without-skill']) {
     if (serialized.includes(forbidden)) throw new GraderProtocolError(`true arm identity leaked into grader request: ${forbidden}`)
   }
-  for (const forbidden of ['arm_label', 'treatment', 'control', 'skill_id', 'skill_path', 'skill_contents', 'skillcontents']) {
+  for (const forbidden of ['arm_label', 'skill_id', 'skill_path', 'skill_contents', 'skillcontents']) {
     if (serialized.includes(forbidden)) throw new GraderProtocolError(`identity field leaked into grader request: ${forbidden}`)
   }
 }

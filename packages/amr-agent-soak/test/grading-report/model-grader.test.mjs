@@ -306,6 +306,23 @@ test('rejects custom identity fields and unknown rubric fields', async () => {
   }), GraderProtocolError)
 })
 
+test('allows ordinary control and treatment domain language', async () => {
+  const setup = grader()
+  const result = await setup.instance.grade({
+    prompt: 'Review control plane concurrency control and treatment of failures.',
+    pairs: pairs(),
+    rubric: {
+      ...rubric,
+      description: 'Evaluate traffic control and treatment of failures.',
+    },
+    sourceEvidence: {
+      source_fact: 'Control plane behavior and treatment of failures are documented.',
+    },
+    canaries: canaries(),
+  })
+  assert.equal(result.accepted, true)
+})
+
 test('rejects non-finite kappa values fail closed', () => {
   assert.throws(() => assertFiniteKappas([1, Number.NaN]), AgreementError)
   assert.throws(() => assertFiniteKappas([1, null]), AgreementError)
