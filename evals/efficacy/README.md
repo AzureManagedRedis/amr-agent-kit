@@ -27,6 +27,7 @@ The corpus also includes scenarios that test whether AMR guidance composes clean
 - **Metric-based AMR sizing** - verifies SKU guidance uses peak/P95 memory, server load, connected clients, bandwidth, module needs, regional availability, and preview status rather than legacy/source SKU labels.
 - **Native AMR IaC** - verifies ARM/Bicep and Terraform guidance uses the Azure Managed Redis cluster/database/default-database model, Private Link DNS, and deployment preflight checks.
 - **DB0 and clustered key design** - verifies Redis application guidance prefers key prefixes for logical separation, makes logical-database availability topology-specific (clustered/CRDB are database-0-only; NoCluster may allow more and must be verified), and makes hash-tag requirements policy-specific for clustered multi-key, transaction, and Lua operations.
+- **AMR logical-database semantics by cluster policy** - verifies infrastructure guidance rejects the blanket claim that AMR always exposes only database 0 and never supports SELECT regardless of cluster policy; clustered policies and active geo-replication are database 0 only, while NoCluster must be confirmed from effective configuration or a live SELECT check, and a single `default` database resource does not prove the logical-database count. Key prefixes remain the portable separation approach and separate caches the hard-isolation approach.
 
 These scenarios should expose whether the skill adds value beyond standalone Redis advice by requiring the answer to connect AMR practices with surrounding Azure services.
 

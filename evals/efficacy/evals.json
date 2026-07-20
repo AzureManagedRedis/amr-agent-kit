@@ -318,6 +318,31 @@
       ],
       "minimum_skill_score": 0.85,
       "minimum_uplift": 0.2
+    },
+    {
+      "id": 12,
+      "name": "amr-db-semantics-by-cluster-policy",
+      "target_skill": "azure-redis-infra",
+      "skill_path": "skills/azure-redis-infra/AGENTS.md",
+      "prompt": "Review this Azure Managed Redis infrastructure plan. A teammate wrote that 'AMR always exposes only database 0 and never supports SELECT, regardless of cluster policy,' and cited the fact that the deployment provisions a single Microsoft.Cache/redisEnterprise/databases resource named default as proof. The plan targets a NoCluster cache for one service and a separate OSSCluster cache with active geo-replication for another. Correct the logical-database claim, tie it to cluster policy and geo-replication, and give the portable tenant-separation and hard-isolation recommendations.",
+      "expected_output": "Infrastructure guidance that corrects the blanket claim: under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication only database 0 is available and SELECT to another index is not supported, but under NoCluster the logical-database count is not proven by a single default database resource and must be confirmed from the database's effective configuration or a live SELECT capability check before asserting DB0-only or multi-database behavior. Recommends application key prefixes as the portable logical-separation approach and separate AMR caches for hard tenant isolation, plus scoped identities and data access policies.",
+      "expectations": [
+        "Rejects the blanket claim that AMR exposes only database 0 and never supports SELECT regardless of cluster policy.",
+        "States that clustered policies (OSSCluster, EnterpriseCluster) and active geo-replication are database 0 only and do not support SELECT to another index.",
+        "States that under NoCluster the logical-database behavior must be verified from effective configuration or a live SELECT capability check rather than assumed.",
+        "Explains that a single default database resource in ARM/Bicep/Terraform does not prove how many logical databases the endpoint exposes.",
+        "Recommends application key prefixes as the portable logical-separation approach across cluster policies.",
+        "Recommends separate AMR caches for hard tenant isolation, plus scoped identities and data access policies."
+      ],
+      "anti_patterns": [
+        "Repeats the blanket claim that AMR always exposes only database 0 and never supports SELECT regardless of cluster policy.",
+        "Asserts NoCluster is DB0-only or multi-database without confirming from effective configuration or a live SELECT check.",
+        "Treats the single default database resource as proof of the logical database count.",
+        "Recommends mapping tenants to numbered Redis DB indexes on AMR.",
+        "Omits key prefixes and separate caches as the tenant-separation and hard-isolation recommendations."
+      ],
+      "minimum_skill_score": 0.85,
+      "minimum_uplift": 0.2
     }
   ]
 }

@@ -362,7 +362,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authenticati
 
 **Impact: CRITICAL (limits blast radius for compromised identities)**
 
-Azure Managed Redis uses Microsoft Entra identities for password-free access, but newly assigned users or service principals can receive broad command and key permissions unless you scope them. AMR does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes, so do not map tenants to Redis databases the way some Azure Cache for Redis designs did. Assign managed identities or service principals per workload, use custom data access policies where available, and express least privilege with Redis ACL syntax such as command categories and key patterns. Track each access policy assignment as infrastructure so reviews and removals are auditable.
+Azure Managed Redis uses Microsoft Entra identities for password-free access, but newly assigned users or service principals can receive broad command and key permissions unless you scope them. Do not build tenant isolation on Redis logical-database indexes: under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication, only database 0 is available and `SELECT` to another index is not supported; under `NoCluster`, do not assume either single-database or multi-database behavior without confirming it from the database's effective configuration or a live `SELECT` capability check. A single managed `default` database resource in the control or data plane does not by itself prove how many logical databases the endpoint exposes. Regardless of cluster policy, express tenant and workload boundaries through identities and key patterns rather than numbered DB indexes. Assign managed identities or service principals per workload, use custom data access policies where available, and express least privilege with Redis ACL syntax such as command categories and key patterns. Track each access policy assignment as infrastructure so reviews and removals are auditable.
 
 **Incorrect: shared identity with full data-plane access**
 
@@ -512,6 +512,8 @@ Choose OSS vs Enterprise cluster policy, understand port requirements, and align
 
 Azure Managed Redis supports OSSCluster, EnterpriseCluster, and NoCluster policies. Choose the policy explicitly based on client capabilities, module requirements, cache size, and multi-key command behavior; do not rely on provider defaults. AMR manages partitioning internally, so avoid describing the service in terms of customer-managed shard counts. In customer-facing guidance, say tier, SKU, capacity or usable memory, and cluster policy instead of "number of shards."
 
+Cluster policy also constrains logical-database semantics. Under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication, only database 0 is available and `SELECT` to a non-zero index is not supported, so plan for a single logical database. Under `NoCluster`, do not assert either DB0-only or multi-database behavior without evidence; a single managed `default` database resource does not prove the logical database count, so confirm it from the effective server configuration or a live `SELECT` capability check before relying on more than database 0. In all cases, prefer application key prefixes for portable logical separation and separate caches for hard isolation rather than numbered DB indexes.
+
 **Incorrect: select OSS when clients and modules require Enterprise**
 
 ```text
@@ -527,6 +529,7 @@ Multi-key/Lua: uses keys across slots
 Cluster policy: NoCluster when supported for simple single-endpoint workloads
 Cluster policy: OSSCluster only for Redis Cluster-aware clients
 Cluster policy: EnterpriseCluster when required by modules or client compatibility
+Logical databases: DB0-only under clustered/active-geo; verify under NoCluster before using more than DB0
 Scale language: tier, SKU, capacity, usable memory, and cluster policy
 Multi-key/Lua: keys use hash tags or avoid cross-slot operations
 ```

@@ -53,7 +53,7 @@ For production guidance, prefer Private Link, disabled public network access, TL
 
 ### Design Tenant Boundaries Explicitly
 
-Azure Managed Redis does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes. For tenant-aware deployments, use scoped identities, data access policies/key patterns, application key prefixes, metadata filters for search/RAG workloads, and separate AMR caches when tenants need hard isolation or independent lifecycle.
+Do not assume Azure Managed Redis preserves Azure Cache for Redis-style numbered-database multi-tenancy. Under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication, only database 0 is available and `SELECT` to another index is not supported. Under `NoCluster`, do not assert either DB0-only or multiple logical databases without evidence; a single managed `default` database resource does not prove the logical database count, so confirm it from the database's effective configuration or a live `SELECT` capability check before relying on more than database 0. Regardless of cluster policy, prefer application key prefixes as the portable logical-separation approach and separate AMR caches for hard tenant isolation or independent lifecycle. Also use scoped identities, data access policies/key patterns, and metadata filters for search/RAG workloads.
 
 ### Separate Infrastructure Workflows
 
