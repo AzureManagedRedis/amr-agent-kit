@@ -30,6 +30,8 @@ const capabilities: ExecutorCapabilities = {
   supportsNoAutoUpdate: true,
   supportsStreamControl: true,
   calibratedModels: ["fake"],
+  packageCacheHash: "package-cache-hash",
+  packageCacheSource: "package-cache-source",
 };
 
 class FakeExecutor implements HeadlessExecutor {

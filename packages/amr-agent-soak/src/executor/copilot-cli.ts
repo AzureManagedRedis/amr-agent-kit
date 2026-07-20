@@ -11,7 +11,7 @@ import type {
   IsolatedWorkspace,
 } from "../core/contracts.js";
 import { writeAtomicJson } from "../core/atomic.js";
-import { detectContamination } from "../core/isolation.js";
+import { detectContamination, hashIsolatedProfile } from "../core/isolation.js";
 import { hashBytes, hashTree } from "../core/hash.js";
 import {
   SystemProcessManager,
@@ -108,7 +108,7 @@ export function extractFinalResponseText(events: ReadonlyArray<unknown>): string
   return "";
 }
 
-async function cleanExtractionDirectories(workspace: IsolatedWorkspace): Promise<void> {
+export async function cleanExtractionDirectories(workspace: IsolatedWorkspace): Promise<void> {
   const localAppData = workspace.environment.LOCALAPPDATA;
   if (!localAppData) {
     return;
@@ -134,6 +134,12 @@ async function cleanExtractionDirectories(workspace: IsolatedWorkspace): Promise
       const candidate = path.resolve(current, entry.name);
       if (!candidate.startsWith(`${root}${path.sep}`)) {
         throw new Error(`Refusing extraction cleanup outside isolated LOCALAPPDATA: ${candidate}`);
+      }
+      if (
+        path.relative(root, candidate).split(path.sep).join("/").toLowerCase() ===
+        "copilot/pkg"
+      ) {
+        continue;
       }
       if (entry.name.startsWith(".extracting-")) {
         await rm(candidate, { recursive: true, force: true });
@@ -438,6 +444,20 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     }>;
   }): Promise<ExecutorCapabilities> {
     const workspace = workspaces.withoutSkill;
+    const packageCaches = [
+      workspaces.withoutSkill.packageCache,
+      workspaces.withSkill.packageCache,
+      ...workspaces.calibrations.map((calibration) => calibration.workspace.packageCache),
+    ];
+    if (
+      packageCaches.some(
+        (cache) =>
+          cache.sourcePath !== packageCaches[0].sourcePath ||
+          cache.metadataHash !== packageCaches[0].metadataHash,
+      )
+    ) {
+      throw new Error("Isolated workspaces do not share one trusted Copilot package cache");
+    }
     const executablePath = await resolveExecutable(
       this.#command,
       workspace,
@@ -447,7 +467,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     // CLI startup initializes profile state. Probe sequentially so concurrent initialization
     // cannot fall back to the operator profile while an isolated profile is being created.
     const executableBytes = await readFile(executablePath);
-    const help = await captureSuccessful(executablePath, ["--help"], {
+    const help = await captureSuccessful(executablePath, ["--no-auto-update", "--help"], {
       cwd: workspace.projectDir,
       env: workspace.environment,
       timeoutMs: this.#preflightTimeoutMs,
@@ -455,7 +475,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       workspace,
       label: "help",
     });
-    const version = await captureSuccessful(executablePath, ["--version"], {
+    const version = await captureSuccessful(executablePath, ["--no-auto-update", "--version"], {
       cwd: workspace.projectDir,
       env: workspace.environment,
       timeoutMs: this.#preflightTimeoutMs,
@@ -465,7 +485,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     });
     const withoutSkills = await captureSuccessful(
       executablePath,
-      ["--no-custom-instructions", "skill", "list", "--json"],
+      ["--no-auto-update", "--no-custom-instructions", "skill", "list", "--json"],
       {
         cwd: workspaces.withoutSkill.projectDir,
         env: workspaces.withoutSkill.environment,
@@ -477,7 +497,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     );
     const withSkills = await captureSuccessful(
       executablePath,
-      ["--no-custom-instructions", "skill", "list", "--json"],
+      ["--no-auto-update", "--no-custom-instructions", "skill", "list", "--json"],
       {
         cwd: workspaces.withSkill.projectDir,
         env: workspaces.withSkill.environment,
@@ -561,18 +581,24 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       supportsNoAutoUpdate: /--no-auto-update\b/.test(text),
       supportsStreamControl: /--stream\s+<mode>[\s\S]*(?:on|off)/.test(text),
       calibratedModels: [],
+      packageCacheHash: packageCaches[0].metadataHash,
+      packageCacheSource: packageCaches[0].sourcePath,
     };
     assertExecutorCapabilities(capabilities);
     const calibratedModels: string[] = [];
     for (const [index, calibration] of workspaces.calibrations.entries()) {
-      const warmup = await captureSuccessful(executablePath, ["--version"], {
-        cwd: calibration.workspace.projectDir,
-        env: calibration.workspace.environment,
-        timeoutMs: this.#preflightTimeoutMs,
-        processManager: this.#processManager,
-        workspace: calibration.workspace,
-        label: "calibration-warmup",
-      });
+      const warmup = await captureSuccessful(
+        executablePath,
+        ["--no-auto-update", "--version"],
+        {
+          cwd: calibration.workspace.projectDir,
+          env: calibration.workspace.environment,
+          timeoutMs: this.#preflightTimeoutMs,
+          processManager: this.#processManager,
+          workspace: calibration.workspace,
+          label: "calibration-warmup",
+        },
+      );
       if (warmup.exitCode !== 0) {
         throw new Error(
           `Calibration profile warmup failed: ${warmup.stderr || warmup.stdout}`,
@@ -580,7 +606,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       }
       const warmedWorkspace: IsolatedWorkspace = {
         ...calibration.workspace,
-        profileHash: await hashTree(calibration.workspace.profileDir),
+        profileHash: await hashIsolatedProfile(calibration.workspace.profileDir),
       };
       const artifact = await this.execute(
         {
@@ -620,7 +646,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
           workspace: {
             ...request.workspace,
             projectHash: await hashTree(request.workspace.projectDir),
-            profileHash: await hashTree(request.workspace.profileDir),
+            profileHash: await hashIsolatedProfile(request.workspace.profileDir),
           },
         };
         const artifact = await this.#executeAttempt(
@@ -762,7 +788,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     const finishedAt = new Date().toISOString();
     const [projectHashAfter, profileHashAfter, stdoutText] = await Promise.all([
       hashTree(request.workspace.projectDir),
-      hashTree(request.workspace.profileDir),
+      hashIsolatedProfile(request.workspace.profileDir),
       readFile(stdoutFile, "utf8"),
     ]);
     const contamination = await detectContamination(request.workspace, [stdoutFile, stderrFile]);

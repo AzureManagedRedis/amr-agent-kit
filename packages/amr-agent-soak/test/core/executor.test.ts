@@ -28,6 +28,8 @@ const capabilities: ExecutorCapabilities = {
   supportsNoAutoUpdate: true,
   supportsStreamControl: true,
   calibratedModels: ["auto"],
+  packageCacheHash: "package-cache-hash",
+  packageCacheSource: "package-cache-source",
 };
 
 test("preflight requires every flag used by execution", () => {

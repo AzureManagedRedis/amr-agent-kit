@@ -60,6 +60,15 @@ export interface ExecutorCapabilities {
   readonly supportsNoAutoUpdate: boolean;
   readonly supportsStreamControl: boolean;
   readonly calibratedModels: ReadonlyArray<string>;
+  readonly packageCacheHash: string;
+  readonly packageCacheSource: string;
+}
+
+export interface PackageCacheProvenance {
+  readonly sourcePath: string;
+  readonly destinationPath: string;
+  readonly mode: "junction" | "copy";
+  readonly metadataHash: string;
 }
 
 export interface ProcessIdentity {
@@ -84,6 +93,7 @@ export interface IsolatedWorkspace {
   readonly environment: NodeJS.ProcessEnv;
   readonly forbiddenMarkers: ReadonlyArray<string>;
   readonly parentSessionMarkers: ReadonlyArray<string>;
+  readonly packageCache: PackageCacheProvenance;
 }
 
 export interface ExecutionRequest {

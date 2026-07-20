@@ -1,6 +1,21 @@
-import { cp, mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import {
+  cp,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { createHash } from "node:crypto";
 import path from "node:path";
-import type { IsolatedWorkspace, SoakArm, SoakScenario } from "./contracts.js";
+import type {
+  IsolatedWorkspace,
+  PackageCacheProvenance,
+  SoakArm,
+  SoakScenario,
+} from "./contracts.js";
 import { hashTree } from "./hash.js";
 
 const FORBIDDEN_PARTS = new Set([
@@ -76,6 +91,12 @@ async function listRelativeEntries(root: string): Promise<ReadonlyArray<string>>
       const absolute = path.join(current, entry.name);
       const relative = path.relative(root, absolute);
       result.push(relative);
+      if (
+        relative.split(path.sep).join("/").toLowerCase() ===
+        "appdata/local/copilot/pkg"
+      ) {
+        continue;
+      }
       if (entry.isDirectory()) {
         await visit(absolute);
       } else if (!entry.isFile()) {
@@ -85,6 +106,126 @@ async function listRelativeEntries(root: string): Promise<ReadonlyArray<string>>
   }
   await visit(root);
   return result.sort((left, right) => left.localeCompare(right));
+}
+
+const packageCacheHashes = new Map<string, Promise<string>>();
+
+export async function hashPackageCacheMetadata(root: string): Promise<string> {
+  let pending = packageCacheHashes.get(root);
+  if (!pending) {
+    let created: Promise<string>;
+    created = (async () => {
+      const digest = createHash("sha256");
+      async function visit(current: string): Promise<void> {
+        const entries = await readdir(current, { withFileTypes: true });
+        entries.sort((left, right) => left.name.localeCompare(right.name));
+        for (const entry of entries) {
+          const absolute = path.join(current, entry.name);
+          const relative = path.relative(root, absolute).split(path.sep).join("/");
+          const entryStat = await stat(absolute);
+          digest.update(
+            `${relative}\0${entry.isDirectory() ? "d" : "f"}\0${entryStat.size}\0`,
+          );
+          if (entry.isDirectory()) {
+            await visit(absolute);
+          }
+        }
+      }
+      await visit(root);
+      return digest.digest("hex");
+    })().catch((error: unknown) => {
+      if (packageCacheHashes.get(root) === created) {
+        packageCacheHashes.delete(root);
+      }
+      throw error;
+    });
+    pending = created;
+    packageCacheHashes.set(root, created);
+  }
+  return pending;
+}
+
+export async function seedCopilotPackageCache(
+  profileDir: string,
+  originalLocalAppData = process.env.LOCALAPPDATA,
+  operations: {
+    createLink?: (source: string, destination: string) => Promise<void>;
+    copy?: (source: string, destination: string) => Promise<void>;
+  } = {},
+): Promise<PackageCacheProvenance> {
+  if (!originalLocalAppData) {
+    throw new Error("LOCALAPPDATA is required to seed the Copilot package cache");
+  }
+  const parentLocalAppData = path.resolve(originalLocalAppData);
+  const sourcePath = path.resolve(parentLocalAppData, "copilot", "pkg");
+  if (!sourcePath.startsWith(`${parentLocalAppData}${path.sep}`)) {
+    throw new Error(`Invalid Copilot package cache source: ${sourcePath}`);
+  }
+  const sourceStat = await stat(sourcePath);
+  if (!sourceStat.isDirectory()) {
+    throw new Error(`Copilot package cache is not a directory: ${sourcePath}`);
+  }
+
+  const isolatedLocalAppData = path.resolve(profileDir, "AppData", "Local");
+  const destinationPath = path.resolve(isolatedLocalAppData, "copilot", "pkg");
+  if (!destinationPath.startsWith(`${isolatedLocalAppData}${path.sep}`)) {
+    throw new Error(`Invalid isolated package cache destination: ${destinationPath}`);
+  }
+  await mkdir(path.dirname(destinationPath), { recursive: true });
+  const createLink =
+    operations.createLink ??
+    ((source: string, destination: string) =>
+      symlink(source, destination, process.platform === "win32" ? "junction" : "dir"));
+  const copy =
+    operations.copy ??
+    ((source: string, destination: string) =>
+      cp(source, destination, { recursive: true, errorOnExist: true, force: false }));
+  let mode: PackageCacheProvenance["mode"] = "junction";
+  try {
+    await createLink(sourcePath, destinationPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw error;
+    }
+    mode = "copy";
+    await copy(sourcePath, destinationPath);
+  }
+  return {
+    sourcePath,
+    destinationPath,
+    mode,
+    metadataHash: await hashPackageCacheMetadata(sourcePath),
+  };
+}
+
+export async function hashIsolatedProfile(profileDir: string): Promise<string> {
+  const digest = createHash("sha256");
+  async function visit(current: string): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const absolute = path.join(current, entry.name);
+      const relative = path.relative(profileDir, absolute).split(path.sep).join("/");
+      if (relative.toLowerCase() === "appdata/local/copilot/pkg") {
+        continue;
+      }
+      const entryStat = await lstat(absolute);
+      if (entryStat.isSymbolicLink()) {
+        throw new Error(`Unexpected symbolic link in isolated profile: ${absolute}`);
+      }
+      digest.update(`${relative}\0`);
+      if (entry.isDirectory()) {
+        await visit(absolute);
+      } else if (entry.isFile()) {
+        digest.update(await readFile(absolute));
+      } else {
+        throw new Error(`Unsupported isolated profile entry: ${absolute}`);
+      }
+      digest.update("\0");
+    }
+  }
+  await visit(profileDir);
+  return digest.digest("hex");
 }
 
 async function assertNeutralProject(projectDir: string): Promise<void> {
@@ -136,6 +277,7 @@ function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: str
     TMP: tempDir,
     TEMP: tempDir,
     COPILOT_HOME: path.join(profileDir, ".copilot"),
+    COPILOT_AUTO_UPDATE: "false",
     SOAK_RUN_ID: soakRunId,
     AMR_SOAK_RUN_ID: soakRunId,
     OTEL_RESOURCE_ATTRIBUTES: `soak.run_id=${soakRunId}`,
@@ -191,6 +333,8 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
       throw new Error(`Without-skill profile is contaminated: ${violations.join(", ")}`);
     }
   }
+  const profileHash = await hashIsolatedProfile(profileDir);
+  const packageCache = await seedCopilotPackageCache(profileDir);
 
   const forbiddenMarkers = [
     path.resolve(options.repositoryRoot),
@@ -227,10 +371,11 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
     pinnedSkillName:
       options.arm === "with-skill" ? path.basename(options.skillSnapshotPath) : undefined,
     projectHash: await hashTree(projectDir),
-    profileHash: await hashTree(profileDir),
+    profileHash,
     environment: isolatedEnvironment(profileDir, tempDir, options.soakRunId),
     forbiddenMarkers,
     parentSessionMarkers,
+    packageCache,
   };
 }
 
