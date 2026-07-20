@@ -7,13 +7,33 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Convert-ToUtcTimestamp($Value) {
+    if ($Value -is [DateTimeOffset]) {
+        return $Value.ToUniversalTime()
+    }
+    if ($Value -is [DateTime]) {
+        return [DateTimeOffset]$Value.ToUniversalTime()
+    }
+    return [DateTimeOffset]::Parse([string]$Value).ToUniversalTime()
+}
+
+function Test-SameTimestamp($Left, $Right) {
+    try {
+        $leftTime = Convert-ToUtcTimestamp $Left
+        $rightTime = Convert-ToUtcTimestamp $Right
+        return ([Math]::Abs(($leftTime - $rightTime).TotalSeconds) -lt 1)
+    } catch {
+        return $false
+    }
+}
+
 function Test-ProcessIdentity($Identity) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($Identity.pid)" -ErrorAction SilentlyContinue
     if (-not $process) {
         return $false
     }
     $startedAt = $process.CreationDate.ToUniversalTime().ToString('o')
-    return (($startedAt -eq [string]$Identity.startedAt) -and
+    return ((Test-SameTimestamp $startedAt $Identity.startedAt) -and
         ([string]$process.Name -ieq [string]$Identity.name) -and
         ((-not $Identity.executablePath) -or
             ([string]$process.ExecutablePath -ieq [string]$Identity.executablePath)))

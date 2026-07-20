@@ -5,6 +5,26 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+function Convert-ToUtcTimestamp($Value) {
+    if ($Value -is [DateTimeOffset]) {
+        return $Value.ToUniversalTime()
+    }
+    if ($Value -is [DateTime]) {
+        return [DateTimeOffset]$Value.ToUniversalTime()
+    }
+    return [DateTimeOffset]::Parse([string]$Value).ToUniversalTime()
+}
+
+function Test-SameTimestamp($Left, $Right) {
+    try {
+        $leftTime = Convert-ToUtcTimestamp $Left
+        $rightTime = Convert-ToUtcTimestamp $Right
+        return ([Math]::Abs(($leftTime - $rightTime).TotalSeconds) -lt 1)
+    } catch {
+        return $false
+    }
+}
+
 function Get-ProcessIdentity([int]$ProcessId) {
     $process = Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" -ErrorAction Stop
     if (-not $process) {
@@ -88,7 +108,12 @@ if ($resourceJanitorIdentity) {
 }
 $pidPath = Join-Path $runDir 'pids.json'
 $pidTemp = "$pidPath.$PID.tmp"
-$pidRecord | ConvertTo-Json | Set-Content -Encoding utf8 $pidTemp
+$pidJson = $pidRecord | ConvertTo-Json
+[System.IO.File]::WriteAllText(
+    $pidTemp,
+    $pidJson,
+    [System.Text.UTF8Encoding]::new($false)
+)
 Move-Item -Force $pidTemp $pidPath
 
 $responsive = $false
@@ -121,7 +146,7 @@ for ($attempt = 0; $attempt -lt $readinessAttempts; $attempt++) {
     if (Test-Path $heartbeatPath) {
         $heartbeat = Get-Content -Raw $heartbeatPath | ConvertFrom-Json
         if (($heartbeat.controller.pid -eq $controllerIdentity.pid) -and
-            ($heartbeat.controller.startedAt -eq $controllerIdentity.startedAt) -and
+            (Test-SameTimestamp $heartbeat.controller.startedAt $controllerIdentity.startedAt) -and
             ($heartbeat.controller.name -eq $controllerIdentity.name)) {
             $resourceResponsive = -not $resourceJanitor
             if ($resourceJanitor) {
