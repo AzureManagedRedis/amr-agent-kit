@@ -18,7 +18,7 @@
     "answer_excerpt": "Cross-slot behavior is policy-dependent: OSSCluster rejects cross-slot multi-key with CROSSSLOT; Enterprise with mkms can scatter-gather MGET/MSET/DEL/UNLINK/EXISTS/TOUCH, but the Lua-with-KEYS script and MULTI/EXEC transaction still require one slot. Rewrite the co-accessed keys with a shared hash tag - cart:{order42}, coupon:{order42}, inventory:{order42} - so they colocate and the transaction and Lua script run on one slot; NoCluster is unsharded so it does not apply there." },
   { "id": "grc-cluster-bad", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_criteria": ["c1", "c2"], "must_trigger_safety": ["saf-cluster-correctness"],
     "answer_excerpt": "Just MGET all the keys together and run the Lua script; multi-key commands always work fine across the cluster regardless of slot." },
-  { "id": "grc-cluster-overstrict", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_criteria": ["c1", "c2"],
+  { "id": "grc-cluster-overstrict", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "answer_kind": "known-bad", "expected_grade": "fail", "must_trigger_criteria": ["c1"],
     "answer_excerpt": "Every cross-slot multi-key operation including MGET always fails with CROSSSLOT on Azure Managed Redis regardless of policy, so just avoid multi-key operations entirely and never bother with hash tags or key colocation." },
 
   { "id": "grc-db0-good", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "answer_kind": "known-good", "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"],

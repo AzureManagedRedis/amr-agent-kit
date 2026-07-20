@@ -415,3 +415,101 @@ test('bounds concurrent pair grading and rejects invalid semaphore limits', asyn
     await rm(runDir, { recursive: true, force: true })
   }
 })
+
+test('uses only full-coverage DB0-style anchors for startup and embedded calibration', async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), 'copilot-db0-canaries-'))
+  try {
+    const scenario = {
+      id: 'db0-style-canaries',
+      prompt: 'Distinguish clustered DB0 behavior from non-clustered databases.',
+      metadata: {
+        correctnessRubric: {
+          criteria: [
+            { id: 'c1', statement: 'Clustered deployments are DB0-only.', required: true, weight: 0.4 },
+            { id: 'c2', statement: 'Non-clustered behavior is qualified.', required: true, weight: 0.4 },
+            { id: 'c3', statement: 'Key prefixes are recommended.', required: false, weight: 0.2 },
+          ],
+          scoring: { pass_threshold: 0.8 },
+        },
+        actionabilityRubric: { criteria: [] },
+        graderCanaries: [
+          {
+            id: 'db0-canonical-good',
+            expected_grade: 'pass',
+            must_trigger_criteria: ['c1', 'c2', 'c3'],
+            answer_excerpt: 'CANONICAL_GOOD covers clustered and non-clustered DB behavior.',
+          },
+          {
+            id: 'db0-canonical-bad',
+            expected_grade: 'fail',
+            must_trigger_criteria: ['c1', 'c2'],
+            answer_excerpt: 'CANONICAL_BAD applies one database rule to every deployment.',
+          },
+          {
+            id: 'db0-supplemental-axis',
+            expected_grade: 'fail',
+            must_trigger_criteria: ['c1'],
+            answer_excerpt: 'SUPPLEMENTAL_AXIS isolates one DB0 regression.',
+          },
+        ],
+        sourceFacts: {},
+      },
+    }
+    let supplementalSeen = false
+    const grader = await createBlindGrader({
+      runtime: {},
+      evidenceStore: { forFact: () => undefined },
+      config: {
+        modelIds: ['grader-a', 'grader-b'],
+        minimumKappa: 0.8,
+        modelExecutor: async (request, { modelId }) => JSON.stringify({
+          grades: Object.fromEntries(request.arms.map((arm) => {
+            if (arm.output.includes('SUPPLEMENTAL_AXIS')) supplementalSeen = true
+            const passed = arm.output.includes('SUPPLEMENTAL_AXIS')
+              ? modelId === 'grader-a'
+              : !arm.output.includes('CANONICAL_BAD')
+            return [arm.label, {
+              assertions: request.rubric.criteria.map((criterion) => ({
+                id: criterion.id,
+                statement: criterion.statement,
+                passed,
+                evidence: arm.output,
+              })),
+              score: passed ? 1 : 0,
+              passed,
+            }]
+          })),
+        }),
+      },
+      repositoryRoot: repoRoot,
+      processManager: {},
+      controllerConfig: { runId: 'db0-canary-test', model: 'executor-model' },
+      runDir,
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    })
+
+    await grader.assertCalibration([scenario])
+    await grader.gradePair({
+      'with-skill': artifact('CANONICAL_GOOD evaluated answer', 'with'),
+      'without-skill': artifact('CANONICAL_BAD evaluated answer', 'without'),
+    }, scenario, 'db0-pair')
+    assert.equal(supplementalSeen, false)
+
+    const missingNegativeAnchor = {
+      ...scenario,
+      id: 'db0-missing-negative-anchor',
+      metadata: {
+        ...scenario.metadata,
+        graderCanaries: scenario.metadata.graderCanaries.filter(
+          (canary) => canary.id !== 'db0-canonical-bad',
+        ),
+      },
+    }
+    await assert.rejects(
+      () => grader.assertCalibration([missingNegativeAnchor]),
+      /requires exactly one canonical expected-fail grader canary covering required correctness criteria: c1, c2/,
+    )
+  } finally {
+    await rm(runDir, { recursive: true, force: true })
+  }
+})

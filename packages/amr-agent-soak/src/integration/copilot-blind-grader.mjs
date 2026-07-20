@@ -131,8 +131,52 @@ function rubricForScenario(scenario) {
   }
 }
 
+function selectCanonicalCanaries(scenario) {
+  const criteria = scenario.metadata?.correctnessRubric?.criteria
+  if (!Array.isArray(criteria)) {
+    throw new Error(`Scenario ${scenario.id} is missing its correctness rubric criteria`)
+  }
+  const requiredCriterionIds = criteria
+    .filter((criterion) => criterion.required === true)
+    .map((criterion) => criterion.id)
+  if (
+    requiredCriterionIds.length === 0 ||
+    requiredCriterionIds.some((id) => typeof id !== 'string' || id.length === 0) ||
+    new Set(requiredCriterionIds).size !== requiredCriterionIds.length
+  ) {
+    throw new Error(`Scenario ${scenario.id} must have unique required correctness criterion ids`)
+  }
+  const canaries = scenario.metadata?.graderCanaries
+  if (!Array.isArray(canaries)) {
+    throw new Error(`Scenario ${scenario.id} is missing grader canaries`)
+  }
+  const coversRequiredCriteria = (canary) => {
+    if (!Array.isArray(canary?.must_trigger_criteria)) return false
+    const covered = new Set(canary.must_trigger_criteria)
+    return requiredCriterionIds.every((id) => covered.has(id))
+  }
+  const select = (expectedGrade) => {
+    const matches = canaries.filter(
+      (canary) => canary?.expected_grade === expectedGrade && coversRequiredCriteria(canary),
+    )
+    if (matches.length !== 1) {
+      throw new Error(
+        `Scenario ${scenario.id} requires exactly one canonical expected-${expectedGrade} ` +
+        `grader canary covering required correctness criteria: ${requiredCriterionIds.join(', ')}`,
+      )
+    }
+    return matches[0]
+  }
+  return {
+    good: select('pass'),
+    bad: select('fail'),
+    requiredCriterionIds,
+  }
+}
+
 function canariesForScenario(scenario) {
-  return scenario.metadata.graderCanaries.map((canary) => ({
+  const { good, bad } = selectCanonicalCanaries(scenario)
+  return [good, bad].map((canary) => ({
     id: canary.id,
     prompt: scenario.prompt,
     with_skill: { answer: canary.answer_excerpt },
@@ -441,9 +485,7 @@ export async function createBlindGrader({
     async assertCalibration(scenarios) {
       const results = []
       for (const scenario of scenarios) {
-        const good = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'pass')
-        const bad = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail')
-        if (!good || !bad) throw new Error(`Scenario ${scenario.id} is missing good/bad grader canaries`)
+        const { good, bad } = selectCanonicalCanaries(scenario)
         const result = await runBlindModelGrading(
           engineConfig(`calibration-${scenario.id}`, 'throw'),
           {

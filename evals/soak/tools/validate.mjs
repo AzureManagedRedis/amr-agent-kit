@@ -125,6 +125,22 @@ const INVARIANTS = {
   // 3. grader must_trigger_criteria must exist in the referenced scenario's correctness rubric.
   "grader-criteria-exist": (i) =>
     (i.must || []).filter((c) => !(i.rubricCriteria || []).includes(c)).map((c) => `must_trigger_criteria '${c}' not a criterion of correctness rubric`),
+  // 3b. Each scenario has exactly one full-good and one full-negative calibration anchor.
+  "canonical-grader-anchors": (i) => {
+    const required = i.requiredCriteria || [];
+    if (required.length === 0) return ["correctness rubric has no required criteria"];
+    const coversRequired = (canary) => {
+      const covered = new Set(canary.must_trigger_criteria || []);
+      return required.every((id) => covered.has(id));
+    };
+    const errors = [];
+    for (const expectedGrade of ["pass", "fail"]) {
+      const count = (i.canaries || []).filter((canary) =>
+        canary.expected_grade === expectedGrade && coversRequired(canary)).length;
+      if (count !== 1) errors.push(`expected exactly one full-coverage '${expectedGrade}' canary but found ${count}`);
+    }
+    return errors;
+  },
   // 4. Every embedded defect source_fact_ref must be in the scenario's source_facts.
   "defect-fact-in-scope": (i) =>
     (i.defectRefs || []).filter((r) => !(i.sourceFacts || []).includes(r)).map((r) => `embedded defect fact '${r}' not in scenario source_facts`),
@@ -354,6 +370,10 @@ for (const { scn, entry } of scenarios) {
   inv("known-bad-covers-required", {
     requiredCorrectnessCriteria: rubricRequiredById[scn.correctness_rubric_ref] || [],
     knownBadMustLists: scnCanaries.filter((g) => g.answer_kind === "known-bad").map((g) => g.must_trigger_criteria || [])
+  }, w);
+  inv("canonical-grader-anchors", {
+    requiredCriteria: rubricRequiredById[scn.correctness_rubric_ref] || [],
+    canaries: scnCanaries,
   }, w);
 }
 

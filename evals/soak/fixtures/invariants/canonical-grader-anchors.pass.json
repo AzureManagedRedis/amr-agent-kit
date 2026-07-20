@@ -1,0 +1,13 @@
+{
+  "invariant": "canonical-grader-anchors",
+  "expect": "pass",
+  "input": {
+    "requiredCriteria": ["c1", "c2"],
+    "canaries": [
+      { "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2", "c3"] },
+      { "expected_grade": "fail", "must_trigger_criteria": ["c1", "c2"] },
+      { "expected_grade": "fail", "must_trigger_criteria": ["c1"] }
+    ]
+  },
+  "description": "One full-good and one full-negative anchor coexist with a supplemental single-axis canary."
+}

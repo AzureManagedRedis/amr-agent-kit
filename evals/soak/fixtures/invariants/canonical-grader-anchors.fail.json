@@ -1,0 +1,12 @@
+{
+  "invariant": "canonical-grader-anchors",
+  "expect": "fail",
+  "input": {
+    "requiredCriteria": ["c1", "c2"],
+    "canaries": [
+      { "expected_grade": "pass", "must_trigger_criteria": ["c1", "c2"] },
+      { "expected_grade": "fail", "must_trigger_criteria": ["c1"] }
+    ]
+  },
+  "description": "A supplemental negative cannot replace the full-negative calibration anchor."
+}
