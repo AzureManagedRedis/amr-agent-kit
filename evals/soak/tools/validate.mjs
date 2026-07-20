@@ -148,7 +148,17 @@ const INVARIANTS = {
     (i.probeCohortRefs || []).filter((c) => !(i.declaredCohorts || []).includes(c)).map((c) => `probe cohort '${c}' not declared in scenario probe_cohorts`),
   // 8. A scenario grounded in a live-probe-resolved fact (e.g. NoCluster SELECT) must declare a live probe for evidence.
   "live-fact-requires-probe": (i) =>
-    i.referencesLiveProbeFact && !i.hasLiveProbe ? ["scenario references a live-probe-resolved fact but declares no live_probes for evidence"] : []
+    i.referencesLiveProbeFact && !i.hasLiveProbe ? ["scenario references a live-probe-resolved fact but declares no live_probes for evidence"] : [],
+  // 9. A known-good grader canary must declare coverage of every required correctness criterion.
+  "known-good-covers-required": (i) =>
+    (i.requiredCorrectnessCriteria || []).filter((c) => !(i.mustTriggerCriteria || []).includes(c)).map((c) => `known-good canary omits required correctness criterion '${c}'`),
+  // 10. Every scenario needs at least one known-good and one known-bad grader canary for calibration.
+  "scenario-canary-coverage": (i) => {
+    const e = [];
+    if (!i.hasKnownGood) e.push("scenario has no known-good grader canary");
+    if (!i.hasKnownBad) e.push("scenario has no known-bad grader canary");
+    return e;
+  }
 };
 
 
@@ -244,8 +254,10 @@ for (const { scn, entry } of scenarios) {
 // rubric criteria -> source facts; source facts -> locators; contested-authority invariant
 const rubricsData = readJson(path.join(registryDir, catalogFiles["rubric"])) || [];
 const rubricCriteriaById = {};
+const rubricRequiredById = {};
 for (const r of rubricsData) {
   rubricCriteriaById[r.id] = (r.criteria || []).map((c) => c.id);
+  rubricRequiredById[r.id] = (r.criteria || []).filter((c) => c.required).map((c) => c.id);
   for (const c of r.criteria || []) if (c.source_fact_ref) ref("src", c.source_fact_ref, `${catalogFiles["rubric"]} (${r.id})`, "source-fact");
 }
 const locatorKindById = {};
@@ -264,6 +276,8 @@ for (const g of canaryData) {
   const targetScn = scnById[g.scenario_ref];
   if (targetScn && g.must_trigger_criteria)
     inv("grader-criteria-exist", { must: g.must_trigger_criteria, rubricCriteria: rubricCriteriaById[targetScn.correctness_rubric_ref] || [] }, `grader-canaries.json (${g.id})`);
+  if (targetScn && g.answer_kind === "known-good")
+    inv("known-good-covers-required", { mustTriggerCriteria: g.must_trigger_criteria || [], requiredCorrectnessCriteria: rubricRequiredById[targetScn.correctness_rubric_ref] || [] }, `grader-canaries.json (${g.id})`);
 }
 const blcData = readJson(path.join(registryDir, catalogFiles["baseline-leakage-canary"])) || [];
 for (const b of blcData) ref("scn", b.scenario_ref, `baseline-leakage-canaries.json (${b.id})`, "scenario");
@@ -322,6 +336,12 @@ for (const { scn, entry } of scenarios) {
 
   const probeCohortRefs = (scn.live_probes || []).map((id) => (probeById[id] || {}).cohort_ref).filter(Boolean);
   inv("no-under-declared-cohort", { probeCohortRefs, declaredCohorts: scn.probe_cohorts || [] }, w);
+
+  const scnCanaries = canaryData.filter((g) => g.scenario_ref === scn.id);
+  inv("scenario-canary-coverage", {
+    hasKnownGood: scnCanaries.some((g) => g.answer_kind === "known-good"),
+    hasKnownBad: scnCanaries.some((g) => g.answer_kind === "known-bad")
+  }, w);
 }
 
 // ---- Fixtures ----------------------------------------------------------

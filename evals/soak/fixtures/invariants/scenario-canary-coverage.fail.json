@@ -1,0 +1,2 @@
+{ "invariant": "scenario-canary-coverage", "expect": "fail", "description": "Scenario is missing a known-good calibration canary.",
+  "input": { "hasKnownGood": false, "hasKnownBad": true } }

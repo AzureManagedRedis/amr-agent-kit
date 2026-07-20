@@ -1,0 +1,2 @@
+{ "invariant": "known-good-covers-required", "expect": "pass", "description": "Known-good canary declares every required correctness criterion.",
+  "input": { "mustTriggerCriteria": ["c1", "c2", "c3"], "requiredCorrectnessCriteria": ["c1", "c2"] } }

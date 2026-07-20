@@ -55,6 +55,18 @@ derivations cannot silently drift):
 8. **`live-fact-requires-probe`** — a scenario grounded in a fact that resolves through the
    `live-probe` locator (e.g. NoCluster `SELECT` availability) must declare a live probe, so
    the truth is never graded without live/effective-config evidence.
+9. **`known-good-covers-required`** — a known-good grader canary must declare
+   `must_trigger_criteria` covering every *required* criterion of its scenario's correctness
+   rubric, so calibration answers cannot silently drop a required check.
+10. **`scenario-canary-coverage`** — every scenario must have at least one known-good and one
+    known-bad grader canary so the grader stays calibrated in both directions.
+
+Grader-canary calibration note: a known-good canary's `answer_excerpt` must be written to
+unambiguously satisfy *every* required correctness criterion **and** the scenario's
+actionability criterion (named keys, concrete TTLs, commands, index schemas, tier sizes, or
+staged sequences as applicable) — a real grader must pass it. The invariants above enforce
+declared correctness coverage and both-direction canary presence; the actionability concreteness
+is enforced by review of the excerpt text.
 
 ## Correctness vs. efficacy — two separate things
 

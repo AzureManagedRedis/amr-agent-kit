@@ -1,0 +1,2 @@
+{ "invariant": "scenario-canary-coverage", "expect": "pass", "description": "Scenario has both a known-good and a known-bad canary.",
+  "input": { "hasKnownGood": true, "hasKnownBad": true } }
