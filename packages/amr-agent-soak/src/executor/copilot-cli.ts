@@ -425,14 +425,23 @@ export class CopilotCliExecutor implements HeadlessExecutor {
   readonly #command: string;
   readonly #processManager: ProcessManager;
   readonly #preflightTimeoutMs: number;
+  readonly #hashProject: (directory: string) => Promise<string>;
+  readonly #hashProfile: (directory: string) => Promise<string>;
 
   constructor(
     command = "copilot",
-    options: { processManager?: ProcessManager; preflightTimeoutMs?: number } = {},
+    options: {
+      processManager?: ProcessManager;
+      preflightTimeoutMs?: number;
+      hashProject?: (directory: string) => Promise<string>;
+      hashProfile?: (directory: string) => Promise<string>;
+    } = {},
   ) {
     this.#command = command;
     this.#processManager = options.processManager ?? new SystemProcessManager();
     this.#preflightTimeoutMs = options.preflightTimeoutMs ?? 120_000;
+    this.#hashProject = options.hashProject ?? hashTree;
+    this.#hashProfile = options.hashProfile ?? hashIsolatedProfile;
   }
 
   async probe(workspaces: {
@@ -606,7 +615,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       }
       const warmedWorkspace: IsolatedWorkspace = {
         ...calibration.workspace,
-        profileHash: await hashIsolatedProfile(calibration.workspace.profileDir),
+        profileHash: await this.#hashProfile(calibration.workspace.profileDir),
       };
       const artifact = await this.execute(
         {
@@ -639,37 +648,94 @@ export class CopilotCliExecutor implements HeadlessExecutor {
     capabilities: ExecutorCapabilities,
   ): Promise<ExecutionArtifact> {
     assertExecutorCapabilities(capabilities);
-    return runExtractionRetry(
-      async (attemptNumber) => {
-        const attemptRequest: ExecutionRequest = {
-          ...request,
-          workspace: {
-            ...request.workspace,
-            projectHash: await hashTree(request.workspace.projectDir),
-            profileHash: await hashIsolatedProfile(request.workspace.profileDir),
-          },
-        };
-        const artifact = await this.#executeAttempt(
-          attemptRequest,
-          capabilities,
-          attemptNumber,
-        );
-        const stderr = await readFile(artifact.trace.stderrFile, "utf8");
-        return {
-          value: artifact,
-          failed:
-            artifact.status === "failed" &&
-            artifact.trace.exitCode !== 0 &&
-            !artifact.trace.timedOut &&
-            !artifact.trace.cancelled,
-          stderr,
-        };
-      },
-      {
-        cleanup: () => cleanExtractionDirectories(request.workspace),
-        shouldStop: () => request.signal.aborted,
-      },
-    );
+    try {
+      return await runExtractionRetry(
+        async (attemptNumber) => {
+          const attemptRequest: ExecutionRequest = {
+            ...request,
+            workspace: {
+              ...request.workspace,
+              projectHash: await this.#hashProject(request.workspace.projectDir),
+              profileHash: await this.#hashProfile(request.workspace.profileDir),
+            },
+          };
+          const artifact = await this.#executeAttempt(
+            attemptRequest,
+            capabilities,
+            attemptNumber,
+          );
+          const stderr = await readFile(artifact.trace.stderrFile, "utf8");
+          return {
+            value: artifact,
+            failed:
+              artifact.status === "failed" &&
+              artifact.trace.exitCode !== 0 &&
+              !artifact.trace.timedOut &&
+              !artifact.trace.cancelled,
+            stderr,
+          };
+        },
+        {
+          cleanup: () => cleanExtractionDirectories(request.workspace),
+          shouldStop: () => request.signal.aborted,
+        },
+      );
+    } catch (error) {
+      return this.#createFailureArtifact(request, capabilities, error);
+    }
+  }
+
+  async #createFailureArtifact(
+    request: ExecutionRequest,
+    capabilities: ExecutorCapabilities,
+    error: unknown,
+  ): Promise<ExecutionArtifact> {
+    const timestamp = new Date().toISOString();
+    const message = error instanceof Error ? error.stack ?? error.message : String(error);
+    const stderrFile = path.join(request.workspace.root, "stderr.failure.log");
+    const stdoutFile = path.join(request.workspace.root, "stdout.failure.jsonl");
+    const traceFile = path.join(request.workspace.root, "process-trace.failure.json");
+    await mkdir(request.workspace.root, { recursive: true });
+    await Promise.all([writeFile(stderrFile, message), writeFile(stdoutFile, "")]);
+    const status: ExecutionArtifact["status"] = request.signal.aborted ? "cancelled" : "failed";
+    const trace = {
+      executablePath: capabilities.executablePath,
+      executableHash: capabilities.executableHash,
+      args: [],
+      cwd: request.workspace.projectDir,
+      pid: 0,
+      attemptNumber: 0,
+      processIdentity: { pid: 0, startedAt: timestamp, name: "not-started" },
+      descendants: [],
+      startedAt: timestamp,
+      finishedAt: timestamp,
+      exitCode: null,
+      signal: null,
+      timedOut: false,
+      cancelled: request.signal.aborted,
+      executionError: message,
+      stdoutFile,
+      stderrFile,
+      projectHashBefore: request.workspace.projectHash,
+      projectHashAfter: request.workspace.projectHash,
+      profileHashBefore: request.workspace.profileHash,
+      profileHashAfter: request.workspace.profileHash,
+      profileHashExclusions: request.workspace.profileHashExclusions,
+      contamination: [],
+    };
+    await writeAtomicJson(traceFile, trace);
+    return {
+      soakRunId: request.workspace.environment.SOAK_RUN_ID ?? "unknown",
+      executionId: request.executionId,
+      scenarioId: request.scenario.id,
+      arm: request.arm,
+      status,
+      startedAt: timestamp,
+      finishedAt: timestamp,
+      responseText: "",
+      events: [],
+      trace,
+    };
   }
 
   async #executeAttempt(
@@ -787,8 +853,8 @@ export class CopilotCliExecutor implements HeadlessExecutor {
 
     const finishedAt = new Date().toISOString();
     const [projectHashAfter, profileHashAfter, stdoutText] = await Promise.all([
-      hashTree(request.workspace.projectDir),
-      hashIsolatedProfile(request.workspace.profileDir),
+      this.#hashProject(request.workspace.projectDir),
+      this.#hashProfile(request.workspace.profileDir),
       readFile(stdoutFile, "utf8"),
     ]);
     const contamination = await detectContamination(request.workspace, [stdoutFile, stderrFile]);
@@ -833,6 +899,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
       projectHashAfter,
       profileHashBefore: request.workspace.profileHash,
       profileHashAfter,
+      profileHashExclusions: request.workspace.profileHashExclusions,
       contamination,
     };
     await writeAtomicJson(traceFile, trace);

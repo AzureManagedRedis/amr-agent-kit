@@ -85,6 +85,7 @@ class FakeExecutor implements HeadlessExecutor {
         projectHashAfter: request.workspace.projectHash,
         profileHashBefore: request.workspace.profileHash,
         profileHashAfter: request.workspace.profileHash,
+        profileHashExclusions: request.workspace.profileHashExclusions,
         contamination: [],
       },
     });
@@ -270,4 +271,57 @@ test("persists inconclusive pair grades and continues grading later pairs", asyn
     events.filter((event) => event.type === "pair.graded").map((event) => event.data?.inconclusive).sort(),
     [false, true],
   );
+});
+
+test("12-worker smoke contains one execution failure without aborting the run", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "amr-soak-controller-smoke-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const skill = path.join(root, "skill");
+  await mkdir(skill, { recursive: true });
+  await writeFile(path.join(skill, "SKILL.md"), "---\nname: test-skill\n---\n");
+  class OneFailureExecutor extends FakeExecutor {
+    override async execute(request: ExecutionRequest): Promise<ExecutionArtifact> {
+      const artifact = await super.execute(request);
+      return request.scenario.id === "scenario-0" && request.arm === "without-skill"
+        ? { ...artifact, status: "failed" }
+        : artifact;
+    }
+  }
+  let graded = 0;
+  const summary = await runSoak(
+    {
+      runId: "worker-smoke",
+      repositoryRoot: root,
+      outputRoot: path.join(root, "eval-runs"),
+      skillSnapshotPath: skill,
+      concurrency: 12,
+      repetitions: 1,
+      durationHours: 1,
+      timeoutMinutes: 1,
+    },
+    {
+      scenarios: {
+        listScenarios: () =>
+          Promise.resolve(
+            Array.from({ length: 12 }, (_, index) => ({
+              id: `scenario-${index}`,
+              prompt: "test",
+            })),
+          ),
+      },
+      executor: new OneFailureExecutor(),
+      processManager: new FakeProcessManager(),
+      grader: {
+        grade: () => {
+          graded += 1;
+          return Promise.resolve({ passed: true });
+        },
+      },
+    },
+  );
+  assert.equal(summary.status, "completed");
+  assert.equal(summary.completedPairs, 12);
+  assert.equal(summary.completedExecutions, 24);
+  assert.equal(summary.failedExecutions, 1);
+  assert.equal(graded, 23);
 });

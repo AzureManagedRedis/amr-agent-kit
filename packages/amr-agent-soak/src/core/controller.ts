@@ -464,7 +464,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
       },
       capabilities,
     );
-    if (modules.grader?.grade) {
+    if (modules.grader?.grade && artifact.status === "completed") {
       artifact = { ...artifact, grade: await modules.grader.grade(artifact, scenario) };
     }
     const artifactPath = path.join(executionRoot, "artifact.json");

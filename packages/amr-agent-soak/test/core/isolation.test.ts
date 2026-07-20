@@ -15,6 +15,8 @@ import os from "node:os";
 import path from "node:path";
 import {
   createIsolatedWorkspace,
+  detectContamination,
+  hashIsolatedProfile,
   hashPackageCacheMetadata,
   seedCopilotPackageCache,
 } from "../../src/core/isolation.js";
@@ -56,6 +58,10 @@ test("creates identical neutral projects and physically separates the skill", as
     withoutSkill.environment.LOCALAPPDATA,
     path.join(withoutSkill.profileDir, "AppData", "Local"),
   );
+  assert.equal(
+    withoutSkill.environment.MAVEN_OPTS,
+    `-Dmaven.repo.local="${path.join(withoutSkill.profileDir, ".tool-cache", "maven")}"`,
+  );
   for (const name of [
     "AGENCY_SESSION_SUBPROCESS",
     "AGENCY_SESSION_ID",
@@ -85,6 +91,25 @@ test("creates identical neutral projects and physically separates the skill", as
     await readFile(path.join(withSkill.profileDir, ".copilot", "skills", "redis-code", "SKILL.md"), "utf8"),
     "# pinned\n",
   );
+  const dependencyDocs = path.join(
+    withoutSkill.profileDir,
+    ".tool-cache",
+    "cargo",
+    "registry",
+    "src",
+    "dependency",
+    "AGENTS.md",
+  );
+  await mkdir(path.dirname(dependencyDocs), { recursive: true });
+  await writeFile(dependencyDocs, "dependency documentation");
+  assert.deepEqual(await detectContamination(withoutSkill, []), []);
+  assert.equal(await hashIsolatedProfile(withoutSkill.profileDir), withoutSkill.profileHash);
+
+  await writeFile(path.join(withoutSkill.profileDir, "AGENTS.md"), "profile instructions");
+  await writeFile(path.join(withoutSkill.projectDir, "AGENTS.md"), "project instructions");
+  const structuralFindings = await detectContamination(withoutSkill, []);
+  assert.ok(structuralFindings.some((finding) => finding.includes("forbidden profile entry: AGENTS.md")));
+  assert.ok(structuralFindings.some((finding) => finding.includes("forbidden project entry: AGENTS.md")));
   await assert.rejects(
     createIsolatedWorkspace({
       root: path.join(root, "contaminated"),
@@ -176,6 +201,7 @@ test("extraction cleanup never traverses the seeded package cache", async (conte
     forbiddenMarkers: [],
     parentSessionMarkers: [],
     packageCache,
+    profileHashExclusions: [],
   } satisfies IsolatedWorkspace;
 
   await cleanExtractionDirectories(workspace);

@@ -95,6 +95,7 @@ export interface IsolatedWorkspace {
   readonly forbiddenMarkers: ReadonlyArray<string>;
   readonly parentSessionMarkers: ReadonlyArray<string>;
   readonly packageCache: PackageCacheProvenance;
+  readonly profileHashExclusions: ReadonlyArray<string>;
 }
 
 export interface ExecutionRequest {
@@ -125,12 +126,14 @@ export interface ProcessTrace {
   readonly timedOut: boolean;
   readonly cancelled: boolean;
   readonly terminationError?: string;
+  readonly executionError?: string;
   readonly stdoutFile: string;
   readonly stderrFile: string;
   readonly projectHashBefore: string;
   readonly projectHashAfter: string;
   readonly profileHashBefore: string;
   readonly profileHashAfter: string;
+  readonly profileHashExclusions: ReadonlyArray<string>;
   readonly contamination: ReadonlyArray<string>;
 }
 

@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ExecutionArtifact, ExecutorCapabilities } from "../../src/core/contracts.js";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type {
+  ExecutionArtifact,
+  ExecutorCapabilities,
+  IsolatedWorkspace,
+} from "../../src/core/contracts.js";
 import {
   assertCalibrationArtifact,
   assertCalibratedModels,
@@ -10,6 +17,7 @@ import {
   preflightRetryDelayMs,
   responseTextFromEvents,
   runExtractionRetry,
+  CopilotCliExecutor,
 } from "../../src/executor/copilot-cli.js";
 
 const capabilities: ExecutorCapabilities = {
@@ -113,6 +121,7 @@ test("calibration rejects parent session attachments and database failures", () 
       projectHashAfter: "after",
       profileHashBefore: "before",
       profileHashAfter: "after",
+      profileHashExclusions: [],
       contamination: [],
     },
   };
@@ -265,3 +274,54 @@ test("extracts only the final assistant JSONL response", () => {
     "RETRY_OK",
   );
 });
+
+test("a hash failure returns one failed execution artifact", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "amr-soak-executor-hash-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const workspace = {
+    root,
+    projectDir: path.join(root, "project"),
+    profileDir: path.join(root, "profile"),
+    tempDir: path.join(root, "temp"),
+    logDir: path.join(root, "logs"),
+    arm: "without-skill",
+    projectHash: "project-before",
+    profileHash: "profile-before",
+    environment: { SOAK_RUN_ID: "hash-failure" },
+    forbiddenMarkers: [],
+    parentSessionMarkers: [],
+    packageCache: {
+      sourcePath: "source",
+      destinationPath: "destination",
+      mode: "junction",
+      metadataHash: "cache",
+    },
+    profileHashExclusions: [".tool-cache"],
+  } satisfies IsolatedWorkspace;
+  await Promise.all([
+    mkdir(workspace.projectDir, { recursive: true }),
+    mkdir(workspace.profileDir, { recursive: true }),
+  ]);
+  const executor = new CopilotCliExecutor("copilot", {
+    hashProject: () => Promise.reject(fileError("EBUSY")),
+    hashProfile: () => Promise.resolve("profile-after"),
+  });
+  const artifact = await executor.execute(
+    {
+      executionId: "hash-failure",
+      scenario: { id: "hash-failure", prompt: "never runs" },
+      arm: "without-skill",
+      workspace,
+      timeoutMs: 1_000,
+      signal: new AbortController().signal,
+    },
+    capabilities,
+  );
+  assert.equal(artifact.status, "failed");
+  assert.match(artifact.trace.executionError ?? "", /EBUSY/);
+  assert.equal(artifact.trace.attemptNumber, 0);
+});
+
+function fileError(code: string): NodeJS.ErrnoException {
+  return Object.assign(new Error(code), { code });
+}

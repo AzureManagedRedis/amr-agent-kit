@@ -1,6 +1,5 @@
 import {
   cp,
-  lstat,
   mkdir,
   readdir,
   readFile,
@@ -63,6 +62,36 @@ const PARENT_SESSION_ENV_NAMES = new Set([
   "COPILOT_AGENT_SESSION_ID",
   "COPILOT_CUSTOM_INSTRUCTIONS_DIRS",
 ]);
+export const PROFILE_CACHE_EXCLUSIONS = [
+  ".tool-cache",
+  ".cargo/registry",
+  ".cargo/git",
+  ".npm",
+  ".nuget/packages",
+  ".gradle/caches",
+  ".gradle/wrapper/dists",
+  "go/pkg/mod",
+  ".cache/go-build",
+  ".m2/repository",
+  "appdata/local/copilot/pkg",
+] as const;
+
+function isProfileCachePath(relativePath: string): boolean {
+  const normalized = relativePath.split(path.sep).join("/").toLowerCase();
+  return PROFILE_CACHE_EXCLUSIONS.some(
+    (prefix) => normalized === prefix || normalized.startsWith(`${prefix}/`),
+  );
+}
+
+function isVolatileProfilePath(relativePath: string): boolean {
+  const name = path.basename(relativePath).toLowerCase();
+  return (
+    name === "lock" ||
+    [".lock", ".lockb", ".pid", ".sock", ".socket", ".tmp", ".temp"].some((suffix) =>
+      name.endsWith(suffix),
+    )
+  );
+}
 
 function isParentSessionEnvironment(name: string): boolean {
   return name.startsWith("AGENCY_") || PARENT_SESSION_ENV_NAMES.has(name);
@@ -84,17 +113,17 @@ function validateRelativeScaffoldPath(relativePath: string): string {
   return normalized;
 }
 
-async function listRelativeEntries(root: string): Promise<ReadonlyArray<string>> {
+async function listRelativeEntries(
+  root: string,
+  skipProfileCaches = false,
+): Promise<ReadonlyArray<string>> {
   const result: string[] = [];
   async function visit(current: string): Promise<void> {
     for (const entry of await readdir(current, { withFileTypes: true })) {
       const absolute = path.join(current, entry.name);
       const relative = path.relative(root, absolute);
       result.push(relative);
-      if (
-        relative.split(path.sep).join("/").toLowerCase() ===
-        "appdata/local/copilot/pkg"
-      ) {
+      if (skipProfileCaches && isProfileCachePath(relative)) {
         continue;
       }
       if (entry.isDirectory()) {
@@ -199,33 +228,10 @@ export async function seedCopilotPackageCache(
 }
 
 export async function hashIsolatedProfile(profileDir: string): Promise<string> {
-  const digest = createHash("sha256");
-  async function visit(current: string): Promise<void> {
-    const entries = await readdir(current, { withFileTypes: true });
-    entries.sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const absolute = path.join(current, entry.name);
-      const relative = path.relative(profileDir, absolute).split(path.sep).join("/");
-      if (relative.toLowerCase() === "appdata/local/copilot/pkg") {
-        continue;
-      }
-      const entryStat = await lstat(absolute);
-      if (entryStat.isSymbolicLink()) {
-        throw new Error(`Unexpected symbolic link in isolated profile: ${absolute}`);
-      }
-      digest.update(`${relative}\0`);
-      if (entry.isDirectory()) {
-        await visit(absolute);
-      } else if (entry.isFile()) {
-        digest.update(await readFile(absolute));
-      } else {
-        throw new Error(`Unsupported isolated profile entry: ${absolute}`);
-      }
-      digest.update("\0");
-    }
-  }
-  await visit(profileDir);
-  return digest.digest("hex");
+  return hashTree(profileDir, {
+    excludeRelativePath: (relativePath) =>
+      isProfileCachePath(relativePath) || isVolatileProfilePath(relativePath),
+  });
 }
 
 async function assertNeutralProject(projectDir: string): Promise<void> {
@@ -239,7 +245,7 @@ async function assertNeutralProject(projectDir: string): Promise<void> {
 
 function isForbiddenProfileEntry(entry: string): boolean {
   const normalized = entry.split(path.sep).join("/").toLowerCase();
-  if (normalized.startsWith("appdata/local/copilot/pkg/")) {
+  if (isProfileCachePath(normalized)) {
     return false;
   }
   return normalized
@@ -263,6 +269,7 @@ function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: str
 
   const appData = path.join(profileDir, "AppData", "Roaming");
   const localAppData = path.join(profileDir, "AppData", "Local");
+  const toolCache = path.join(profileDir, ".tool-cache");
   const profileRoot = path.parse(profileDir).root;
   return {
     ...environment,
@@ -274,6 +281,17 @@ function isolatedEnvironment(profileDir: string, tempDir: string, soakRunId: str
     LOCALAPPDATA: localAppData,
     XDG_CONFIG_HOME: path.join(profileDir, ".config"),
     XDG_DATA_HOME: path.join(profileDir, ".local", "share"),
+    XDG_CACHE_HOME: path.join(toolCache, "xdg"),
+    CARGO_HOME: path.join(toolCache, "cargo"),
+    NPM_CONFIG_CACHE: path.join(toolCache, "npm"),
+    NUGET_PACKAGES: path.join(toolCache, "nuget"),
+    GOMODCACHE: path.join(toolCache, "go", "pkg", "mod"),
+    GOCACHE: path.join(toolCache, "go", "build"),
+    GRADLE_USER_HOME: path.join(toolCache, "gradle"),
+    DOTNET_CLI_HOME: path.join(toolCache, "dotnet"),
+    PIP_CACHE_DIR: path.join(toolCache, "pip"),
+    UV_CACHE_DIR: path.join(toolCache, "uv"),
+    MAVEN_OPTS: `-Dmaven.repo.local="${path.join(toolCache, "maven")}"`,
     TMP: tempDir,
     TEMP: tempDir,
     COPILOT_HOME: path.join(profileDir, ".copilot"),
@@ -305,6 +323,7 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
     mkdir(profileDir, { recursive: true }),
     mkdir(tempDir, { recursive: true }),
     mkdir(logDir, { recursive: true }),
+    mkdir(path.join(profileDir, ".tool-cache"), { recursive: true }),
   ]);
 
   for (const [relativePath, content] of Object.entries(options.scenario.scaffold ?? {})) {
@@ -327,7 +346,7 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
   }
 
   if (options.arm === "without-skill") {
-    const profileEntries = await listRelativeEntries(profileDir);
+    const profileEntries = await listRelativeEntries(profileDir, true);
     const violations = profileEntries.filter(isForbiddenProfileEntry);
     if (violations.length > 0) {
       throw new Error(`Without-skill profile is contaminated: ${violations.join(", ")}`);
@@ -376,6 +395,10 @@ export async function createIsolatedWorkspace(options: IsolationOptions): Promis
     forbiddenMarkers,
     parentSessionMarkers,
     packageCache,
+    profileHashExclusions: [
+      ...PROFILE_CACHE_EXCLUSIONS,
+      "volatile files: *.lock, *.lockb, *.pid, *.sock, *.socket, *.tmp, *.temp",
+    ],
   };
 }
 
@@ -392,7 +415,7 @@ export async function detectContamination(
   }
 
   if (workspace.arm === "without-skill") {
-    for (const entry of await listRelativeEntries(workspace.profileDir)) {
+    for (const entry of await listRelativeEntries(workspace.profileDir, true)) {
       if (isForbiddenProfileEntry(entry)) {
         findings.add(`forbidden profile entry: ${entry}`);
       }
