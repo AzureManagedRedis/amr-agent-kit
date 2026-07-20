@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -92,6 +92,134 @@ test('bridges paired model grading through calibration and preserves both raw gr
       raw.assertions.every((assertion) => assertion.evidence.includes('EVAL_WITHOUT')),
     ))
     assert.equal(grades['without-skill'].details.blind.kappa, 1)
+  } finally {
+    await rm(runDir, { recursive: true, force: true })
+  }
+})
+
+function fakeCapabilities(calibratedModels) {
+  return {
+    executablePath: 'fake-copilot',
+    executableHash: 'fake',
+    version: 'fake',
+    helpHash: 'fake',
+    supportsPrompt: true,
+    supportsJsonOutput: true,
+    supportsNoAskUser: true,
+    supportsToolApproval: true,
+    supportsInstructionDisable: true,
+    supportsMcpDisable: true,
+    supportsNoRemote: true,
+    supportsNoRemoteExport: true,
+    supportsNoAutoUpdate: true,
+    supportsStreamControl: true,
+    calibratedModels,
+  }
+}
+
+test('supplies fresh calibration workspaces for every configured grader model', async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), 'copilot-grader-probe-'))
+  const runtime = await loadSoakRegistry()
+  const [scenario] = await new RegistryScenarioProvider(runtime, {
+    targetSkill: 'redis-code',
+    scenarioIds: ['scn-connection-auth-tls-entra'],
+    runId: 'blind-probe-test',
+  }).listScenarios()
+  const probeCalls = []
+  const strictExecutor = {
+    async probe(input) {
+      probeCalls.push(input)
+      assert.equal(input.calibrations.length, 2)
+      assert.deepEqual(input.calibrations.map((item) => item.model), ['grader-a', 'grader-b'])
+      assert.notEqual(input.calibrations[0].workspace.root, input.calibrations[1].workspace.root)
+      assert.ok(input.calibrations.every((item) => item.workspace.arm === 'without-skill'))
+      return fakeCapabilities(input.calibrations.map((item) => item.model))
+    },
+    async execute(request) {
+      const graderRequest = JSON.parse(
+        await readFile(path.join(request.workspace.projectDir, 'grader-request.json'), 'utf8'),
+      )
+      const now = new Date().toISOString()
+      return {
+        soakRunId: 'blind-probe-test',
+        executionId: request.executionId,
+        scenarioId: request.scenario.id,
+        arm: request.arm,
+        status: 'completed',
+        startedAt: now,
+        finishedAt: now,
+        responseText: strictResponse(graderRequest),
+        events: [{ type: 'assistant.message', content: 'strict JSON' }],
+        trace: {
+          executablePath: 'fake',
+          executableHash: 'fake',
+          args: [],
+          cwd: request.workspace.projectDir,
+          pid: process.pid,
+          processIdentity: { pid: process.pid, startedAt: now, name: 'node' },
+          descendants: [],
+          startedAt: now,
+          finishedAt: now,
+          exitCode: 0,
+          signal: null,
+          timedOut: false,
+          cancelled: false,
+          stdoutFile: '',
+          stderrFile: '',
+          projectHashBefore: request.workspace.projectHash,
+          projectHashAfter: request.workspace.projectHash,
+          profileHashBefore: request.workspace.profileHash,
+          profileHashAfter: request.workspace.profileHash,
+          contamination: [],
+        },
+      }
+    },
+  }
+  try {
+    const grader = await createBlindGrader({
+      runtime,
+      evidenceStore: new EvidenceStore(runtime),
+      config: {
+        modelIds: ['grader-a', 'grader-b'],
+        minimumKappa: 0.8,
+        requireExecutorDiversity: true,
+        copilotExecutor: strictExecutor,
+      },
+      repositoryRoot: repoRoot,
+      processManager: {},
+      controllerConfig: { runId: 'blind-probe-test', model: 'executor-model' },
+      runDir,
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    })
+    const calibration = await grader.assertCalibration([scenario])
+    assert.equal(calibration.passed, true)
+    assert.equal(probeCalls.length, 1)
+
+    const incompleteGrader = await createBlindGrader({
+      runtime,
+      evidenceStore: new EvidenceStore(runtime),
+      config: {
+        modelIds: ['grader-a', 'grader-b'],
+        minimumKappa: 0.8,
+        requireExecutorDiversity: true,
+        copilotExecutor: {
+          ...strictExecutor,
+          async probe(input) {
+            assert.equal(input.calibrations.length, 2)
+            return fakeCapabilities(['grader-a'])
+          },
+        },
+      },
+      repositoryRoot: repoRoot,
+      processManager: {},
+      controllerConfig: { runId: 'blind-probe-incomplete', model: 'executor-model' },
+      runDir: path.join(runDir, 'incomplete'),
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    })
+    await assert.rejects(
+      () => incompleteGrader.assertCalibration([scenario]),
+      /did not calibrate configured models: grader-b/,
+    )
   } finally {
     await rm(runDir, { recursive: true, force: true })
   }

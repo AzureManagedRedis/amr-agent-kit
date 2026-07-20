@@ -3,9 +3,11 @@ import test from "node:test";
 import type { ExecutionArtifact, ExecutorCapabilities } from "../../src/core/contracts.js";
 import {
   assertCalibrationArtifact,
+  assertCalibratedModels,
   assertExecutorCapabilities,
   isBundledExtractionRace,
   preflightRetryDelayMs,
+  responseTextFromEvents,
 } from "../../src/executor/copilot-cli.js";
 
 const capabilities: ExecutorCapabilities = {
@@ -41,6 +43,30 @@ test("preflight requires every flag used by execution", () => {
   }
 });
 
+test("configured calibration models must appear in executor capabilities", () => {
+  assert.doesNotThrow(() =>
+    assertCalibratedModels(
+      { ...capabilities, calibratedModels: ["GPT-5.6-SOL", "claude-opus-4.8"] },
+      ["gpt-5.6-sol", "CLAUDE-OPUS-4.8"],
+    ),
+  );
+  assert.throws(
+    () => assertCalibratedModels(capabilities, ["missing-model"]),
+    /did not calibrate configured models: missing-model/,
+  );
+});
+
+test("extracts response text from real nested CLI events and legacy top-level fixtures", () => {
+  assert.equal(
+    responseTextFromEvents([
+      { type: "user.message", data: { content: "ignored prompt" } },
+      { type: "assistant.message", data: { content: "nested" } },
+      { type: "assistant.message", content: "top-level" },
+    ]),
+    "nested\ntop-level",
+  );
+});
+
 test("preflight recognizes Windows bundled-package extraction races and backs off", () => {
   assert.equal(
     isBundledExtractionRace("Failed to extract bundled package: EPERM: operation not permitted, rename"),
@@ -60,7 +86,7 @@ test("calibration rejects parent session attachments and database failures", () 
     status: "completed",
     startedAt: timestamp,
     finishedAt: timestamp,
-    responseText: "ok",
+    responseText: "CALIBRATION_OK",
     events: [{ type: "user.message", content: "<system_reminder><todo_status>" }],
     trace: {
       executablePath: "copilot",
@@ -129,5 +155,22 @@ test("calibration rejects parent session attachments and database failures", () 
         },
       ],
     }),
+  );
+  const served = {
+    ...artifact,
+    responseText: "CALIBRATION_OK",
+    events: [
+      { type: "assistant.turn_start", data: { model: "gpt-5.6-sol" } },
+      { type: "assistant.message", data: { model: "gpt-5.6-sol", content: "CALIBRATION_OK" } },
+    ],
+  };
+  assert.equal(assertCalibrationArtifact(served, [], "GPT-5.6-SOL"), "gpt-5.6-sol");
+  assert.throws(
+    () => assertCalibrationArtifact(served, [], "claude-opus-4.8"),
+    /requested claude-opus-4.8 but the CLI served gpt-5.6-sol/,
+  );
+  assert.throws(
+    () => assertCalibrationArtifact({ ...artifact, events: [{ type: "assistant.idle", data: {} }] }, [], "gpt-5.6-sol"),
+    /did not report a served model/,
   );
 });

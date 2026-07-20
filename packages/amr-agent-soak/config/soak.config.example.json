@@ -10,6 +10,9 @@
   "heartbeatSeconds": 5,
   "probeConcurrency": 2,
   "model": "gpt-5.6-sol",
+  "calibrationModelIds": [
+    "gpt-5.6-sol"
+  ],
   "integrationModule": "packages/amr-agent-soak/src/integration/runtime.mjs",
   "integration": {
     "targetSkill": "redis-code",

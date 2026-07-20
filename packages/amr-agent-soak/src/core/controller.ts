@@ -19,6 +19,7 @@ import { hashJson, hashTree } from "./hash.js";
 import { createIsolatedWorkspace } from "./isolation.js";
 import { EventLedger, readLastLedgerSequence } from "./ledger.js";
 import { ProcessRegistry, SystemProcessManager } from "./process.js";
+import { assertCalibratedModels } from "../executor/copilot-cli.js";
 
 interface ArmState {
   status: "pending" | "running" | "completed" | "failed" | "timed-out" | "cancelled" | "cached";
@@ -178,6 +179,7 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
     withSkill: withSkillPreflight,
     calibrations: calibrationWorkspaces,
   });
+  assertCalibratedModels(capabilities, config.calibrationModelIds);
   const executorHash = hashJson(capabilities);
 
   let state = await readJsonIfExists<ControllerState>(statePath);

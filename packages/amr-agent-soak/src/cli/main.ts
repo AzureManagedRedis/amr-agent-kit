@@ -14,6 +14,7 @@ import type { SoakConfig } from "../core/config.js";
 import { createIsolatedWorkspace } from "../core/isolation.js";
 import { readRunStatus, requestStop, runSoak } from "../core/controller.js";
 import { CopilotCliExecutor } from "../executor/copilot-cli.js";
+import { assertCalibratedModels } from "../executor/copilot-cli.js";
 import {
   DotnetTestProbe,
   type DotnetTestProbeConfig,
@@ -152,6 +153,9 @@ async function preflight(configPath: string): Promise<void> {
     withSkill,
     calibrations,
   });
+  assertCalibratedModels(capabilities, calibrationModels.filter(
+    (model): model is string => typeof model === "string",
+  ));
   process.stdout.write(`${JSON.stringify(capabilities, null, 2)}\n`);
 }
 

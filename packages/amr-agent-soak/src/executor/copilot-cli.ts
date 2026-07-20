@@ -160,10 +160,25 @@ export function assertExecutorCapabilities(capabilities: ExecutorCapabilities): 
   }
 }
 
+export function assertCalibratedModels(
+  capabilities: ExecutorCapabilities,
+  requestedModels: ReadonlyArray<string>,
+): void {
+  const calibratedModels = Array.isArray(capabilities.calibratedModels)
+    ? capabilities.calibratedModels
+    : [];
+  const calibrated = new Set(calibratedModels.map((model) => model.toLowerCase()));
+  const missing = requestedModels.filter((model) => !calibrated.has(model.toLowerCase()));
+  if (missing.length > 0) {
+    throw new Error(`Copilot CLI did not calibrate configured models: ${missing.join(", ")}`);
+  }
+}
+
 export function assertCalibrationArtifact(
   artifact: ExecutionArtifact,
   parentSessionMarkers: ReadonlyArray<string> = [],
-): void {
+  expectedModel?: string,
+): string | undefined {
   if (artifact.status !== "completed" || artifact.trace.exitCode !== 0) {
     throw new Error(
       `Calibration execution failed (${artifact.status}, exit ${artifact.trace.exitCode}); stderr: ${artifact.trace.stderrFile}`,
@@ -194,6 +209,81 @@ export function assertCalibrationArtifact(
       `Calibration execution inherited parent session content: ${forbidden.join(", ")}`,
     );
   }
+  if (artifact.responseText.trim() !== "CALIBRATION_OK") {
+    throw new Error(
+      `Calibration execution returned an unexpected response: ${artifact.responseText.trim() || "<empty>"}`,
+    );
+  }
+  const servedModels = new Set(
+    artifact.events.flatMap((event) => {
+      if (!event || typeof event !== "object") return [];
+      const record = event as Record<string, unknown>;
+      if (!["assistant.turn_start", "assistant.message", "assistant.turn_end"].includes(String(record.type))) {
+        return [];
+      }
+      const data = record.data;
+      if (!data || typeof data !== "object") return [];
+      const model = (data as Record<string, unknown>).model;
+      return typeof model === "string" && model.length > 0 ? [model] : [];
+    }),
+  );
+  if (expectedModel) {
+    if (servedModels.size === 0) {
+      throw new Error(`Calibration execution did not report a served model for ${expectedModel}`);
+    }
+    const mismatch = [...servedModels].filter(
+      (model) => model.toLowerCase() !== expectedModel.toLowerCase(),
+    );
+    if (mismatch.length > 0) {
+      throw new Error(
+        `Calibration requested ${expectedModel} but the CLI served ${mismatch.join(", ")}`,
+      );
+    }
+  }
+  return servedModels.size === 1 ? [...servedModels][0] : expectedModel;
+}
+
+export function responseTextFromEvents(events: ReadonlyArray<unknown>): string {
+  const text = (record: Record<string, unknown>, delta = false): string => {
+    const data =
+      record.data && typeof record.data === "object"
+        ? (record.data as Record<string, unknown>)
+        : undefined;
+    if (delta && typeof data?.deltaContent === "string") {
+      return data.deltaContent;
+    }
+    return typeof data?.content === "string"
+      ? data.content
+      : typeof data?.message === "string"
+        ? data.message
+        : typeof record.content === "string"
+          ? record.content
+          : typeof record.message === "string"
+            ? record.message
+            : "";
+  };
+  const records = events.filter(
+    (event): event is Record<string, unknown> => !!event && typeof event === "object",
+  );
+  const messages = records
+    .filter((record) => record.type === "assistant.message")
+    .map((record) => text(record))
+    .filter(Boolean);
+  if (messages.length > 0) {
+    return messages.join("\n");
+  }
+  const deltas = records
+    .filter((record) => record.type === "assistant.message_delta")
+    .map((record) => text(record, true))
+    .filter(Boolean);
+  if (deltas.length > 0) {
+    return deltas.join("");
+  }
+  return records
+    .filter((record) => record.type === undefined)
+    .map((record) => text(record))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function skillRecords(value: unknown): ReadonlyArray<Record<string, unknown>> {
@@ -378,8 +468,12 @@ export class CopilotCliExecutor implements HeadlessExecutor {
         },
         capabilities,
       );
-      assertCalibrationArtifact(artifact, warmedWorkspace.parentSessionMarkers);
-      calibratedModels.push(calibration.model ?? "auto");
+      const servedModel = assertCalibrationArtifact(
+        artifact,
+        warmedWorkspace.parentSessionMarkers,
+        calibration.model,
+      );
+      calibratedModels.push(servedModel ?? calibration.model ?? "auto");
     }
     capabilities = { ...capabilities, calibratedModels };
     return capabilities;
@@ -510,20 +604,7 @@ export class CopilotCliExecutor implements HeadlessExecutor {
           return { type: "unparsed", text: line };
         }
       });
-    const responseText = events
-      .map((event) => {
-        if (!event || typeof event !== "object") {
-          return "";
-        }
-        const record = event as Record<string, unknown>;
-        return typeof record.content === "string"
-          ? record.content
-          : typeof record.message === "string"
-            ? record.message
-            : "";
-      })
-      .filter(Boolean)
-      .join("\n");
+    const responseText = responseTextFromEvents(events);
 
     const status: ExecutionArtifact["status"] = timedOut
       ? "timed-out"

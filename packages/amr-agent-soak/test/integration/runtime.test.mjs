@@ -25,6 +25,7 @@ function capabilities() {
     supportsNoRemoteExport: true,
     supportsNoAutoUpdate: true,
     supportsStreamControl: true,
+    calibratedModels: [],
   }
 }
 

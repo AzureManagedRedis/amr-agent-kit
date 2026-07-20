@@ -143,16 +143,17 @@ export async function createBlindGrader({
   const provenance = await combinedModuleProvenance()
   const moduleHash = provenance.moduleHash
   const injectedModelExecutor = typeof config.modelExecutor === 'function' ? config.modelExecutor : undefined
-  const core = injectedModelExecutor ? undefined : await loadCoreRuntime()
+  const injectedCopilotExecutor = config.copilotExecutor
+  const core = injectedModelExecutor && !injectedCopilotExecutor ? undefined : await loadCoreRuntime()
   const registry = core
     ? new core.ProcessRegistry(path.join(runDir, 'blind-grader-processes.jsonl'))
     : undefined
-  const executor = core
+  const executor = injectedCopilotExecutor ?? (core
     ? new core.CopilotCliExecutor(controllerConfig.copilotCommand, {
         processManager,
         preflightTimeoutMs: Number(config.preflightTimeoutMs ?? 30_000),
       })
-    : undefined
+    : undefined)
   let callSequence = 0
   let capabilitiesPromise
 
@@ -182,7 +183,30 @@ export async function createBlindGrader({
           repositoryRoot,
           soakRunId: controllerConfig.runId,
         })
-        return executor.probe({ withoutSkill, withSkill })
+        const calibrations = await Promise.all(
+          modelIds.map(async (model, index) => ({
+            model,
+            workspace: await core.createIsolatedWorkspace({
+              root: path.join(root, `calibration-${index + 1}-${safePart(model)}`),
+              arm: 'without-skill',
+              scenario: {
+                id: `blind-grader-calibration-${index + 1}`,
+                prompt: 'calibration',
+                scaffold: {},
+              },
+              skillSnapshotPath,
+              repositoryRoot,
+              soakRunId: controllerConfig.runId,
+            }),
+          })),
+        )
+        const result = await executor.probe({ withoutSkill, withSkill, calibrations })
+        const calibrated = new Set((result.calibratedModels ?? []).map((model) => model.toLowerCase()))
+        const missing = modelIds.filter((model) => !calibrated.has(model.toLowerCase()))
+        if (missing.length > 0) {
+          throw new Error(`Blind grader Copilot preflight did not calibrate configured models: ${missing.join(', ')}`)
+        }
+        return result
       })()
     }
     return capabilitiesPromise
