@@ -60,13 +60,19 @@ derivations cannot silently drift):
    rubric, so calibration answers cannot silently drop a required check.
 10. **`scenario-canary-coverage`** — every scenario must have at least one known-good and one
     known-bad grader canary so the grader stays calibrated in both directions.
+11. **`known-bad-covers-required`** — each scenario must have at least one known-bad canary whose
+    `must_trigger_criteria` violates *every* required correctness criterion, giving a clean
+    full-negative anchor. This prevents a required criterion from being left conditional/vacuous
+    (e.g. a "if a lock is used…" criterion that a lock-less bad answer satisfies by absence),
+    which otherwise makes two graders disagree and drives per-arm kappa to zero.
 
-Grader-canary calibration note: a known-good canary's `answer_excerpt` must be written to
-unambiguously satisfy *every* required correctness criterion **and** the scenario's
-actionability criterion (named keys, concrete TTLs, commands, index schemas, tier sizes, or
-staged sequences as applicable) — a real grader must pass it. The invariants above enforce
-declared correctness coverage and both-direction canary presence; the actionability concreteness
-is enforced by review of the excerpt text.
+Grader-canary calibration note: a known-good canary's `answer_excerpt` must unambiguously satisfy
+*every* required correctness criterion **and** the scenario's actionability criterion; a known-bad
+canary must unambiguously *violate* the criteria in its `must_trigger_criteria` (and leave no
+required criterion vacuous), with at least one known-bad per scenario violating all required
+criteria. `must_trigger_criteria` records satisfied criteria for known-good and violated criteria
+for known-bad. The invariants enforce the objective coverage; the textual concreteness and
+explicit-violation quality are enforced by review of the excerpt text.
 
 ## Correctness vs. efficacy — two separate things
 

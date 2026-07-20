@@ -158,6 +158,15 @@ const INVARIANTS = {
     if (!i.hasKnownGood) e.push("scenario has no known-good grader canary");
     if (!i.hasKnownBad) e.push("scenario has no known-bad grader canary");
     return e;
+  },
+  // 11. At least one known-bad canary per scenario must violate every required correctness
+  //     criterion, giving a clean full-negative anchor so no required criterion is left
+  //     conditional/vacuous across the scenario's negative canaries.
+  "known-bad-covers-required": (i) => {
+    const req = i.requiredCorrectnessCriteria || [];
+    if (req.length === 0) return [];
+    const anyFull = (i.knownBadMustLists || []).some((list) => req.every((c) => (list || []).includes(c)));
+    return anyFull ? [] : ["no known-bad canary violates every required correctness criterion (no clean full-negative anchor)"];
   }
 };
 
@@ -341,6 +350,10 @@ for (const { scn, entry } of scenarios) {
   inv("scenario-canary-coverage", {
     hasKnownGood: scnCanaries.some((g) => g.answer_kind === "known-good"),
     hasKnownBad: scnCanaries.some((g) => g.answer_kind === "known-bad")
+  }, w);
+  inv("known-bad-covers-required", {
+    requiredCorrectnessCriteria: rubricRequiredById[scn.correctness_rubric_ref] || [],
+    knownBadMustLists: scnCanaries.filter((g) => g.answer_kind === "known-bad").map((g) => g.must_trigger_criteria || [])
   }, w);
 }
 

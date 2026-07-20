@@ -1,0 +1,2 @@
+{ "invariant": "known-bad-covers-required", "expect": "fail", "description": "Only targeted known-bad canaries exist; none violates every required correctness criterion, so a required criterion is left conditional/vacuous.",
+  "input": { "requiredCorrectnessCriteria": ["c1", "c2"], "knownBadMustLists": [["c1"], ["c2"]] } }

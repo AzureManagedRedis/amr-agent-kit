@@ -1,0 +1,2 @@
+{ "invariant": "known-bad-covers-required", "expect": "pass", "description": "One known-bad canary violates every required correctness criterion (clean full-negative anchor); a second targets a subset.",
+  "input": { "requiredCorrectnessCriteria": ["c1", "c2"], "knownBadMustLists": [["c1", "c2", "c3"], ["c2"]] } }
