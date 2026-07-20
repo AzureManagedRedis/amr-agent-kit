@@ -36,7 +36,7 @@ Use this skill for code-level decisions: clients, keys, commands, indexes, retri
 
 ### Apply Critical Rules First
 
-Start with data structures, key design, vector index schema, and tenant/security boundaries. Incorrect structures, unbounded keys, SELECT/database-index tenancy on AMR, unsafe cluster key placement, mismatched embedding dimensions, or missing RAG access controls usually require design changes before smaller command-level optimizations matter.
+Start with data structures, key design, vector index schema, and tenant/security boundaries. Incorrect structures, unbounded keys, logical-database (`SELECT`/`db=N`) tenancy that does not port across AMR topologies, unsafe cluster key placement, mismatched embedding dimensions, or missing RAG access controls usually require design changes before smaller command-level optimizations matter.
 
 ### Prefer AMR-Safe Code Defaults
 
@@ -44,9 +44,9 @@ When generating Redis client code for Azure Managed Redis, default to TLS-enable
 
 For production application code, surface the AMR client checklist near the client setup: use the normal `<cache-name>.<region>.redis.azure.net` host on port `10000`, enable TLS or `rediss://`, keep certificate validation on, prefer Microsoft Entra or managed identity where supported, validate required configuration at startup, reuse a singleton/pool/multiplexer, set connect/socket/command timeouts, use bounded jittered retries, refresh Entra tokens before expiry, and log/measure authentication failures, token-refresh events, connection failures, and Redis latency. Do not reuse Azure Cache for Redis defaults such as port `6380`; Azure Managed Redis production clients use port `10000`.
 
-Azure Managed Redis uses the `default` database / database 0 pattern. It does not support Redis logical-database multi-tenancy with `SELECT`, numbered DB indexes, or `db=N` connection settings the way older Azure Cache for Redis designs often did. If code uses Redis DB indexes for tenants, environments, or tests, refactor to explicit key prefixes, tenant-aware metadata filters, scoped data access policies/key patterns, and separate AMR caches for hard tenant isolation.
+Prefer explicit key prefixes over Redis logical databases (`SELECT`/`db=N`) for tenants, environments, and tests. Logical-database availability is topology-dependent on Azure Managed Redis: clustered (`OSSCluster`, `EnterpriseCluster`) and active-geo-replicated (CRDB) caches are engine-constrained to database 0, while a non-clustered (`NoCluster`) cache can permit more than one database. Do not assume AMR is universally single-database or infer the database count from the managed database resource; verify effective config or probe with a live `SELECT` before using any database other than 0. Refactor DB-index tenancy to explicit key prefixes, tenant-aware metadata filters, scoped data access policies/key patterns, and separate AMR caches for hard tenant isolation.
 
-For DB-index, `SELECT`, cluster-policy, multi-key command, transaction, or Lua reviews, include the full compatibility checklist in the answer: DB0/default database, prefix-based logical separation, `NoCluster` versus `OSSCluster` client assumptions, hash tags, the `CROSSSLOT` failure risk, and AMR client basics: normal AMR host, TLS on port `10000`, certificate validation, and a reusable singleton/pool/multiplexer.
+For logical-database, `SELECT`, cluster-policy, multi-key command, transaction, or Lua reviews, make the guidance policy- and topology-specific: `NoCluster` is unsharded (no slot constraint); `OSSCluster` requires same-slot placement (hash tags) for every multi-key command, transaction, and Lua script; `EnterpriseCluster` can scatter-gather selected non-atomic multi-key commands (MGET/MSET/DEL/UNLINK/EXISTS/TOUCH) across slots, but transactions, Lua scripts that declare keys in `KEYS`, and destination-key commands still need co-located keys. Hash tags are the portable co-location mechanism, not a universal requirement for every Enterprise non-atomic command. For logical separation prefer database 0 with key prefixes, and treat DB0-only as engine-proven for clustered and geo-replicated topologies but verify it for `NoCluster`. Include AMR client basics: normal AMR host, TLS on port `10000`, certificate validation, and a reusable singleton/pool/multiplexer.
 
 ### Choose the Correct Code Path
 
@@ -69,7 +69,7 @@ For DB-index, `SELECT`, cluster-policy, multi-key command, transaction, or Lua r
 ## Redis Code Workflow
 
 1. Identify the Redis workload: application data, cache, messaging, search, RAG, memory, or agent state.
-2. Select the smallest correct Redis structure and define DB0/default database use, key names, TTLs, size bounds, logical key-prefix boundaries, and cluster hash tags.
+2. Select the smallest correct Redis structure and define logical key-prefix boundaries (preferring database 0 for portability), key names, TTLs, size bounds, and policy-appropriate cluster hash tags.
 3. Configure AMR-safe client behavior: TLS, authentication, pooling, timeouts, retries, and health checks.
 4. For AI workloads, define embedding model, dimensions, distance metric, index schema, metadata filters, and source/tenant boundaries.
 5. Batch or pipeline hot paths and ingestion flows while preserving idempotency and replay safety.
