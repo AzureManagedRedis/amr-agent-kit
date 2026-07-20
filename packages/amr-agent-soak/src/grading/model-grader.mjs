@@ -7,6 +7,7 @@ import { cohensKappa } from './statistics.mjs'
 import { redact } from '../report/artifacts.mjs'
 
 export const MODEL_GRADER_API_VERSION = '1'
+const STRICT_RESPONSE_INSTRUCTION = '\nRespond with exactly one JSON object: start with "{" and end with "}", with no commentary.'
 
 class BlindModelGraderError extends Error {
   constructor(message, details = {}) {
@@ -131,18 +132,63 @@ function assertNoIdentityLeakage(request) {
   }
 }
 
+function balancedObjectEnd(text, start) {
+  let depth = 0
+  let inString = false
+  let escaped = false
+  for (let index = start; index < text.length; index += 1) {
+    const character = text[index]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (character === '\\') escaped = true
+      else if (character === '"') inString = false
+      continue
+    }
+    if (character === '"') {
+      inString = true
+      continue
+    }
+    if (character === '{') depth += 1
+    else if (character === '}') {
+      depth -= 1
+      if (depth === 0) return index
+      if (depth < 0) return null
+    }
+  }
+  return null
+}
+
+export function extractSingleJsonObject(raw) {
+  if (typeof raw !== 'string') throw new GraderProtocolError('grader executor must return text containing one JSON object')
+  const candidates = []
+  for (let start = 0; start < raw.length; start += 1) {
+    if (raw[start] !== '{') continue
+    const end = balancedObjectEnd(raw, start)
+    if (end === null) continue
+    const candidate = raw.slice(start, end + 1)
+    try {
+      const parsed = JSON.parse(candidate)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        candidates.push(parsed)
+        if (candidates.length > 1) throw new GraderProtocolError('grader response contains multiple top-level JSON objects')
+        start = end
+      }
+    } catch (error) {
+      if (error instanceof GraderProtocolError) throw error
+    }
+  }
+  if (candidates.length === 0) throw new GraderProtocolError('grader response does not contain one complete JSON object')
+  return candidates[0]
+}
+
 function parseGrades(raw, labels) {
-  if (typeof raw !== 'string') throw new GraderProtocolError('grader executor must return a JSON string')
-  let parsed
-  try {
-    parsed = JSON.parse(raw)
-  } catch (error) {
-    throw new GraderProtocolError('grader returned invalid JSON', { cause: error })
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new GraderProtocolError('grader response must be a JSON object')
-  }
-  const grades = parsed.grades ?? parsed.arm_results
+  const parsed = extractSingleJsonObject(raw)
+  const allowedResponseFields = new Set(['grades', 'arm_results'])
+  const unknownFields = Object.keys(parsed).filter((key) => !allowedResponseFields.has(key))
+  if (unknownFields.length > 0) throw new GraderProtocolError(`grader response contains unknown fields: ${unknownFields.join(', ')}`)
+  const responseFields = ['grades', 'arm_results'].filter((key) => key in parsed)
+  if (responseFields.length !== 1) throw new GraderProtocolError('grader response must contain exactly one grades field')
+  const grades = parsed[responseFields[0]]
   if (!grades || typeof grades !== 'object' || Array.isArray(grades)) {
     throw new GraderProtocolError('grader response must contain a grades object')
   }
@@ -323,7 +369,7 @@ export function createBlindModelGrader({
       evaluationBundles.map((bundle) => ({ kind: 'evaluation', bundle })),
     )
     const request = {
-      prompt: redact(safePrompt),
+      prompt: redact(`${safePrompt}${STRICT_RESPONSE_INSTRUCTION}`),
       arms: entries.flatMap((entry, bundleIndex) => requestArms(entry.bundle, `pair-${bundleIndex}-`)),
       rubric: safeRubric,
       source_evidence: safeEvidence,

@@ -9,6 +9,7 @@ import {
   GraderTimeoutError,
   assertFiniteKappas,
   createBlindModelGrader,
+  extractSingleJsonObject,
 } from '../../src/grading/model-grader.mjs'
 
 const rubric = {
@@ -149,7 +150,44 @@ test('rejects invalid JSON without a prose fallback', async () => {
   }), GraderProtocolError)
 })
 
-test('fails closed when calibration accuracy is below threshold', async () => {
+  test('extracts one embedded JSON object from prose and preserves strict grading', async () => {
+    const setup = grader({
+      modelExecutor: async (request) => `I reviewed both answers.\n${response(request, (arm) => !arm.output.includes('bad canary output'))}\nNo further notes.`,
+    })
+    const result = await setup.instance.grade({
+      prompt: 'evaluation',
+      pairs: pairs(),
+      rubric,
+      canaries: canaries(),
+    })
+    assert.equal(result.accepted, true)
+  })
+
+  test('extracts fenced JSON with braces inside evidence strings', () => {
+    const parsed = extractSingleJsonObject('```json\n{"grades":{"arm-a":{"assertions":[],"evidence":"brace {inside}","score":1}}}\n```')
+    assert.equal(parsed.grades['arm-a'].evidence, 'brace {inside}')
+  })
+
+  test('rejects multiple, truncated, and unknown-field JSON responses', async () => {
+    await assert.rejects(() => runGrader({
+      modelExecutor: async (request) => {
+        const object = response(request, (arm) => !arm.output.includes('bad canary output'))
+        return `${object}\n${object}`
+      },
+    }), GraderProtocolError)
+    await assert.rejects(() => runGrader({
+      modelExecutor: async () => '{"grades":',
+    }), GraderProtocolError)
+    await assert.rejects(() => runGrader({
+      modelExecutor: async (request) => {
+        const object = JSON.parse(response(request, (arm) => !arm.output.includes('bad canary output')))
+        object.extra = 'not permitted'
+        return JSON.stringify(object)
+      },
+    }), GraderProtocolError)
+  })
+
+  test('fails closed when calibration accuracy is below threshold', async () => {
   const setup = grader({
     modelExecutor: async (request) => response(request, true),
   })
