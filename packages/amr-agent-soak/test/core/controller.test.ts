@@ -188,3 +188,86 @@ test("completed runs resume idempotently with monotonic ledger sequences", async
   );
   assert.ok(events.some((event) => event.type === "pair.resumed"));
 });
+
+test("persists inconclusive pair grades and continues grading later pairs", async (context) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "amr-soak-contested-"));
+  context.after(() => rm(root, { recursive: true, force: true }));
+  const skill = path.join(root, "skill");
+  await mkdir(skill, { recursive: true });
+  await writeFile(path.join(skill, "SKILL.md"), "---\nname: test-skill\n---\n");
+  const config = {
+    runId: "contested-test",
+    repositoryRoot: root,
+    outputRoot: path.join(root, "eval-runs"),
+    skillSnapshotPath: skill,
+    concurrency: 12,
+    repetitions: 2,
+    durationHours: 1,
+    timeoutMinutes: 1,
+  };
+  let gradedPairs = 0;
+  const modules = {
+    scenarios: {
+      listScenarios: () =>
+        Promise.resolve([
+          { id: "scenario", prompt: "test", scaffold: { "index.txt": "neutral" } },
+        ]),
+    },
+    executor: new FakeExecutor(),
+    processManager: new FakeProcessManager(),
+    grader: {
+      gradePair: async () => {
+        const inconclusive = gradedPairs === 0;
+        gradedPairs += 1;
+        const grade = {
+          score: inconclusive ? 0.5 : 1,
+          passed: !inconclusive,
+          inconclusive,
+          details: {
+            grading: {
+              assertions: [{ id: "c1", statement: "test", passed: !inconclusive }],
+              score: inconclusive ? 0.5 : 1,
+              passed: !inconclusive,
+              inconclusive,
+            },
+          },
+        };
+        return { "with-skill": grade, "without-skill": grade };
+      },
+    },
+  };
+
+  const summary = await runSoak(config, modules);
+  assert.equal(summary.status, "completed");
+  assert.equal(summary.completedPairs, 2);
+  assert.equal(gradedPairs, 2);
+  const runDir = path.join(config.outputRoot, config.runId);
+  const state = JSON.parse(await readFile(path.join(runDir, "state.json"), "utf8")) as {
+    pairs: Record<
+      string,
+      {
+        gradedAt?: string;
+        arms: Record<"without-skill" | "with-skill", { artifactPath: string }>;
+      }
+    >;
+  };
+  assert.ok(Object.values(state.pairs).every((pair) => pair.gradedAt));
+  const grades = await Promise.all(
+    Object.values(state.pairs).flatMap((pair) =>
+      Object.values(pair.arms).map(async (arm) => {
+        const artifact = JSON.parse(await readFile(arm.artifactPath, "utf8")) as ExecutionArtifact;
+        return artifact.grade;
+      }),
+    ),
+  );
+  assert.equal(grades.filter((grade) => grade?.inconclusive).length, 2);
+  assert.equal(grades.filter((grade) => grade?.passed).length, 2);
+  const events = (await readFile(path.join(runDir, "events.jsonl"), "utf8"))
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line) as { type: string; data?: { inconclusive?: boolean } });
+  assert.deepEqual(
+    events.filter((event) => event.type === "pair.graded").map((event) => event.data?.inconclusive).sort(),
+    [false, true],
+  );
+});

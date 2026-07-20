@@ -435,3 +435,72 @@ test('pair-grades both arms and persists raw grader agreement through the contro
     await rm(outputRoot, { recursive: true, force: true })
   }
 })
+
+test('continues after a contested pair and reports it as inconclusive without a zero score', async () => {
+  const outputRoot = await mkdtemp(path.join(os.tmpdir(), 'blind-contested-controller-'))
+  const config = {
+    runId: 'blind-contested-controller',
+    repositoryRoot: repoRoot,
+    outputRoot,
+    skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    concurrency: 12,
+    repetitions: 2,
+    durationHours: 48,
+    timeoutMinutes: 1,
+    heartbeatSeconds: 0.05,
+    model: 'executor-model',
+    integration: {
+      targetSkill: 'redis-code',
+      scenarioIds: ['scn-connection-auth-tls-entra'],
+      grading: {
+        mode: 'external-blind',
+        modulePath: 'packages/amr-agent-soak/test/integration/fixtures/fake-blind-grader.mjs',
+        minimumKappa: 0.7,
+        testInconclusiveFirstPair: true,
+      },
+      executionCache: { enabled: false },
+      evidence: { required: false, hooks: [] },
+      liveCache: { enabled: false },
+    },
+  }
+  try {
+    const integrated = await createSoakModules({ config, processManager })
+    const summary = await runSoak(config, {
+      ...integrated,
+      executor: fakeScenarioExecutor(config),
+      processManager,
+    })
+    assert.equal(summary.status, 'completed')
+    assert.equal(summary.completedPairs, 2)
+
+    const state = JSON.parse(await readFile(path.join(outputRoot, config.runId, 'state.json'), 'utf8'))
+    assert.ok(Object.values(state.pairs).every((pair) => pair.gradedAt))
+    const grades = []
+    for (const pair of Object.values(state.pairs)) {
+      for (const arm of ['with-skill', 'without-skill']) {
+        const artifact = JSON.parse(await readFile(pair.arms[arm].artifactPath, 'utf8'))
+        grades.push(artifact.grade)
+      }
+    }
+    assert.equal(grades.filter((grade) => grade.inconclusive).length, 2)
+    assert.equal(grades.filter((grade) => grade.passed).length, 2)
+
+    const benchmark = JSON.parse(
+      await readFile(path.join(outputRoot, config.runId, 'benchmark.json'), 'utf8'),
+    )
+    assert.deepEqual(benchmark.outcome_counts, {
+      passed_runs: 2,
+      failed_runs: 0,
+      inconclusive_runs: 2,
+      inconclusive_pairs: 1,
+    })
+    assert.equal(benchmark.results[0].paired_statistics.n, 1)
+    assert.equal(benchmark.results[0].with_skill_summary.efficacy.mean, 1)
+    assert.equal(benchmark.results[0].without_skill_summary.efficacy.mean, 1)
+    const report = await readFile(path.join(outputRoot, config.runId, 'report.md'), 'utf8')
+    assert.match(report, /Inconclusive pairs: \*\*1\*\*/)
+    assert.doesNotMatch(report, /\| 0\.000 \| 0\.000 \|/)
+  } finally {
+    await rm(outputRoot, { recursive: true, force: true })
+  }
+})

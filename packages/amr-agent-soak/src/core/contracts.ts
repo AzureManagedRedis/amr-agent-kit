@@ -27,6 +27,7 @@ export interface SoakCache {
 export interface GradeResult {
   readonly score?: number;
   readonly passed?: boolean;
+  readonly inconclusive?: boolean;
   readonly details?: Readonly<Record<string, unknown>>;
 }
 

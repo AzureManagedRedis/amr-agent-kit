@@ -101,6 +101,7 @@ export class IntegrationReporter {
         const artifact = await readJson(artifactPath)
         artifacts[arm] = artifact
         const grading = artifact.grade?.details?.grading
+        const inconclusive = artifact.grade?.inconclusive === true || grading?.inconclusive === true
         runs.push({
           eval_id: scenario.id,
           run_id: pairId,
@@ -109,14 +110,17 @@ export class IntegrationReporter {
           status: artifact.status,
           contaminated: (artifact.trace?.contamination ?? []).length > 0,
           complete: true,
-          grading: grading ?? {
-            assertions: [{ id: 'missing-grade', statement: 'Grading output was missing', passed: false }],
-            score: 0,
-            efficacy_score: 0,
-            correctness_score: 0,
-            safety_score: 0,
-            passed: false,
-          },
+          grading: grading
+            ? { ...grading, inconclusive }
+            : {
+                assertions: [{ id: 'missing-grade', statement: 'Grading output was missing', passed: false }],
+                score: 0,
+                efficacy_score: 0,
+                correctness_score: 0,
+                safety_score: 0,
+                passed: false,
+                inconclusive: false,
+              },
           graders: artifact.grade?.details?.graders,
           timing: {
             duration_ms: durationMs(artifact),

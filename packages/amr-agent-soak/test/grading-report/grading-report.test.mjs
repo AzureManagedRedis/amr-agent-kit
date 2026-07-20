@@ -39,7 +39,7 @@ function metadata() {
   }
 }
 
-function run({ arm, runId, score = 1, status, excluded = false } = {}) {
+function run({ arm, runId, score = 1, status, excluded = false, inconclusive = false } = {}) {
   return {
     eval_id: 'eval-1',
     run_id: runId,
@@ -57,6 +57,9 @@ function run({ arm, runId, score = 1, status, excluded = false } = {}) {
       correctness_score: score,
       safety_score: 1,
       safety_violations: [],
+      passed: !inconclusive && score >= 0.5,
+      inconclusive,
+      contested_claims: inconclusive ? [{ assertion_id: 'c1' }] : [],
     },
     timing: { duration_ms: 10 },
   }
@@ -259,6 +262,47 @@ test('generates complete reports with excluded runs and escaped static HTML', as
   assert.ok(written.get('report.md').includes('0.85'))
   assert.ok(written.get('report.md').includes('0.20'))
   assert.ok(!written.get('report.md').includes('live log'))
+})
+
+test('counts contested grades as inconclusive without aggregating their scores', async () => {
+  const outDir = await mkdtemp(path.join(tmpdir(), 'amr-soak-contested-report-'))
+  const written = new Map()
+  const result = await generateReport({
+    skill_name: 'amr-agent-kit',
+    metadata: metadata(),
+    runs: [
+      run({ arm: 'with_skill', runId: 'pair-contested', score: 0, inconclusive: true }),
+      run({ arm: 'without_skill', runId: 'pair-contested', score: 0, inconclusive: true }),
+    ],
+    manifest: {
+      SoakRunId: 'soak-contested',
+      selector: 'offline',
+      lease_class: 'dry-run',
+      resource_id: 'not-applicable',
+      namespace: 'test',
+      cleanup_terminal_state: 'not-applicable',
+      orphan_count: 0,
+    },
+  }, {
+    outDir,
+    writer: async (filePath, content) => written.set(path.basename(filePath), content),
+  })
+
+  assert.deepEqual(result.outcomeCounts, {
+    passed_runs: 0,
+    failed_runs: 0,
+    inconclusive_runs: 2,
+    inconclusive_pairs: 1,
+  })
+  assert.equal(result.rows[0].paired_statistics.n, 0)
+  assert.equal(result.rows[0].with_skill_summary.efficacy.mean, null)
+  assert.equal(result.rows[0].without_skill_summary.efficacy.mean, null)
+  assert.equal(result.safety.summary.n, 0)
+  assert.deepEqual(result.benchmark.model_variance, {})
+  assert.equal(result.sourceCorrectness.summary.contested, 2)
+  assert.equal(result.fixes.length, 0)
+  assert.match(written.get('report.md'), /Inconclusive pairs: \*\*1\*\*/)
+  assert.doesNotMatch(written.get('report.md'), /\| 0\.000 \| 0\.000 \|/)
 })
 
 test('deterministic grader separates safety from efficacy', () => {

@@ -28,6 +28,27 @@ function strictResponse(request) {
   })
 }
 
+function disagreeingResponse(request, { modelId }, shouldDisagree) {
+  return JSON.stringify({
+    grades: Object.fromEntries(request.arms.map((arm) => {
+      const baselinePassed = !arm.output.includes('redis://')
+      const passed = modelId === 'grader-b' && shouldDisagree(arm)
+        ? !baselinePassed
+        : baselinePassed
+      return [arm.label, {
+        assertions: request.rubric.criteria.map((criterion) => ({
+          id: criterion.id,
+          statement: criterion.statement,
+          passed,
+          evidence: arm.output,
+        })),
+        score: passed ? 1 : 0,
+        passed,
+      }]
+    })),
+  })
+}
+
 function artifact(answer, arm) {
   return {
     responseText: answer,
@@ -191,6 +212,7 @@ test('supplies fresh calibration workspaces for every configured grader model', 
       runDir,
       skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
     })
+
     const calibration = await grader.assertCalibration([scenario])
     assert.equal(calibration.passed, true)
     assert.equal(probeCalls.length, 1)
@@ -220,6 +242,77 @@ test('supplies fresh calibration workspaces for every configured grader model', 
       () => incompleteGrader.assertCalibration([scenario]),
       /did not calibrate configured models: grader-b/,
     )
+  } finally {
+    await rm(runDir, { recursive: true, force: true })
+  }
+})
+
+test('throws on calibration disagreement but retains low-kappa pairs as inconclusive', async () => {
+  const runDir = await mkdtemp(path.join(os.tmpdir(), 'copilot-contested-grader-'))
+  try {
+    const runtime = await loadSoakRegistry()
+    const [scenario] = await new RegistryScenarioProvider(runtime, {
+      targetSkill: 'redis-code',
+      scenarioIds: ['scn-connection-auth-tls-entra'],
+      runId: 'blind-contested-test',
+    }).listScenarios()
+    const common = {
+      runtime,
+      evidenceStore: new EvidenceStore(runtime),
+      repositoryRoot: repoRoot,
+      processManager: {},
+      controllerConfig: { runId: 'blind-contested-test', model: 'executor-model' },
+      skillSnapshotPath: path.join(repoRoot, 'skills', 'redis-code'),
+    }
+    const strictCalibration = await createBlindGrader({
+      ...common,
+      config: {
+        modelIds: ['grader-a', 'grader-b'],
+        minimumKappa: 0.8,
+        modelExecutor: async (request, context) =>
+          disagreeingResponse(request, context, () => true),
+      },
+      runDir: path.join(runDir, 'strict-calibration'),
+    })
+    await assert.rejects(
+      () => strictCalibration.assertCalibration([scenario]),
+      /calibration (?:accuracy|Cohen's kappa)/,
+    )
+
+    let contestEvaluation = false
+    const pairGrader = await createBlindGrader({
+      ...common,
+      config: {
+        modelIds: ['grader-a', 'grader-b'],
+        minimumKappa: 0.8,
+        modelExecutor: async (request, context) =>
+          disagreeingResponse(
+            request,
+            context,
+            (arm) => contestEvaluation && arm.output.includes('EVAL_CONTESTED'),
+          ),
+      },
+      runDir: path.join(runDir, 'pair-grading'),
+    })
+    await pairGrader.assertCalibration([scenario])
+    contestEvaluation = true
+    const grades = await pairGrader.gradePair({
+      'with-skill': artifact('safe EVAL_CONTESTED', 'with'),
+      'without-skill': artifact('redis://unsafe EVAL_CONTESTED', 'without'),
+    }, scenario, 'pair-contested')
+
+    for (const arm of ['with-skill', 'without-skill']) {
+      const grade = grades[arm]
+      assert.equal(grade.passed, false)
+      assert.equal(grade.inconclusive, true)
+      assert.equal(grade.details.grading.inconclusive, true)
+      assert.equal(grade.details.grading.accepted, false)
+      assert.ok(grade.details.adjudication)
+      assert.equal(grade.details.graders.length, 2)
+      assert.equal(grade.details.rawGraders.length, 2)
+      assert.ok(grade.details.blind.pairKappa < 0.8)
+      assert.ok(grade.details.blind.contestedClaims.length > 0)
+    }
   } finally {
     await rm(runDir, { recursive: true, force: true })
   }

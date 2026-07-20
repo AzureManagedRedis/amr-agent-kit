@@ -519,7 +519,14 @@ export async function runSoak(rawConfig: SoakConfig, modules: SoakModules): Prom
       });
     }
     pair.gradedAt = new Date().toISOString();
-    await append("pair.graded", { pairId: id });
+    const inconclusiveArms = ARMS.filter((arm) => grades[arm].inconclusive === true);
+    await append("pair.graded", {
+      pairId: id,
+      data: {
+        inconclusive: inconclusiveArms.length > 0,
+        inconclusiveArms,
+      },
+    });
     await persistState();
   };
 

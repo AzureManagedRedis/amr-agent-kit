@@ -256,7 +256,7 @@ export async function createBlindGrader({
   }
   const modelExecutor = injectedModelExecutor ?? copilotModelExecutor
 
-  const engineConfig = (scope) => ({
+  const engineConfig = (scope, agreementMode = 'return-contested') => ({
     modelExecutor,
     graderModelIds: modelIds,
     executorModelId: controllerConfig.model,
@@ -264,6 +264,7 @@ export async function createBlindGrader({
       requireExecutorDiversity: config.requireExecutorDiversity ?? true,
       agreementThreshold: Number(config.minimumKappa ?? 0.6),
       calibrationThreshold: Number(config.calibrationThreshold ?? 1),
+      agreementMode,
     },
     moduleHash,
     timeoutMs: Number(config.timeoutMs ?? 120_000),
@@ -291,7 +292,7 @@ export async function createBlindGrader({
         const bad = scenario.metadata.graderCanaries.find((item) => item.expected_grade === 'fail')
         if (!good || !bad) throw new Error(`Scenario ${scenario.id} is missing good/bad grader canaries`)
         const result = await runBlindModelGrading(
-          engineConfig(`calibration-${scenario.id}`),
+          engineConfig(`calibration-${scenario.id}`, 'throw'),
           {
             prompt: scenario.prompt,
             pairs: [{
@@ -318,7 +319,7 @@ export async function createBlindGrader({
     async gradePair(artifacts, scenario, pairId) {
       if (!calibrationSummary?.passed) throw new Error('Blind grader pair grading requires successful startup calibration')
       const result = await runBlindModelGrading(
-        engineConfig(`pair-${pairId}`),
+        engineConfig(`pair-${pairId}`, 'return-contested'),
         {
           prompt: scenario.prompt,
           pairs: [{
@@ -354,15 +355,39 @@ export async function createBlindGrader({
       for (const adjudicated of result.adjudicated) {
         const arm = coreArm(adjudicated.arm)
         const requestLabel = `pair-${evaluationIndex}-${adjudicated.blind_label}`
+        const contestedClaims = result.disagreements.filter(
+          (claim) => claim.bundle_id === pairId && claim.arm === adjudicated.arm,
+        )
+        const inconclusive = result.inconclusive === true
+        const grading = {
+          ...adjudicated,
+          passed: inconclusive ? false : adjudicated.passed,
+          inconclusive,
+          accepted: result.accepted,
+          agreement_failure_reason: result.agreement_failure_reason,
+          agreement_threshold: result.agreement_threshold,
+          contested_claims: contestedClaims,
+        }
         grades[arm] = {
           score: adjudicated.score,
-          passed: adjudicated.passed,
+          passed: grading.passed,
+          inconclusive,
           details: {
-            grading: adjudicated,
+            grading,
+            adjudication: adjudicated,
             graders: result.grader_results.map((grader) => grader.parsed[requestLabel]),
+            rawGraders: result.grader_results,
             blind: {
               pairId,
               kappa: adjudicated.kappa,
+              pairKappa: result.kappa,
+              meanKappa: result.mean_kappa,
+              kappaByArm: result.kappa_by_arm,
+              accepted: result.accepted,
+              inconclusive,
+              agreementFailureReason: result.agreement_failure_reason,
+              agreementMode: result.agreement_mode,
+              contestedClaims,
               models: result.grader_models,
               transcripts: result.grader_results.map((grader) => grader.transcript),
             },

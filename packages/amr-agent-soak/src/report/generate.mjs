@@ -42,6 +42,22 @@ function htmlEscape(value) {
     .replace(/'/g, '&#39;')
 }
 
+function isInconclusive(run) {
+  return run.grading?.inconclusive === true
+}
+
+function gradingOutcomeCounts(runs) {
+  const conclusive = runs.filter((run) => !isInconclusive(run))
+  return {
+    passed_runs: conclusive.filter((run) => run.grading?.passed === true).length,
+    failed_runs: conclusive.filter((run) => run.grading?.passed === false).length,
+    inconclusive_runs: runs.length - conclusive.length,
+    inconclusive_pairs: new Set(
+      runs.filter(isInconclusive).map((run) => `${run.eval_id}\0${run.run_id}`),
+    ).size,
+  }
+}
+
 function benchmarkRows(metadataById, runs) {
   const byEval = new Map()
   for (const run of runs) {
@@ -54,26 +70,34 @@ function benchmarkRows(metadataById, runs) {
       efficacy_score: run.grading.efficacy_score ?? run.grading.score,
       correctness_score: run.grading.correctness_score,
       safety_score: run.grading.safety_score,
+      inconclusive: isInconclusive(run),
       duration_ms: run.timing.duration_ms,
     })
   }
   return [...byEval.values()].sort((a, b) => a.eval_id.localeCompare(b.eval_id)).map((row) => {
     const pairs = []
-    const withoutById = new Map(row.without_skill.map((item) => [item.run_id, item]))
-    for (const withSkill of row.with_skill) {
+    const conclusiveWithSkill = row.with_skill.filter((item) => !item.inconclusive)
+    const conclusiveWithoutSkill = row.without_skill.filter((item) => !item.inconclusive)
+    const withoutById = new Map(conclusiveWithoutSkill.map((item) => [item.run_id, item]))
+    for (const withSkill of conclusiveWithSkill) {
       const without = withoutById.get(withSkill.run_id)
       if (without) pairs.push({ pair_id: withSkill.run_id, withSkill: withSkill.score, withoutSkill: without.score })
     }
+    const inconclusivePairIds = new Set([
+      ...row.with_skill.filter((item) => item.inconclusive).map((item) => item.run_id),
+      ...row.without_skill.filter((item) => item.inconclusive).map((item) => item.run_id),
+    ])
     return {
       ...row,
-      with_skill_summary: summarizeScores(row.with_skill),
-      without_skill_summary: summarizeScores(row.without_skill),
+      with_skill_summary: summarizeScores(conclusiveWithSkill),
+      without_skill_summary: summarizeScores(conclusiveWithoutSkill),
       paired_statistics: pairedStatistics(pairs),
+      inconclusive_pairs: inconclusivePairIds.size,
     }
   })
 }
 
-function reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement }) {
+function reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement, outcomeCounts }) {
   const lines = [
     '# AMR Agent Soak Report',
     '',
@@ -90,14 +114,34 @@ function reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement 
     '',
     'The score boundary is **0.85** and the paired uplift boundary is **0.20**. A confidence interval crossing a boundary is reported as **inconclusive**, not as a pass.',
     '',
-    '| Eval | With skill | Without skill | Paired uplift | Verdict |',
-    '| --- | ---: | ---: | ---: | --- |',
+    '| Eval | With skill | Without skill | Paired uplift | Inconclusive pairs | Verdict |',
+    '| --- | ---: | ---: | ---: | ---: | --- |',
   ]
   for (const row of rows) {
     const stats = row.paired_statistics
-    lines.push(`| ${htmlEscape(row.eval_name)} | ${stats.withSkill.mean?.toFixed(3) ?? 'n/a'} | ${stats.withoutSkill.mean?.toFixed(3) ?? 'n/a'} | ${stats.uplift?.toFixed(3) ?? 'n/a'} | ${stats.verdict} |`)
+    lines.push(`| ${htmlEscape(row.eval_name)} | ${stats.withSkill.mean?.toFixed(3) ?? 'n/a'} | ${stats.withoutSkill.mean?.toFixed(3) ?? 'n/a'} | ${stats.uplift?.toFixed(3) ?? 'n/a'} | ${row.inconclusive_pairs} | ${stats.verdict} |`)
   }
-  lines.push('', `## Grader agreement`, '', `- Cohen's kappa: ${graderAgreement === null ? 'n/a' : graderAgreement.toFixed(3)}`, '', `## Retained clients`, '', `- Complete: **${artifactIndex.complete ? 'yes' : 'no'}**`, `- Entries: **${artifactIndex.entries.length}**`, '', '## Candidate fixes', '')
+  lines.push(
+    '',
+    '## Grading outcomes',
+    '',
+    `- Passed runs: **${outcomeCounts.passed_runs}**`,
+    `- Failed runs: **${outcomeCounts.failed_runs}**`,
+    `- Inconclusive runs: **${outcomeCounts.inconclusive_runs}**`,
+    `- Inconclusive pairs: **${outcomeCounts.inconclusive_pairs}**`,
+    '',
+    '## Grader agreement',
+    '',
+    `- Cohen's kappa: ${graderAgreement === null ? 'n/a' : graderAgreement.toFixed(3)}`,
+    '',
+    '## Retained clients',
+    '',
+    `- Complete: **${artifactIndex.complete ? 'yes' : 'no'}**`,
+    `- Entries: **${artifactIndex.entries.length}**`,
+    '',
+    '## Candidate fixes',
+    '',
+  )
   for (const entry of artifactIndex.entries) {
     const links = [
       `[input-bad](${htmlEscape(entry.variants['input-bad'])})`,
@@ -152,6 +196,8 @@ export async function generateReport(input, {
   const decisions = normalized.runs.map((run) => ({ run, ...eligible(run) }))
   const retainedRuns = decisions.filter((item) => item.eligible).map((item) => item.run)
   const excludedRuns = decisions.filter((item) => !item.eligible).map((item) => ({ ...item.run, exclusion_reasons: item.reasons }))
+  const conclusiveRuns = retainedRuns.filter((run) => !isInconclusive(run))
+  const outcomeCounts = gradingOutcomeCounts(retainedRuns)
   const rows = benchmarkRows(metadataById, retainedRuns)
   const artifactIndex = await buildClientArtifactIndex({ root: artifactRoot, clients })
   const graderPairs = []
@@ -165,15 +211,34 @@ export async function generateReport(input, {
   const graderAgreement = graderPairs.length === 0 ? null : confidenceInterval95(graderPairs.map((pair) => pair.adjudicated.kappa)).mean
   const safety = {
     schema_version: 1,
-    runs: retainedRuns.map((run) => ({ eval_id: run.eval_id, run_id: run.run_id, score: run.grading.safety_score ?? 1, violations: run.grading.safety_violations ?? [] })),
-    summary: confidenceInterval95(retainedRuns.map((run) => run.grading.safety_score ?? 1)),
+    runs: retainedRuns.map((run) => ({
+      eval_id: run.eval_id,
+      run_id: run.run_id,
+      score: isInconclusive(run) ? null : (run.grading.safety_score ?? 1),
+      inconclusive: isInconclusive(run),
+      violations: run.grading.safety_violations ?? [],
+    })),
+    summary: confidenceInterval95(conclusiveRuns.map((run) => run.grading.safety_score ?? 1)),
   }
   const sourceCorrectness = {
     schema_version: 1,
     runs: retainedRuns.map((run) => ({
       eval_id: run.eval_id,
       run_id: run.run_id,
-      categories: Object.fromEntries((run.grading.assertions ?? []).map((item) => [item.id ?? item.assertion_id, item.category ?? (item.source_fact_ref ? (item.passed ? 'source-anchored' : 'unsupported') : 'not-applicable')])),
+      categories: Object.fromEntries((run.grading.assertions ?? []).map((item) => {
+        const id = item.id ?? item.assertion_id
+        const contested = isInconclusive(run) && (run.grading.contested_claims ?? []).some(
+          (claim) => claim.assertion_id === id,
+        )
+        return [
+          id,
+          contested
+            ? 'contested'
+            : item.category ?? (item.source_fact_ref
+              ? (item.passed ? 'source-anchored' : 'unsupported')
+              : 'not-applicable'),
+        ]
+      })),
     })),
   }
   sourceCorrectness.summary = Object.values(sourceCorrectness.runs.flatMap((run) => Object.values(run.categories))).reduce((counts, category) => {
@@ -194,10 +259,11 @@ export async function generateReport(input, {
     evals: rows,
     excluded_runs: excludedRuns,
     run_manifest: redactJson(manifest),
-    model_variance: perModelVariance(retainedRuns.map((run) => ({ model: run.model, score: run.grading.score }))),
+    outcome_counts: outcomeCounts,
+    model_variance: perModelVariance(conclusiveRuns.map((run) => ({ model: run.model, score: run.grading.score }))),
   }
-  const fixes = candidateFixesFromRuns(retainedRuns)
-  const report = reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement })
+  const fixes = candidateFixesFromRuns(conclusiveRuns)
+  const report = reportMarkdown({ manifest, rows, artifactIndex, fixes, graderAgreement, outcomeCounts })
   const redactedReport = redact(report)
   const files = {
     'report.md': redactedReport,
@@ -215,5 +281,5 @@ export async function generateReport(input, {
   }
   const outputWriter = atomicWriter ?? writer
   for (const [name, content] of Object.entries(files)) await outputWriter(path.join(outDir, name), content)
-  return { files, benchmark: benchmarkOutput, rows, excludedRuns, artifactIndex, safety, sourceCorrectness, fixes }
+  return { files, benchmark: benchmarkOutput, rows, excludedRuns, artifactIndex, safety, sourceCorrectness, fixes, outcomeCounts }
 }
