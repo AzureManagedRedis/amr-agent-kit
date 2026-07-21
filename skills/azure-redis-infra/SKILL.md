@@ -1,8 +1,8 @@
 ---
 name: azure-redis-infra
 description: |
-  Azure Managed Redis (Redis Enterprise 7.4) infrastructure patterns and best
-  practices. Use when provisioning AMR, configuring networking/security,
+  Azure Managed Redis infrastructure patterns and best practices. Use when
+  provisioning AMR, configuring networking/security,
   enabling high availability or geo-replication, setting persistence, choosing
   cluster policy, generating native ARM/Bicep/Terraform, sizing from workload
   metrics, or monitoring AMR in Azure. Triggers on tasks involving Azure
@@ -19,7 +19,7 @@ metadata:
 
 # Azure Managed Redis Infrastructure
 
-Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure.
+Patterns and best practices for provisioning, securing, and operating Azure Managed Redis in Azure.
 
 ## Scope
 
@@ -45,7 +45,7 @@ When reviewing or generating AMR sizing guidance, explicitly compare Memory Opti
 
 ### Prefer Native AMR IaC Shapes
 
-When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep the data-plane choices such as port `10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
+When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep data-plane choices such as the configured database port (`10000` by default), `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
 
 ### Prefer Secure Azure Defaults
 
@@ -114,7 +114,7 @@ Private endpoints, public network access, and DNS integration.
 
 ### 3. Security & Identity (CRITICAL)
 
-TLS 1.2/1.3, Entra ID authentication, and key management.
+Minimum TLS version 1.2, Entra ID authentication, and key management.
 - `security-enforce-tls` - Enforce TLS for all client connections
 - `security-use-entra-authentication` - Prefer Entra authentication over access keys
 - `security-scope-data-access-policies` - Scope data access by identity and key pattern

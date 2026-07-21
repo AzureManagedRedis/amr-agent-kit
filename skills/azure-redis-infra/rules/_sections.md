@@ -9,7 +9,7 @@ The section ID (in parentheses) is the filename prefix used to group rules.
 
 **Impact:** CRITICAL
 
-**Description:** Choose the right Azure Managed Redis tier/SKU, region, capacity, and native IaC shape to meet latency, throughput, and cost goals. Covers memory/compute/flash tiers, region placement, sizing from workload metrics, and ARM/Bicep/Terraform generation for Redis Enterprise 7.4.
+**Description:** Choose the right Azure Managed Redis tier/SKU, region, capacity, and native IaC shape to meet latency, throughput, and cost goals. Covers memory/compute/flash tiers, region placement, sizing from workload metrics, and ARM/Bicep/Terraform generation.
 
 ---
 
@@ -25,7 +25,7 @@ The section ID (in parentheses) is the filename prefix used to group rules.
 
 **Impact:** CRITICAL
 
-**Description:** Enforce TLS 1.2/1.3, prefer Microsoft Entra authentication, and control access keys and RBAC for Azure Managed Redis.
+**Description:** Enforce the supported minimum TLS version of 1.2, prefer Microsoft Entra authentication, and control access keys and RBAC for Azure Managed Redis.
 
 ---
 

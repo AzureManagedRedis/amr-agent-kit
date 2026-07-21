@@ -1,7 +1,7 @@
 ---
 title: Use Memory-Efficient Data Structures
 impact: HIGH
-impactDescription: reduces memory usage by 5-10x for small objects
+impactDescription: reduces per-element overhead for small objects
 tags: memory, optimization, encoding, efficiency
 ---
 
@@ -23,9 +23,9 @@ r = redis.Redis(
 r.set("user:1:name", "John")
 r.set("user:1:email", "john@example.com")
 r.set("user:1:age", "30")
-# Each key has ~50 bytes overhead regardless of value size
+# Each key adds metadata and allocator overhead beyond its value
 
-# Very long values in hash fields (exceeds ziplist threshold)
+# Very long values in hash fields can exceed the compact-encoding threshold
 r.hset("user:1", "biography", "A" * 1000)  # Forces dict encoding
 ```
 
@@ -39,8 +39,8 @@ r = redis.Redis(
     ssl=True,
     decode_responses=True
 )
-# Group related data in hashes (uses ziplist for small hashes)
-# Up to 512 entries with values under 64 bytes uses efficient encoding
+# Group related data in hashes (uses listpack for small hashes)
+# Defaults are 512 fields and 64-byte values; supported config can change them
 r.hset("user:1", mapping={
     "name": "John",
     "email": "john@example.com",
@@ -113,6 +113,6 @@ def audit_memory_by_type(r, sample_size=1000):
     return stats
 ```
 
-Redis 7+ uses listpack encoding (replaces ziplist). Keep hash entries under 512 with values under 64 bytes for optimal encoding. Use integer sets when storing numeric IDs. Consider compression for large values.
+Redis 7+ uses listpack encoding for small hashes. The default conversion thresholds are 512 fields and 64-byte field values, but they are tunable configuration defaults rather than hard limits. Measure the effective encoding and memory usage for representative data instead of promising a fixed savings multiplier. Use integer sets when storing numeric IDs, and consider compression for large values.
 
 Reference: [Memory Optimization](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/memory-optimization/)

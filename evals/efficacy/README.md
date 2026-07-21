@@ -11,7 +11,7 @@ The first paired sample showed that baseline answers were already strong on gene
 
 Key changes:
 
-- The cache-stampede eval now tests Azure Managed Redis client safeguards directly: TLS or `rediss`, port `10000`, certificate validation, connection reuse, timeouts, bounded retries, and fail-fast configuration checks.
+- The cache-stampede eval now tests Azure Managed Redis client safeguards directly: service-returned host and port (`10000` by default), TLS or `rediss`, certificate validation, connection reuse, timeouts, bounded retries, and fail-fast configuration checks.
 - The RAG eval keeps the tenant-isolation case because it showed useful uplift, but now adds harder checks for AMR vector prerequisites, idempotent ingestion, source citations, and semantic-cache boundaries.
 - The Private Link/DNS eval now includes traps around direct `privatelink` host usage, hub-only DNS links, VNet peering DNS assumptions, `publicNetworkAccess`, `redisEnterprise` private endpoint metadata, and route/firewall validation.
 - The HA/DR eval now distinguishes persistence, export backup, zone resilience, and active geo-replication with AMR-specific incompatibilities and provisioning-time decisions.
@@ -21,13 +21,14 @@ Key changes:
 The corpus also includes scenarios that test whether AMR guidance composes cleanly with common Azure application platforms and operational services:
 
 - **AKS + Entra + Key Vault + App Configuration** - verifies managed identity/workload identity, AMR data access policies, token refresh, and secretless client configuration.
-- **Azure Monitor + Application Insights + Log Analytics** - verifies AMR diagnostic settings, connection logs, action groups, runbooks, geo-replication alerts, and app dependency correlation.
+- **Azure Monitor + Application Insights + Log Analytics** - verifies discovery and use of the deployed resource's supported metric/log categories, action groups, runbooks, replication alerts, and app dependency correlation without inventing public metric names.
 - **Event Grid + Service Bus + Azure Functions** - verifies safe cache invalidation, idempotent event handling, dead-letter/replay behavior, and durable downstream messaging.
 - **Blob Storage + Event Grid + Azure AI + AMR vector search** - verifies idempotent RAG ingestion, Azure AI embedding/version boundaries, citation metadata, semantic-cache scoping, and Azure-native connectivity.
 - **Metric-based AMR sizing** - verifies SKU guidance uses peak/P95 memory, server load, connected clients, bandwidth, module needs, regional availability, and preview status rather than legacy/source SKU labels.
-- **Native AMR IaC** - verifies ARM/Bicep and Terraform guidance uses the Azure Managed Redis cluster/database/default-database model, Private Link DNS, and deployment preflight checks.
+- **Native AMR IaC** - verifies ARM/Bicep and Terraform guidance uses the Azure Managed Redis cluster/database/default-database model, service-returned connection data, cloud-specific Private Link DNS, and deployment preflight checks.
 - **DB0 and clustered key design** - verifies Redis application guidance prefers key prefixes for logical separation, makes logical-database availability topology-specific (clustered/CRDB are database-0-only; NoCluster may allow more and must be verified), and makes hash-tag requirements policy-specific for clustered multi-key, transaction, and Lua operations.
 - **AMR logical-database semantics by cluster policy** - verifies infrastructure guidance rejects the blanket claim that AMR always exposes only database 0 and never supports SELECT regardless of cluster policy; clustered policies and active geo-replication are database 0 only, while NoCluster must be confirmed from effective configuration or a live SELECT check, and a single `default` database resource does not prove the logical-database count. Key prefixes remain the portable separation approach and separate caches the hard-isolation approach.
+- **Source-truth harm gates** - verify non-default service ports are preserved, `minimumTlsVersion` remains `1.2`, RedisJSON is not incorrectly blocked on OSSCluster, Gen2 templates omit `zones`, AMR memory remains service-managed, and geo cardinality distinguishes the normal effective limit from the mixed-generation migration exception.
 
 These scenarios should expose whether the skill adds value beyond standalone Redis advice by requiring the answer to connect AMR practices with surrounding Azure services.
 

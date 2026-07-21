@@ -1,7 +1,7 @@
 ---
 title: Use Hashes for Object Storage
 impact: CRITICAL
-impactDescription: up to 10x memory savings compared to individual keys
+impactDescription: reduces per-key overhead for small related objects
 tags: data-structures, hashes, memory, objects
 ---
 
@@ -57,6 +57,6 @@ user_data = r.hmget("user:1000", ["name", "email", "age"])
 user = r.hgetall("user:1000")
 ```
 
-Small hashes are encoded using a memory-efficient ziplist/listpack structure, using up to 10x less memory than separate keys. Use HINCRBY for atomic counter updates within hashes.
+Small hashes can use Redis's compact listpack encoding while they remain within the configured field-count and value-size thresholds. This usually reduces overhead compared with separate keys, but the exact savings depend on the data and configuration rather than a guaranteed multiplier. Use HINCRBY for atomic counter updates within hashes.
 
 Reference: [Redis Hashes](https://redis.io/docs/latest/develop/data-types/hashes/)

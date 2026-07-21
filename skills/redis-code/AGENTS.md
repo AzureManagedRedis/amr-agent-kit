@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
+Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Critical module guardrails: Search is incompatible with OSSCluster and requires EnterpriseCluster or a supported NoCluster size; RedisJSON is permitted with OSSCluster; active geo-replication supports only Search and JSON; validate SKU, region, preview or allowlist status, flash restrictions, and geo compatibility before provisioning. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
 
 ---
 
@@ -44,7 +44,7 @@ Comprehensive Redis application and AI coding patterns for Azure Managed Redis, 
    - 4.3 [Reuse SDK Clients and Pools](#43-reuse-sdk-clients-and-pools)
    - 4.4 [Use Connection Pooling](#44-use-connection-pooling)
    - 4.5 [Use Microsoft Entra Authentication for Azure Managed Redis](#45-use-microsoft-entra-authentication-for-azure-managed-redis)
-   - 4.6 [Use TLS and Azure Managed Redis Ports](#46-use-tls-and-azure-managed-redis-ports)
+   - 4.6 [Use TLS and Service-Returned Azure Managed Redis Endpoints](#46-use-tls-and-service-returned-azure-managed-redis-endpoints)
 5. [Caching Strategies](#5-caching-strategies) — **HIGH**
    - 5.1 [Prevent Cache Stampede](#51-prevent-cache-stampede)
    - 5.2 [Use Cache-Aside Pattern for Reading](#52-use-cache-aside-pattern-for-reading)
@@ -60,7 +60,7 @@ Comprehensive Redis application and AI coding patterns for Azure Managed Redis, 
    - 8.1 [Use Redis Search for Complex Queries](#81-use-redis-search-for-complex-queries)
    - 8.2 [Use RedisJSON for Complex Documents](#82-use-redisjson-for-complex-documents)
 9. [Memory Optimization](#9-memory-optimization) — **MEDIUM**
-   - 9.1 [Monitor Memory and Set Limits](#91-monitor-memory-and-set-limits)
+   - 9.1 [Monitor Memory and Choose Capacity and Eviction](#91-monitor-memory-and-choose-capacity-and-eviction)
    - 9.2 [Use Memory-Efficient Data Structures](#92-use-memory-efficient-data-structures)
 10. [Error Handling & Resilience](#10-error-handling--resilience) — **LOW-MEDIUM**
    - 10.1 [Avoid Keyspace Notifications for Critical Workflows](#101-avoid-keyspace-notifications-for-critical-workflows)
@@ -73,7 +73,7 @@ Comprehensive Redis application and AI coding patterns for Azure Managed Redis, 
    - 11.2 [Store Vectors with Filterable Metadata](#112-store-vectors-with-filterable-metadata)
 12. [Search Query Patterns](#12-search-query-patterns) — **HIGH**
    - 12.1 [Limit K and Returned Fields for AI Retrieval](#121-limit-k-and-returned-fields-for-ai-retrieval)
-   - 12.2 [Use Enterprise Cluster Policy for RediSearch and RedisJSON](#122-use-enterprise-cluster-policy-for-redisearch-and-redisjson)
+   - 12.2 [Match Search and JSON Modules to the Cluster Policy](#122-match-search-and-json-modules-to-the-cluster-policy)
    - 12.3 [Use Hybrid Vector Search with Metadata Filters](#123-use-hybrid-vector-search-with-metadata-filters)
 13. [Retrieval-Augmented Generation](#13-retrieval-augmented-generation) — **HIGH**
    - 13.1 [Chunk Documents with Stable Size and Overlap](#131-chunk-documents-with-stable-size-and-overlap)
@@ -114,7 +114,7 @@ Choosing the correct Redis data structure is fundamental to performance and func
 
 ### 1.1 Use Hashes for Object Storage
 
-**Impact: CRITICAL (up to 10x memory savings compared to individual keys)**
+**Impact: CRITICAL (reduces per-key overhead for small related objects)**
 
 Store related fields together in a hash rather than as separate string keys. Redis hashes are memory-efficient and provide O(1) access to individual fields.
 
@@ -166,7 +166,7 @@ user_data = r.hmget("user:1000", ["name", "email", "age"])
 user = r.hgetall("user:1000")
 ```
 
-Small hashes are encoded using a memory-efficient ziplist/listpack structure, using up to 10x less memory than separate keys. Use HINCRBY for atomic counter updates within hashes.
+Small hashes can use Redis's compact listpack encoding while they remain within the configured field-count and value-size thresholds. This usually reduces overhead compared with separate keys, but the exact savings depend on the data and configuration rather than a guaranteed multiplier. Use HINCRBY for atomic counter updates within hashes.
 
 Reference: [https://redis.io/docs/latest/develop/data-types/hashes/](https://redis.io/docs/latest/develop/data-types/hashes/)
 
@@ -838,7 +838,7 @@ The value inside `{...}` should be the smallest stable routing key for the keys 
 
 For Azure Managed Redis, coordinate key design with the selected `clusteringPolicy` and the client's cluster awareness. `NoCluster` avoids cluster hash-slot constraints entirely when supported by the target size and is the safer default for non-cluster-aware applications. `OSSCluster` requires Redis Cluster-aware clients and same-slot placement (hash tags) for every related multi-key operation, transaction, and Lua script; otherwise those commands can fail with `CROSSSLOT`. `EnterpriseCluster` can relax co-location for selected non-atomic multi-key commands when configured to route them across slots, and can improve compatibility for some clients and modules, but transactions, Lua scripts that declare keys in `KEYS`, and destination-key commands still need co-located keys, and application code should still avoid accidental cross-slot atomic operations. Do not treat hash tags as universally required for every Enterprise multi-key command, and do not assume a non-cluster-aware client will work under `OSSCluster`.
 
-When reviewing logical-database, cluster-policy, multi-key, transaction, or Lua designs, surface the AMR client assumptions alongside key guidance: connect to the normal `<cache-name>.<region>.redis.azure.net` host on port `10000`, use TLS or `rediss://` with certificate validation, reuse a singleton/pool/multiplexer, and only choose `OSSCluster` when that reusable client is Redis Cluster-aware.
+When reviewing logical-database, cluster-policy, multi-key, transaction, or Lua designs, surface the AMR client assumptions alongside key guidance: use the service-returned host and port (`10000` is the default database port), use TLS or `rediss://` with certificate validation, reuse a singleton/pool/multiplexer, and only choose `OSSCluster` when that reusable client is Redis Cluster-aware.
 
 Reference: [https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/](https://redis.io/docs/latest/operate/oss_and_stack/reference/cluster-spec/)
 
@@ -1508,7 +1508,7 @@ export async function getUser(req, res) {
 
 Use the idiom for your SDK: a singleton `ConnectionMultiplexer` for StackExchange.Redis, a shared `RedisClient` and reused stateful connections for Lettuce, a process-wide pool for redis-py, and a connected singleton for node-redis or ioredis. Create separate clients only for distinct roles that require it, such as blocking commands, Pub/Sub subscriptions, or isolated credentials.
 
-Initialize shared clients after validating AMR production configuration: normal Azure Managed Redis host, port `10000`, TLS or `rediss://`, certificate validation, connect/socket/command timeouts, and bounded jittered retries. When using Microsoft Entra authentication, keep client reuse coordinated with token refresh so long-lived pooled connections reconnect or re-authenticate before credentials expire.
+Initialize shared clients after validating AMR production configuration: service-returned host and port (`10000` is the default database port), TLS or `rediss://`, certificate validation, connect/socket/command timeouts, and bounded jittered retries. When using Microsoft Entra authentication, keep client reuse coordinated with token refresh so long-lived pooled connections reconnect or re-authenticate before credentials expire.
 
 ### 4.4 Use Connection Pooling
 
@@ -1639,11 +1639,11 @@ r = redis.Redis(
 )
 ```
 
-### 4.6 Use TLS and Azure Managed Redis Ports
+### 4.6 Use TLS and Service-Returned Azure Managed Redis Endpoints
 
 **Impact: CRITICAL (prevents plaintext traffic and endpoint misconfiguration)**
 
-Production clients for Azure Managed Redis must connect to the normal managed endpoint, for example `<cache-name>.<region>.redis.azure.net`, on port `10000` with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or Azure Cache for Redis port `6380` into production configuration.
+Production clients for Azure Managed Redis must use the host name and port returned for that database, with TLS enabled and certificate validation on. In public Azure the default endpoint resembles `<cache-name>.<region>.redis.azure.net` and the default database port is `10000`, but additional databases can use other immutable ports and DNS suffixes vary by cloud. Do not replace the service-returned values with local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or the legacy Azure Cache for Redis port `6380`.
 
 - [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
@@ -1677,8 +1677,8 @@ if missing:
     raise RuntimeError(f"Missing Redis configuration: {', '.join(missing)}")
 
 port = int(os.environ["REDIS_PORT"])
-if port != 10000:
-    raise RuntimeError("Azure Managed Redis production clients should use port 10000")
+if not 1 <= port <= 65535:
+    raise RuntimeError("REDIS_PORT must be a valid service-returned TCP port")
 
 r = redis.Redis(
     host=os.environ["REDIS_HOST"],
@@ -1695,7 +1695,7 @@ r = redis.Redis(
 r.set("cache:ready", "true", ex=60)
 ```
 
-Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication. When reviewing production code, explicitly reject port `6380`; it belongs to the legacy Azure Cache for Redis pattern, not Azure Managed Redis.
+Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication. Treat `10000` as the default database port, not a universal constant: consume the service-returned value and follow cluster redirects rather than hardcoding direct-node ports.
 
 ---
 
@@ -2866,20 +2866,19 @@ Redis stores all data in memory, making optimization essential. Techniques inclu
 
 ---
 
-### 9.1 Monitor Memory and Set Limits
+### 9.1 Monitor Memory and Choose Capacity and Eviction
 
 **Impact: CRITICAL (prevents out-of-memory crashes and performance degradation)**
 
-Always configure maxmemory and an eviction policy in production. Monitor memory usage to prevent OOM errors and performance issues.
+Azure Managed Redis derives the database memory limit from the selected tier/SKU; clients cannot set `maxmemory` with `CONFIG SET`. Size the cache with headroom, choose the eviction policy through the AMR resource configuration, and monitor memory usage, fragmentation, evictions, and rejected writes.
 
-**Incorrect: no memory limits**
+**Incorrect: try to manage AMR capacity from a Redis client**
 
 ```python
-# No maxmemory configured - Redis uses all available memory
-# Application crashes when system runs out of memory
+r.config_set("maxmemory", "20gb")  # Rejected: AMR manages this from the SKU
 ```
 
-**Correct: configure limits and monitor**
+**Correct: monitor the service-managed limit**
 
 ```python
 import redis
@@ -2905,7 +2904,7 @@ def check_memory_health(r, warning_threshold=0.8, critical_threshold=0.95):
     max_mem = info.get("maxmemory", 0)
 
     if max_mem == 0:
-        return {"status": "warning", "message": "maxmemory not configured"}
+        return {"status": "warning", "message": "memory limit was not reported"}
 
     ratio = used / max_mem
 
@@ -2934,7 +2933,7 @@ def check_eviction_rate(r):
         return {
             "status": "warning",
             "evicted_keys": evicted,
-            "message": "Keys are being evicted - consider increasing memory"
+            "message": "Keys are being evicted - review capacity and eviction policy"
         }
     return {"status": "ok", "evicted_keys": 0}
 
@@ -2991,13 +2990,13 @@ if health["status"] != "ok":
     print(f"Largest keys: {large}")
 ```
 
-Configure `maxmemory` to leave headroom for OS and other processes. Choose appropriate eviction policy: `volatile-lru` for cache with TTLs, `allkeys-lru` for pure cache, `noeviction` for persistent data.
+Select an AMR SKU whose usable memory covers peak or P95 demand plus fragmentation and replication headroom. Choose an appropriate eviction policy through the service configuration: for example, a TTL-aware policy for cache data or `noeviction` when writes must fail rather than discard keys. Do not issue client-side `CONFIG SET maxmemory` or `CONFIG SET maxmemory-policy`; monitor the effective values and scale through Azure when required.
 
 Reference: [https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/memory-optimization/](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/memory-optimization/)
 
 ### 9.2 Use Memory-Efficient Data Structures
 
-**Impact: HIGH (reduces memory usage by 5-10x for small objects)**
+**Impact: HIGH (reduces per-element overhead for small objects)**
 
 Redis automatically uses memory-efficient encodings for small data structures. Understand these thresholds and design your data to benefit from them.
 
@@ -3015,9 +3014,9 @@ r = redis.Redis(
 r.set("user:1:name", "John")
 r.set("user:1:email", "john@example.com")
 r.set("user:1:age", "30")
-# Each key has ~50 bytes overhead regardless of value size
+# Each key adds metadata and allocator overhead beyond its value
 
-# Very long values in hash fields (exceeds ziplist threshold)
+# Very long values in hash fields can exceed the compact-encoding threshold
 r.hset("user:1", "biography", "A" * 1000)  # Forces dict encoding
 ```
 
@@ -3031,8 +3030,8 @@ r = redis.Redis(
     ssl=True,
     decode_responses=True
 )
-# Group related data in hashes (uses ziplist for small hashes)
-# Up to 512 entries with values under 64 bytes uses efficient encoding
+# Group related data in hashes (uses listpack for small hashes)
+# Defaults are 512 fields and 64-byte values; supported config can change them
 r.hset("user:1", mapping={
     "name": "John",
     "email": "john@example.com",
@@ -3105,7 +3104,7 @@ def audit_memory_by_type(r, sample_size=1000):
     return stats
 ```
 
-Redis 7+ uses listpack encoding (replaces ziplist). Keep hash entries under 512 with values under 64 bytes for optimal encoding. Use integer sets when storing numeric IDs. Consider compression for large values.
+Redis 7+ uses listpack encoding for small hashes. The default conversion thresholds are 512 fields and 64-byte field values, but they are tunable configuration defaults rather than hard limits. Measure the effective encoding and memory usage for representative data instead of promising a fixed savings multiplier. Use integer sets when storing numeric IDs, and consider compression for large values.
 
 Reference: [https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/memory-optimization/](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/memory-optimization/)
 
@@ -3666,26 +3665,30 @@ RETURN docId, chunkText, source, score
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
 
-### 12.2 Use Enterprise Cluster Policy for RediSearch and RedisJSON
+### 12.2 Match Search and JSON Modules to the Cluster Policy
 
 **Impact: CRITICAL (avoids unsupported module/cluster combinations)**
 
-On Azure Managed Redis, RediSearch and RedisJSON require the Enterprise cluster policy. OSS cluster policy doesn't support RediSearch. Select the Enterprise policy at provisioning time when you need vector search or JSON documents.
+On Azure Managed Redis, the Search module (RediSearch) is incompatible with `OSSCluster`; choose `EnterpriseCluster` or a supported `NoCluster` size for search and vector workloads. RedisJSON does not share that prohibition and can be used with `OSSCluster`, subject to the selected SKU and other feature constraints. Active geo-replication supports only the Search and JSON modules, and Search on flash-optimized SKUs can be availability restricted, so validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination before provisioning.
 
-**Incorrect: OSS cluster with RediSearch/RedisJSON**
+**Incorrect: OSS cluster with Search**
 
 ```text
 Cluster policy: OSS
-Modules: RediSearch, RedisJSON
-Result: module not supported with OSS policy
+Modules: RediSearch
+Result: Search is not supported with OSSCluster
 ```
 
-**Correct: Enterprise cluster with modules**
+**Correct: policy matches the required module**
 
 ```text
-Cluster policy: Enterprise
+Cluster policy: EnterpriseCluster
 Modules: RediSearch, RedisJSON
 Result: vector search and JSON features available
+
+Cluster policy: OSSCluster
+Modules: RedisJSON
+Result: JSON is allowed; validate the selected SKU and any geo requirements
 ```
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)

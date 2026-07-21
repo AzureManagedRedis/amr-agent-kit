@@ -73,7 +73,7 @@ export async function getUser(req, res) {
 
 Use the idiom for your SDK: a singleton `ConnectionMultiplexer` for StackExchange.Redis, a shared `RedisClient` and reused stateful connections for Lettuce, a process-wide pool for redis-py, and a connected singleton for node-redis or ioredis. Create separate clients only for distinct roles that require it, such as blocking commands, Pub/Sub subscriptions, or isolated credentials.
 
-Initialize shared clients after validating AMR production configuration: normal Azure Managed Redis host, port `10000`, TLS or `rediss://`, certificate validation, connect/socket/command timeouts, and bounded jittered retries. When using Microsoft Entra authentication, keep client reuse coordinated with token refresh so long-lived pooled connections reconnect or re-authenticate before credentials expire.
+Initialize shared clients after validating AMR production configuration: service-returned host and port (`10000` is the default database port), TLS or `rediss://`, certificate validation, connect/socket/command timeouts, and bounded jittered retries. When using Microsoft Entra authentication, keep client reuse coordinated with token refresh so long-lived pooled connections reconnect or re-authenticate before credentials expire.
 
 References:
 - [Redis client pools and multiplexing](https://redis.io/docs/latest/develop/clients/pools-and-muxing/)
