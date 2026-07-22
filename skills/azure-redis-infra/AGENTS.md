@@ -443,7 +443,7 @@ Plan active geo-replication groups, eventual consistency behavior, and DR workfl
 
 **Impact: HIGH (reduces regional outage risk)**
 
-The shipped effective limit for an active geo-replication group is five Azure Managed Redis instances across regions. Treat that as a config-driven limit rather than a hard engine constant, and account for the migration-only exception in which a mixed Gen1/Gen2 group can temporarily contain a sixth member. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Keep required configuration aligned across members and verify tier/module support because active geo-replication is not available for every SKU or module combination.
+The maximum size of an active geo-replication group is five Azure Managed Redis instances across regions; confirm the current supported maximum for your subscription and region in the Azure Managed Redis documentation before planning membership. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Keep required configuration aligned across members and verify tier/module support because active geo-replication is not available for every SKU or module combination.
 
 **Incorrect: assume you can add geo-replication later or mix configs**
 
@@ -466,7 +466,7 @@ Clients: region-aware routing and tested failover
 
 Do not combine active geo-replication with persistence. Treat active geo-replication as a DR and multi-region availability pattern, not a synchronous zero-loss replication guarantee. Monitor replication health and lag, define retry deadlines, make write paths idempotent where regional replay is possible, and test client endpoint failover paths before production.
 
-Before changing membership, read the effective service limit for the target environment. Do not treat the temporary sixth member allowed during a supported mixed-generation migration as general six-region capacity.
+Before changing membership, confirm the current supported group size for your target environment in the Azure Managed Redis documentation, and stage any membership change as a single validated step with compatible member configuration.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication](https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication)
 

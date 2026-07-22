@@ -14,7 +14,7 @@
       { "id": "m1", "description": "Increase concurrency and key hotness.", "transform": "Raise the request rate and reduce hot-key count in the workload sketch.", "preserves_correct_answer": true, "held_out": true },
       { "id": "m2", "description": "Change TTL numbers only.", "transform": "Adjust the fixed TTL value without changing the missing coalescing.", "preserves_correct_answer": true, "held_out": false }
     ] },
-  { "id": "mut-cluster", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
+  { "id": "mut-cluster", "scenario_ref": "scn-cluster-policy-crossslot-multikey", "selection": { "strategy": "random-held-out", "seed_source": "eval-runs", "count": 1 },
     "mutations": [
       { "id": "m1", "description": "Rename keys so they no longer share a slot.", "transform": "Rename co-accessed keys while keeping the multi-key operation.", "preserves_correct_answer": true, "held_out": true },
       { "id": "m2", "description": "Switch to a non-clustered policy where CROSSSLOT does not apply.", "transform": "Change the deployment cluster policy so the CROSSSLOT concern is moot.", "preserves_correct_answer": false, "held_out": true }

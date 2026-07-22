@@ -469,21 +469,21 @@
       "name": "amr-geo-effective-cardinality",
       "target_skill": "azure-redis-infra",
       "skill_path": "skills/azure-redis-infra/AGENTS.md",
-      "prompt": "A team has five caches in a pure Azure Managed Redis active geo-replication group and wants to add a sixth as permanent capacity. They heard that a six-member group was used during an ACRE-to-AMR migration. Review the proposal, explain the normal effective limit and migration exception, and state what must be verified before changing membership. Do not call Azure.",
-      "expected_output": "Guidance that treats five as the shipped effective/config-driven group limit, rejects a permanent sixth member in a pure group, limits the sixth-member exception to a temporary mixed Gen1/Gen2 migration, and requires checking the target environment's effective limit and supported migration workflow.",
+      "prompt": "A team has five caches in a pure Azure Managed Redis active geo-replication group and wants to add a sixth as permanent capacity, citing a six-member group they saw during an ACRE-to-AMR migration. Using only publicly documented behavior, review the proposal: state the documented maximum group size, whether a permanent sixth member is supported, and what must be verified before changing membership. Do not call Azure and do not speculate about internal enforcement mechanisms.",
+      "expected_output": "Public-documentation-grounded guidance that states the documented maximum active geo-replication group size is five (to confirm in current Azure Managed Redis documentation for the target subscription and region), concludes a permanent sixth member is not supported, declines to treat a transient state observed during a migration as supported permanent capacity, and requires a supported, validated membership workflow with compatible member configuration - without asserting internal engine or enforcement details.",
       "expectations": [
-        "States that the shipped effective active-geo group limit is five members.",
-        "Explains that the limit is configuration-driven and should be verified for the target environment.",
-        "Rejects adding a permanent sixth member to a pure AMR group based solely on the migration example.",
-        "Explains that a sixth member can be temporarily allowed only for a supported mixed Gen1/Gen2 migration.",
-        "Requires a supported membership or migration workflow and validates compatible member configuration."
+        "States that the documented maximum active geo-replication group size is five and should be confirmed in current Azure Managed Redis documentation for the target subscription and region.",
+        "Concludes that a permanent sixth member is not supported and rejects the proposal.",
+        "Declines to treat a one-off or transient state observed during a migration as evidence of supported permanent capacity.",
+        "Requires planning any membership change as a supported, validated workflow with compatible member configuration (matching SKU, modules, and policies).",
+        "Stays within publicly documented behavior and does not assert internal engine limits, enforcement mechanisms, or named internal thresholds."
       ],
       "anti_patterns": [
-        "Claims every AMR geo group supports six permanent members.",
-        "Presents five as an immutable engine constant with no effective-config caveat.",
-        "Applies the mixed-generation migration exception to a pure AMR group.",
-        "Recommends adding the sixth member without checking the target environment.",
-        "Ignores member compatibility or supported workflow requirements."
+        "Claims an AMR geo group supports six or more permanent members.",
+        "Treats an undocumented or transient migration state as supported permanent capacity.",
+        "Explains the limit by internal enforcement mechanism, configuration source, or a named internal threshold rather than documented behavior.",
+        "Recommends changing membership without confirming the current documented limit or member compatibility.",
+        "Presents the limit as a fixed engine constant with no direction to verify current documentation."
       ],
       "minimum_skill_score": 1.0,
       "minimum_uplift": 0.0

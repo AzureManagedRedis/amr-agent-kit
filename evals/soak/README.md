@@ -121,11 +121,11 @@ is marked `contested` and carries a `contested` block that lists the competing c
   (`src-db0-clustered-single-db`) is separately engine-proven (`redisinc-enterprise`).
 - **Cross-slot multi-key** (`src-cluster-crossslot`): policy-parameterized and attributed to the
   Redis Enterprise engine. OSSCluster strictly rejects cross-slot multi-key with CROSSSLOT;
-  Enterprise with effective mkms can scatter-gather selected non-atomic commands
+  EnterpriseCluster (when configured) can scatter-gather selected non-atomic multi-key commands
   (MGET/MSET/DEL/UNLINK/EXISTS/TOUCH); transactions, Lua-with-KEYS, and STORE commands still need
   one slot; NoCluster is unsharded. Hash tags (`src-cluster-hashtag`) are the portable co-location
   mechanism required for the atomic/transaction/Lua/STORE cases, not for every non-atomic command.
-- **Multi-key multi-slot** (`src-cluster-mkms-nuance`): the generic OSS-cluster assumption loses
+- **Multi-key multi-slot** (`src-cluster-multikey-nuance`): the generic OSS-cluster assumption loses
   to what the enterprise engine actually enforces.
 - **SKU sizing** (`src-sku-metric-based`): mapping a legacy SKU label loses to metric-based
   sizing per AMR docs.

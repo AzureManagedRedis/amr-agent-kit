@@ -1,5 +1,5 @@
 {
-  "id": "scn-cluster-policy-crossslot-mkms",
+  "id": "scn-cluster-policy-crossslot-multikey",
   "title": "Fix CROSSSLOT and nuanced multi-key behavior under a clustered policy",
   "domain": "cluster-policy",
   "mode": "correctness",
@@ -15,13 +15,13 @@
       "embedded_defects": [
         { "id": "d1", "defect": "The Lua-with-KEYS script and MULTI/EXEC transaction require all keys in one slot; they are not covered by Enterprise non-atomic scatter-gather and fail across slots. The bare assumption also ignores that OSSCluster would reject even MGET here.", "source_fact_ref": "src-cluster-crossslot" },
         { "id": "d2", "defect": "No shared hash tag colocates the co-accessed keys for the atomic and transactional operations that require a single slot.", "source_fact_ref": "src-cluster-hashtag" },
-        { "id": "d3", "defect": "Assumes generic OSS multi-key behavior instead of the policy-parameterized behavior the enterprise engine enforces.", "source_fact_ref": "src-cluster-mkms-nuance" }
+        { "id": "d3", "defect": "Assumes generic OSS multi-key behavior instead of the policy-parameterized behavior the enterprise engine enforces.", "source_fact_ref": "src-cluster-multikey-nuance" }
       ]
     }
   ],
   "safety_classes": ["saf-cluster-correctness"],
   "cache_requirements": ["cch-hashtag-colocation"],
-  "source_facts": ["src-cluster-crossslot", "src-cluster-hashtag", "src-cluster-mkms-nuance"],
+  "source_facts": ["src-cluster-crossslot", "src-cluster-hashtag", "src-cluster-multikey-nuance"],
   "live_probes": ["prb-cluster-enabled", "prb-crossslot-error"],
   "probe_cohorts": ["coh-readonly-connectivity"],
   "correctness_rubric_ref": "rub-cluster-cor",

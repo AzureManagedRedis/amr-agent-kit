@@ -19,7 +19,7 @@
     { "id": "scn-routing-skill-selection", "domain": "routing", "file": "scenarios/scn-routing-skill-selection.json" },
     { "id": "scn-connection-auth-tls-entra", "domain": "connection-auth", "file": "scenarios/scn-connection-auth-tls-entra.json" },
     { "id": "scn-stampede-hot-key", "domain": "stampede", "file": "scenarios/scn-stampede-hot-key.json" },
-    { "id": "scn-cluster-policy-crossslot-mkms", "domain": "cluster-policy", "file": "scenarios/scn-cluster-policy-crossslot-mkms.json" },
+    { "id": "scn-cluster-policy-crossslot-multikey", "domain": "cluster-policy", "file": "scenarios/scn-cluster-policy-crossslot-multikey.json" },
     { "id": "scn-db0-cluster-vs-nocluster-select", "domain": "db0-select", "file": "scenarios/scn-db0-cluster-vs-nocluster-select.json" },
     { "id": "scn-streams-pubsub-delivery", "domain": "streams-pubsub", "file": "scenarios/scn-streams-pubsub-delivery.json" },
     { "id": "scn-memory-oom-eviction", "domain": "memory-oom", "file": "scenarios/scn-memory-oom-eviction.json" },

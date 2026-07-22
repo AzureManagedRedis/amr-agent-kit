@@ -5,7 +5,7 @@
     "signal": "Entra token via a data-access policy" },
   { "id": "blc-stampede-baseline", "scenario_ref": "scn-stampede-hot-key", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
     "signal": "unique-token lock released by compare-and-delete" },
-  { "id": "blc-cluster-baseline", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
+  { "id": "blc-cluster-baseline", "scenario_ref": "scn-cluster-policy-crossslot-multikey", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
     "signal": "enterprise data plane enforces" },
   { "id": "blc-db0-baseline", "scenario_ref": "scn-db0-cluster-vs-nocluster-select", "canary_kind": "baseline-already-correct", "match": "substring", "action": "harden",
     "signal": "unresolved without the effective configuration or a live SELECT probe" },
@@ -46,7 +46,7 @@
     "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
   { "id": "blc-conn-internal-leak", "scenario_ref": "scn-connection-auth-tls-entra", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
     "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
-  { "id": "blc-cluster-internal-leak", "scenario_ref": "scn-cluster-policy-crossslot-mkms", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
+  { "id": "blc-cluster-internal-leak", "scenario_ref": "scn-cluster-policy-crossslot-multikey", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
     "signal": "\\.(cs|cpp|h|go|py):[0-9]+" },
   { "id": "blc-lifecycle-internal-leak", "scenario_ref": "scn-lifecycle-scale-upgrade", "canary_kind": "internal-content-leak", "match": "regex", "action": "reject",
     "signal": "\\.(cs|cpp|h|go|py):[0-9]+" }
