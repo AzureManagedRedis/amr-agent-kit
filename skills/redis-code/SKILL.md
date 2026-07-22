@@ -30,6 +30,16 @@ Coding patterns and best practices for building Redis-backed applications and AI
 
 ## Agent Guidance
 
+### Critical AMR Guardrails (open the linked rule before answering)
+
+These are the highest-harm facts to get right. When a task touches one, open the linked rule file for the full example rather than relying on memory or a single scan of `AGENTS.md`.
+
+- **Logical databases are topology-dependent.** Clustered (`OSSCluster`/`EnterpriseCluster`) and active geo-replicated caches use database 0 only; `NoCluster` may allow more but must be verified from effective config or a live `SELECT` — never inferred from the managed `default` resource. → `rules/key-use-colons-for-namespacing.md`
+- **Multi-key safety is policy-specific.** `OSSCluster` needs same-slot (hash tags) for every multi-key command, transaction, and Lua script; `EnterpriseCluster` can scatter-gather selected non-atomic commands but not transactions, Lua-with-KEYS, or destination-key commands; `NoCluster` is unsharded. → `rules/key-use-hash-tags-for-cluster.md`
+- **Use the service-returned endpoint and port.** `10000` is the default database port, not a universal constant; do not reject a valid non-default port or hardcode public-cloud DNS. → `rules/conn-require-tls-amr-endpoints.md`
+- **Match modules to cluster policy.** Search (RediSearch) is incompatible with `OSSCluster` and needs `EnterpriseCluster` or a supported `NoCluster` size; RedisJSON is allowed with `OSSCluster`; active geo-replication supports only Search and JSON. → `rules/search-use-enterprise-policy-for-modules.md`
+- **Memory is service-managed.** Do not `CONFIG SET maxmemory` from a client; choose SKU and eviction policy in Azure and monitor effective memory. → `rules/memory-monitor-and-set-limits.md`
+
 ### Keep Code and Infrastructure Boundaries Clear
 
 Use this skill for code-level decisions: clients, keys, commands, indexes, retrieval logic, cache policy, ingestion flows, and agent state. Use `azure-redis-infra` when the task is about provisioning, SKUs, Private Link, cluster policy, persistence, HA, geo-replication, diagnostics, or Azure resource configuration.
