@@ -1,0 +1,28 @@
+id: amr-db-semantics-cluster-policy-009
+name: Logical-database semantics by cluster policy
+description: |
+  Tests that the skill ties Azure Managed Redis logical-database behavior to
+  cluster policy and active geo-replication instead of asserting a blanket
+  "database 0 only, never SELECT" claim. Clustered policies (OSSCluster,
+  EnterpriseCluster) and active geo-replication are database 0 only; NoCluster
+  must be confirmed from effective configuration or a live SELECT check, and a
+  single default database resource does not prove the logical-database count.
+  Key prefixes remain the portable separation approach and separate caches the
+  hard-isolation approach.
+tags:
+  - azure-managed-redis
+  - cluster-policy
+  - logical-databases
+  - tenant-isolation
+  - security
+inputs:
+  prompt: |
+    A teammate claims our Azure Managed Redis caches always expose only database
+    0 and never support SELECT, regardless of cluster policy, citing that each
+    deployment provisions a single Microsoft.Cache/redisEnterprise/databases
+    resource named default. We run one NoCluster cache and one OSSCluster cache
+    with active geo-replication. Is the claim correct, and how should we design
+    tenant separation and hard isolation for these caches?
+expected:
+  outcomes:
+    - type: task_completed
