@@ -7,7 +7,7 @@ tags: observability, azure-monitor, alerts, metrics, runbooks
 
 ## Set Azure Monitor Alert Baselines Before Launch
 
-Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and geo-replication health/lag where used. Route diagnostic settings to Log Analytics so alerts can be investigated with connection logs and historical metrics.
+Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Discover the public metric names and dimensions exposed by the deployed resource, baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and replication status/lag where used. Route supported diagnostic categories to Log Analytics so alerts can be investigated with connection or audit logs and historical metrics.
 
 **Incorrect (dashboards only, no actionable alerts):**
 
@@ -23,10 +23,9 @@ Thresholds: not tied to load test or SLO
 **Correct (launch baseline with alert routing):**
 
 ```text
-Diagnostic settings: AllMetrics and Connection logs to Log Analytics
-Metric alerts: usedmemorypercentage, serverLoad, percentProcessorTime
-Metric alerts: connectedclients, cacheLatency, evictedkeys
-Geo alerts: geoReplicationHealthy when active geo-replication is enabled
+Diagnostic settings: currently supported metric/log categories to Log Analytics
+Metric alerts: memory utilization, server/processor load, connections, latency, evictions
+Geo alerts: supported replication status and lag metrics when active geo is enabled
 Network alerts/checks: private endpoint state and private DNS resolution
 Operational drills: restore/export import drill and regional failover drill
 Actions: on-call action group with severity, owner, and runbook URL

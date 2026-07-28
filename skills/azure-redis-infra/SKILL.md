@@ -1,8 +1,8 @@
 ---
 name: azure-redis-infra
 description: |
-  Azure Managed Redis (Redis Enterprise 7.4) infrastructure patterns and best
-  practices. Use when provisioning AMR, configuring networking/security,
+  Azure Managed Redis infrastructure patterns and best practices. Use when
+  provisioning AMR, configuring networking/security,
   enabling high availability or geo-replication, setting persistence, choosing
   cluster policy, generating native ARM/Bicep/Terraform, sizing from workload
   metrics, or monitoring AMR in Azure. Triggers on tasks involving Azure
@@ -19,7 +19,7 @@ metadata:
 
 # Azure Managed Redis Infrastructure
 
-Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure.
+Patterns and best practices for provisioning, securing, and operating Azure Managed Redis in Azure.
 
 ## Scope
 
@@ -35,6 +35,18 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 ## Agent Guidance
 
+### Critical AMR Guardrails (open the linked rule before answering)
+
+These are the highest-harm facts to get right. When a task touches one, open the linked rule file for the full detail rather than relying on a single scan of `AGENTS.md`.
+
+- **Minimum TLS is 1.2.** `minimumTlsVersion` accepts `1.2` only and is fixed at creation; do not set `1.3` (a negotiated wire protocol is a separate matter). → `rules/security-enforce-tls.md`
+- **Gen2 omits zones at create.** Gen2 AMR must not send a `zones` array (placement is service-managed in supported regions); Gen1/ACRE zonal deployments require at least three zones. → `rules/availability-enable-ha-zone-redundancy.md`
+- **Logical databases are policy-dependent.** Clustered and active geo-replicated caches are database 0 only; `NoCluster` must be verified from effective configuration, not from the single `default` resource. → `rules/security-scope-data-access-policies.md`
+- **Managed identity is opt-in.** It is not enabled by default; assign a workload identity and data-access policy explicitly. → `rules/security-use-entra-authentication.md`
+- **Match modules to cluster policy.** Search requires `EnterpriseCluster` or a supported `NoCluster` size; RedisJSON works with `OSSCluster`; active geo-replication supports only Search and JSON. → `rules/performance-choose-cluster-policy.md`
+- **Geo group size is a documented maximum to verify.** Up to five members; confirm the current limit in the documentation, plan it at provisioning, and do not combine with persistence. → `rules/geo-plan-active-geo-replication.md`
+- **Return the service endpoint and cloud-specific DNS.** Give clients the resource host name and configured port; the private DNS zone suffix is cloud-specific. → `rules/network-configure-private-dns.md`
+
 ### Validate Creation-Time Choices Early
 
 For Azure Managed Redis, several choices should be decided before provisioning, including tier/SKU, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, and networking model. Surface these early to avoid disruptive reprovisioning.
@@ -45,7 +57,7 @@ When reviewing or generating AMR sizing guidance, explicitly compare Memory Opti
 
 ### Prefer Native AMR IaC Shapes
 
-When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep the data-plane choices such as port `10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
+When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep data-plane choices such as the configured database port (`10000` by default), `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
 
 ### Prefer Secure Azure Defaults
 
@@ -53,7 +65,7 @@ For production guidance, prefer Private Link, disabled public network access, TL
 
 ### Design Tenant Boundaries Explicitly
 
-Azure Managed Redis does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes. For tenant-aware deployments, use scoped identities, data access policies/key patterns, application key prefixes, metadata filters for search/RAG workloads, and separate AMR caches when tenants need hard isolation or independent lifecycle.
+Do not assume Azure Managed Redis preserves Azure Cache for Redis-style numbered-database multi-tenancy. Under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication, only database 0 is available and `SELECT` to another index is not supported. Under `NoCluster`, do not assert either DB0-only or multiple logical databases without evidence; a single managed `default` database resource does not prove the logical database count, so confirm it from the database's effective configuration or a live `SELECT` capability check before relying on more than database 0. Regardless of cluster policy, prefer application key prefixes as the portable logical-separation approach and separate AMR caches for hard tenant isolation or independent lifecycle. Also use scoped identities, data access policies/key patterns, and metadata filters for search/RAG workloads.
 
 ### Separate Infrastructure Workflows
 
@@ -114,7 +126,7 @@ Private endpoints, public network access, and DNS integration.
 
 ### 3. Security & Identity (CRITICAL)
 
-TLS 1.2/1.3, Entra ID authentication, and key management.
+Minimum TLS version 1.2, Entra ID authentication, and key management.
 - `security-enforce-tls` - Enforce TLS for all client connections
 - `security-use-entra-authentication` - Prefer Entra authentication over access keys
 - `security-scope-data-access-policies` - Scope data access by identity and key pattern
