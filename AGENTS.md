@@ -14,7 +14,7 @@ A collection of skills for AI coding agents working with Redis and Azure Managed
 skills/
   {skill-name}/           # kebab-case directory name
     SKILL.md              # Required: skill definition
-    AGENTS.md             # Required: compiled rules (generated)
+    AGENTS.md             # Required: compact generated rule index
     metadata.json         # Required: version and metadata
     README.md             # Required: documentation
     rules/                # Required for rule-based skills
@@ -72,12 +72,13 @@ metadata:
 Skills are loaded on-demand. To minimize context usage:
 
 - Keep `SKILL.md` concise (summary + quick reference)
-- Put long-form detail in `AGENTS.md` and rule files
+- Put long-form detail only in focused rule files
+- Generate `AGENTS.md` as a compact catalog linking to those rules
 - Use precise skill descriptions for accurate activation
 
 ## Output
 
-Build compiles individual rules into `AGENTS.md`.
+Build compiles rule metadata and links into a compact `AGENTS.md` index.
 
 ```bash
 cd packages/amr-agent-skills-build

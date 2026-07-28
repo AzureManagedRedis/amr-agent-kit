@@ -39,3 +39,20 @@ jobs:
 
       - name: Check generated output is current
         run: git diff --exit-code
+
+  links:
+    name: Check Markdown links
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check links
+        uses: lycheeverse/lychee-action@v2
+        with:
+          args: --config .lychee.toml --root-dir "$GITHUB_WORKSPACE" --no-progress .
+          fail: true
+          failIfEmpty: true
+          lycheeVersion: v0.24.2
+          token: ${{ github.token }}

@@ -35,7 +35,7 @@ These scenarios should expose whether the skill adds value beyond standalone Red
 Run each prompt twice with the same model:
 
 1. **without_skill** - the prompt only, with no AMR skill file in context.
-2. **with_skill** - the same prompt after force-loading the target skill's `AGENTS.md`.
+2. **with_skill** - the same prompt after loading the target skill's compact `AGENTS.md` index, its `SKILL.md`, and only the linked rules relevant to the task.
 
 Grade both outputs against the same expectations in `evals.json`. A skill-loaded run should pass the required expectations and show measurable uplift over the baseline.
 

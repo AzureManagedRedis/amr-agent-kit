@@ -61,10 +61,12 @@ For DB-index, `SELECT`, cluster-policy, multi-key command, transaction, or Lua r
 
 ## Available Resources
 
-- `AGENTS.md` - Full compiled guidance with expanded rules, examples, and references.
-- `rules/` - Individual rule files for targeted guidance.
+- [AGENTS.md](AGENTS.md) - Compact generated rule catalog.
+- `rules/` - Detailed source rules loaded individually as needed.
 - `rules/_sections.md` - Category ordering, impact, and descriptions.
 - `metadata.json` - Version, abstract, and reference links.
+
+Use progressive disclosure: select the smallest matching category below, open [AGENTS.md](AGENTS.md) at that category, and read only the linked rules needed for the task. Do not load the complete rule corpus by default.
 
 ## Redis Code Workflow
 
@@ -103,28 +105,28 @@ For DB-index, `SELECT`, cluster-policy, multi-key command, transaction, or Lua r
 
 ### Application Code
 
-- `ds-*` - Choose Redis data structures for hashes, sets, sorted sets, lists, counters, and cardinality.
-- `key-*` - Design namespaced, TTL-bound, cluster-safe keys and avoid production `KEYS`.
-- `cmd-*` - Use pipelining, transactions, Lua, and batch operations safely.
-- `conn-*` - Configure TLS, pooling, timeouts, Entra authentication, and token refresh.
-- `cache-*` - Implement cache-aside and stampede prevention.
-- `use-*` - Build sessions, rate limiting, and distributed locks.
-- `msg-*` - Choose Pub/Sub for ephemeral fan-out, Streams for reliable messaging, and Azure Event Grid/Service Bus integration for cache invalidation workflows.
-- `stack-*` - Use RedisJSON and Redis Search for document and query workloads.
-- `memory-*` - Optimize encodings, maxmemory policies, and fragmentation.
-- `resilience-*` - Add bounded retries, health checks, and production-safe failure handling.
+- [Data structures](AGENTS.md#1-data-structures) - Hashes, sets, sorted sets, lists, counters, and cardinality.
+- [Key design](AGENTS.md#2-key-design) - Namespaced, TTL-bound, cluster-safe keys and production-safe discovery.
+- [Commands and patterns](AGENTS.md#3-commands--patterns) - Pipelining, transactions, Lua, and batch operations.
+- [Connection management](AGENTS.md#4-connection-management) - TLS, pooling, timeouts, Entra authentication, and token refresh.
+- [Caching strategies](AGENTS.md#5-caching-strategies) - Cache-aside and stampede prevention.
+- [Common use cases](AGENTS.md#6-common-use-cases) - Sessions, rate limiting, and distributed locks.
+- [Pub/Sub and Streams](AGENTS.md#7-pubsub--streams) - Ephemeral fan-out, reliable messaging, and invalidation workflows.
+- [JSON and Search](AGENTS.md#8-json--search) - Document and query workloads.
+- [Memory optimization](AGENTS.md#9-memory-optimization) - Encodings, memory policies, and fragmentation.
+- [Error handling and resilience](AGENTS.md#10-error-handling--resilience) - Bounded retries, health checks, and failure handling.
 
 ### AI Application Code
 
-- `vec-*` - Store vectors with metadata and align dimensions and distance metrics.
-- `search-*` - Combine vector search with metadata filters and limit returned fields.
-- `rag-*` - Preserve citations, chunk deterministically, and enforce tenant/ACL boundaries.
-- `semcache-*` - Version semantic cache keys and tune thresholds, TTLs, and invalidation.
-- `llm-*` - Bound conversation memory with TTLs and summarization.
-- `agent-*` - Persist agent state with idempotent checkpoints and streams.
-- `embed-*` - Batch embedding upserts and make ingestion idempotent.
-- `integrate-*` - Configure RedisVL and Microsoft Agent Framework with explicit AMR settings.
-- `perf-*` - Size vector workloads and tune ingestion/query parameters.
+- [Vector index design](AGENTS.md#11-vector-index-design) - Metadata, dimensions, and distance metrics.
+- [Search query patterns](AGENTS.md#12-search-query-patterns) - Vector search, metadata filters, and bounded results.
+- [RAG](AGENTS.md#13-retrieval-augmented-generation) - Citations, deterministic chunking, and tenant/ACL boundaries.
+- [Semantic caching](AGENTS.md#14-semantic-caching) - Versioning, thresholds, TTLs, and invalidation.
+- [LLM memory](AGENTS.md#15-llm-memory) - Bounded conversation memory and summarization.
+- [AI agent state](AGENTS.md#16-ai-agent-state) - Idempotent checkpoints and streams.
+- [Embedding pipelines](AGENTS.md#17-embedding-pipelines) - Batched, idempotent upserts.
+- [Framework integration](AGENTS.md#18-framework-integration) - RedisVL and Microsoft Agent Framework.
+- [AI performance and cost](AGENTS.md#19-ai-performance--cost) - Vector sizing and ingestion/query tuning.
 
 ## How to Use the Rule Files
 
@@ -143,6 +145,4 @@ Each rule file contains:
 - Correct code example with explanation
 - Additional context and references
 
-## Full Compiled Document
-
-For the complete guide with all rules expanded, use `AGENTS.md`.
+Use [AGENTS.md](AGENTS.md) only as a catalog; load the selected rule file for complete guidance, examples, and references.

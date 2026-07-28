@@ -1,0 +1,15 @@
+# Repository-wide Markdown link validation.
+# https://lychee.cli.rs/guides/config/
+max_retries = 3
+retry_wait_time = 2
+timeout = 20
+max_concurrency = 16
+include_fragments = "full"
+extensions = ["md"]
+scheme = ["https", "http", "file"]
+
+exclude_path = [
+  "(^|/)node_modules/",
+  "(^|/)eval-runs/",
+  "(^|/)routing-eval/results/",
+]

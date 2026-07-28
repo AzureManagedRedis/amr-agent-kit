@@ -13,7 +13,7 @@
     "https://redis.io/docs/latest/develop/data-types/sorted-sets/",
     "https://redis.io/docs/latest/develop/data-types/streams/",
     "https://redis.io/docs/latest/develop/use/pipelining/",
-    "https://redis.io/docs/latest/develop/use/patterns/distributed-locks/",
+    "https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/",
     "https://redis.io/docs/latest/develop/clients/",
     "https://redis.io/docs/latest/develop/clients/pools-and-muxing/",
     "https://redis.io/docs/latest/develop/interact/search-and-query/",

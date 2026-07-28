@@ -121,4 +121,4 @@ else:
 
 Always use unique tokens (UUID) to identify lock ownership. Always set TTL to prevent deadlocks. Use Lua scripts for atomic check-and-delete. Consider Redlock algorithm for multi-instance Redis.
 
-Reference: [Distributed Locks](https://redis.io/docs/latest/develop/use/patterns/distributed-locks/)
+Reference: [Distributed Locks](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)

@@ -69,10 +69,12 @@ Choose the correct guidance path based on the user's intent:
 
 ## Available Resources
 
-- `AGENTS.md` - Full compiled guidance with expanded rules, examples, and references.
-- `rules/` - Individual rule files for targeted guidance.
+- [AGENTS.md](AGENTS.md) - Compact generated rule catalog.
+- `rules/` - Detailed source rules loaded individually as needed.
 - `rules/_sections.md` - Category ordering, impact, and descriptions.
 - `metadata.json` - Version, abstract, and reference links.
+
+Use progressive disclosure: choose the matching category below, read only the linked rules needed for the task, and follow their official documentation links for current product limits. Do not load the entire rule set by default.
 
 ## Azure Managed Redis Infrastructure Workflow
 
@@ -101,50 +103,50 @@ Choose the correct guidance path based on the user's intent:
 ### 1. Provisioning & Sizing (CRITICAL)
 
 Tier/SKU selection, region placement, and capacity planning.
-- `provision-select-tier` - Choose tiers/SKUs based on workload needs
-- `provision-select-modules-at-create` - Enable required modules at creation time
-- `provision-codify-creation-time-settings` - Capture AMR creation-time settings in IaC
-- `provision-use-native-amr-iac` - Generate native ARM, Bicep, and Terraform shapes for AMR
+- [Choose tiers/SKUs based on workload needs](rules/provision-select-tier.md)
+- [Enable required modules at creation time](rules/provision-select-modules-at-create.md)
+- [Capture AMR creation-time settings in IaC](rules/provision-codify-creation-time-settings.md)
+- [Generate native ARM, Bicep, and Terraform shapes](rules/provision-use-native-amr-iac.md)
 
 ### 2. Networking & Access (CRITICAL)
 
 Private endpoints, public network access, and DNS integration.
-- `network-use-private-link` - Use Private Link and disable public network access
-- `network-configure-private-dns` - Link private DNS for all client networks
+- [Use Private Link and control public network access](rules/network-use-private-link.md)
+- [Configure private DNS for all client networks](rules/network-configure-private-dns.md)
 
 ### 3. Security & Identity (CRITICAL)
 
 TLS 1.2/1.3, Entra ID authentication, and key management.
-- `security-enforce-tls` - Enforce TLS for all client connections
-- `security-use-entra-authentication` - Prefer Entra authentication over access keys
-- `security-scope-data-access-policies` - Scope data access by identity and key pattern
-- `security-rotate-keys-and-protect-secrets` - Rotate keys and keep secrets out of code
+- [Enforce TLS for client connections](rules/security-enforce-tls.md)
+- [Prefer Entra authentication over access keys](rules/security-use-entra-authentication.md)
+- [Scope data access by identity and key pattern](rules/security-scope-data-access-policies.md)
+- [Rotate keys and keep secrets out of code](rules/security-rotate-keys-and-protect-secrets.md)
 
 ### 4. Availability & Zone Redundancy (HIGH)
 
 High availability configuration and zone-redundant deployment.
-- `availability-enable-ha-zone-redundancy` - Enable HA and zone redundancy where supported
+- [Plan HA and zone redundancy](rules/availability-enable-ha-zone-redundancy.md)
 
 ### 5. Geo-Replication & DR (HIGH)
 
 Active geo-replication, consistency, and failover planning.
-- `geo-plan-active-geo-replication` - Plan active geo-replication for multi-region DR
+- [Plan active geo-replication for multi-region DR](rules/geo-plan-active-geo-replication.md)
 
 ### 6. Data Durability & Backup (MEDIUM-HIGH)
 
 RDB/AOF persistence and export-based backups.
-- `durability-configure-persistence` - Use persistence for recovery and export for backups
+- [Use persistence for recovery and export for backups](rules/durability-configure-persistence.md)
 
 ### 7. Performance & Cluster Policy (MEDIUM)
 
 OSS vs Enterprise cluster policy selection and throughput planning.
-- `performance-choose-cluster-policy` - Match cluster policy to clients and modules
+- [Match cluster policy to clients and modules](rules/performance-choose-cluster-policy.md)
 
 ### 8. Observability & Diagnostics (MEDIUM)
 
 Azure Monitor metrics, diagnostics, and connection logs.
-- `observability-enable-diagnostics` - Enable Azure Monitor metrics and connection logs
-- `observability-set-alert-baselines` - Set alert baselines before launch
+- [Enable Azure Monitor metrics and connection logs](rules/observability-enable-diagnostics.md)
+- [Set alert baselines before launch](rules/observability-set-alert-baselines.md)
 
 ## How to Use the Rule Files
 
@@ -168,8 +170,4 @@ Each rule file contains:
 - Call out creation-time settings that cannot be changed later.
 - Prefer private, TLS-protected, identity-based access for production workloads.
 - Tie reliability guidance to region, availability zone, and DR requirements.
-- Use `AGENTS.md` when the user needs full expanded examples or references.
-
-## Full Compiled Document
-
-For the complete guide with all rules expanded, use `AGENTS.md`.
+- Use [AGENTS.md](AGENTS.md) only as a catalog when the matching rule is not obvious; load the selected rule file for complete guidance and references.
