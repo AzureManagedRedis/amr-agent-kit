@@ -68,6 +68,6 @@ def get_user_fields(user_id, fields):
 user_data = get_user_fields(1000, ["name", "email", "created_at"])
 ```
 
-MGET returns None for keys that don't exist, maintaining position in the result list. For related data, consider using hashes with HMGET/HMSET instead of separate string keys. On Azure Managed Redis with OSSCluster, MGET/MSET keys must share a hash slot or Redis can return `CROSSSLOT`; use a deliberate hash tag such as `user:{1000}:name` and `user:{1000}:email`, or prefer a single hash key when the fields belong to one object.
+MGET returns None for keys that don't exist, maintaining position in the result list. For related data, consider using hashes with HMGET/HMSET instead of separate string keys. MGET and MSET are non-atomic multi-key commands, so their cluster behavior depends on the Azure Managed Redis cluster policy. Under `OSSCluster` all keys in one call must share a hash slot or Redis can return `CROSSSLOT`; co-locate them with a deliberate hash tag such as `user:{1000}:name` and `user:{1000}:email`, or use a single hash key when the fields belong to one object. Under `EnterpriseCluster` configured to scatter-gather non-atomic multi-key commands, MGET/MSET can span slots, but hash tags remain the portable choice that keeps the code correct if the policy changes. Under `NoCluster` there is no slot constraint. The inline hash tag on the `r.mget(...)` call above is therefore needed only under `OSSCluster`.
 
 Reference: [MGET Command](https://redis.io/docs/latest/commands/mget/)
