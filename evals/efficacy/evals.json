@@ -365,8 +365,8 @@
         "Uses port 6380, port 6379, plaintext redis, or disabled certificate validation.",
         "Hardcodes a direct-node or redirect port instead of following service topology."
       ],
-      "minimum_skill_score": 1.0,
-      "minimum_uplift": 0.0
+      "minimum_skill_score": 1,
+      "minimum_uplift": 0
     },
     {
       "id": 14,
@@ -379,8 +379,8 @@
         "Sets or recommends minimumTlsVersion '1.2' as the accepted control-plane value.",
         "Rejects minimumTlsVersion '1.3' rather than presenting it as a stronger valid setting.",
         "Keeps clientProtocol encrypted and requires TLS with certificate validation.",
-        "Distinguishes the immutable minimum-version property from the protocol version negotiated by a client.",
-        "Calls out that the minimum TLS property is a creation-time or immutable choice."
+        "Distinguishes the control-plane minimum-version property from the protocol version a client may negotiate.",
+        "Treats the minimum TLS version as a creation-time decision to confirm against current documentation rather than assuming it can be changed freely later."
       ],
       "anti_patterns": [
         "Sets minimumTlsVersion to 1.3.",
@@ -389,8 +389,8 @@
         "Disables certificate validation.",
         "Conflates a possible wire-level TLS negotiation with the allowed IaC property value."
       ],
-      "minimum_skill_score": 1.0,
-      "minimum_uplift": 0.0
+      "minimum_skill_score": 1,
+      "minimum_uplift": 0
     },
     {
       "id": 15,
@@ -398,11 +398,11 @@
       "target_skill": "redis-code",
       "skill_path": "skills/redis-code/AGENTS.md",
       "prompt": "Review an Azure Managed Redis design that uses OSSCluster with the RedisJSON module but does not enable Search. One reviewer claims RedisJSON and Search both require EnterpriseCluster. The team may add vector search later and may eventually use active geo-replication. Correct the policy and module claims and identify what must change if Search or geo is added.",
-      "expected_output": "Guidance that permits RedisJSON with OSSCluster, rejects Search/RediSearch with OSSCluster, recommends EnterpriseCluster or a supported NoCluster size when Search is required, and notes that only Search and JSON are geo-compatible while SKU, region, and flash restrictions still require validation.",
+      "expected_output": "Guidance that permits RedisJSON with OSSCluster, states that Search/RediSearch requires EnterpriseCluster and cannot be used with OSSCluster, notes that only Search and JSON are geo-compatible, and requires validating SKU, region, preview/allowlist, and flash or geo constraints before provisioning.",
       "expectations": [
         "States that RedisJSON is permitted with OSSCluster and does not require EnterpriseCluster solely because JSON is enabled.",
         "States that Search or RediSearch is incompatible with OSSCluster.",
-        "Recommends EnterpriseCluster or a supported NoCluster size if Search or vector search is added.",
+        "Recommends EnterpriseCluster if Search or vector search is added.",
         "States that active geo-replication supports only Search and JSON modules.",
         "Requires validation of SKU, region, preview/allowlist, and flash or geo constraints before provisioning."
       ],
@@ -410,11 +410,11 @@
         "Claims RedisJSON requires EnterpriseCluster.",
         "Claims Search is supported with OSSCluster.",
         "Treats all Redis modules as supported with active geo-replication.",
-        "Ignores NoCluster size restrictions.",
+        "Recommends OSSCluster or NoCluster as a way to run the Search module.",
         "Presents module compatibility as independent of SKU, region, or geo settings."
       ],
-      "minimum_skill_score": 1.0,
-      "minimum_uplift": 0.0
+      "minimum_skill_score": 1,
+      "minimum_uplift": 0
     },
     {
       "id": 16,
@@ -437,8 +437,8 @@
         "Applies the Gen2 omit-zones rule to Gen1/ACRE.",
         "Ignores regional zone support."
       ],
-      "minimum_skill_score": 1.0,
-      "minimum_uplift": 0.0
+      "minimum_skill_score": 1,
+      "minimum_uplift": 0
     },
     {
       "id": 17,
@@ -461,8 +461,8 @@
         "Promises that eviction prevents every OOM or rejected write.",
         "Omits SKU sizing or memory monitoring."
       ],
-      "minimum_skill_score": 1.0,
-      "minimum_uplift": 0.0
+      "minimum_skill_score": 1,
+      "minimum_uplift": 0
     },
     {
       "id": 18,
@@ -485,8 +485,8 @@
         "Recommends changing membership without confirming the current documented limit or member compatibility.",
         "Presents the limit as a fixed engine constant with no direction to verify current documentation."
       ],
-      "minimum_skill_score": 1.0,
-      "minimum_uplift": 0.0
+      "minimum_skill_score": 1,
+      "minimum_uplift": 0
     }
   ]
 }
