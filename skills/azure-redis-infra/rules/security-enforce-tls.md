@@ -7,7 +7,7 @@ tags: security, tls, encryption, networking
 
 ## Enforce TLS 1.2+ for All Client Connections
 
-For Azure Managed Redis, set `minimumTlsVersion` to `1.2`; it is the only accepted control-plane value and cannot be changed after creation. Keep the database client protocol encrypted in production, and configure clients to require TLS 1.2 or later with certificate validation. Do not set `minimumTlsVersion` to `1.3`: whether a connection negotiates a newer wire protocol is separate from the minimum-version property.
+For Azure Managed Redis, set `minimumTlsVersion` to `1.2`; it is the only accepted control-plane value. Keep the database client protocol encrypted in production, and configure clients to require TLS 1.2 or later with certificate validation. Do not set `minimumTlsVersion` to `1.3`: whether a connection negotiates a newer wire protocol is separate from the minimum-version property. Treat the setting as a creation-time decision and confirm the current update behavior in the documentation before planning to change it later.
 
 **Incorrect (allow non-TLS access):**
 

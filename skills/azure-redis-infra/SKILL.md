@@ -39,7 +39,7 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 These are the highest-harm facts to get right. When a task touches one, open the linked rule file for the full detail rather than relying on a single scan of `AGENTS.md`.
 
-- **Minimum TLS is 1.2.** `minimumTlsVersion` accepts `1.2` only and is fixed at creation; do not set `1.3` (a negotiated wire protocol is a separate matter). → `rules/security-enforce-tls.md`
+- **Minimum TLS is 1.2.** `minimumTlsVersion` accepts `1.2` only; do not set `1.3` (a negotiated wire protocol is a separate matter). Decide it at creation time. → `rules/security-enforce-tls.md`
 - **Gen2 omits zones at create.** Gen2 AMR must not send a `zones` array (placement is service-managed in supported regions); Gen1/ACRE zonal deployments require at least three zones. → `rules/availability-enable-ha-zone-redundancy.md`
 - **Logical databases are policy-dependent.** Clustered and active geo-replicated caches are database 0 only; `NoCluster` must be verified from effective configuration, not from the single `default` resource. → `rules/security-scope-data-access-policies.md`
 - **Managed identity is opt-in.** It is not enabled by default; assign a workload identity and data-access policy explicitly. → `rules/security-use-entra-authentication.md`
