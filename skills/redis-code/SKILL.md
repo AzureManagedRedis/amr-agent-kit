@@ -37,7 +37,7 @@ These are the highest-harm facts to get right. When a task touches one, open the
 - **Logical databases are topology-dependent.** Clustered (`OSSCluster`/`EnterpriseCluster`) and active geo-replicated caches use database 0 only; `NoCluster` may allow more but must be verified from effective config or a live `SELECT` — never inferred from the managed `default` resource. → `rules/key-use-colons-for-namespacing.md`
 - **Multi-key safety is policy-specific.** `OSSCluster` needs same-slot (hash tags) for every multi-key command, transaction, and Lua script; `EnterpriseCluster` can scatter-gather selected non-atomic commands but not transactions, Lua-with-KEYS, or destination-key commands; `NoCluster` is unsharded. → `rules/key-use-hash-tags-for-cluster.md`
 - **Use the service-returned endpoint and port.** `10000` is the default database port, not a universal constant; do not reject a valid non-default port or hardcode public-cloud DNS. → `rules/conn-require-tls-amr-endpoints.md`
-- **Match modules to cluster policy.** Search (RediSearch) is incompatible with `OSSCluster` and needs `EnterpriseCluster` or a supported `NoCluster` size; RedisJSON is allowed with `OSSCluster`; active geo-replication supports only Search and JSON. → `rules/search-use-enterprise-policy-for-modules.md`
+- **Match modules to cluster policy.** Search (RediSearch) requires `EnterpriseCluster` and cannot be used with `OSSCluster`; RedisJSON is allowed with `OSSCluster`; active geo-replication supports only Search and JSON. → `rules/search-use-enterprise-policy-for-modules.md`
 - **Memory is service-managed.** Do not `CONFIG SET maxmemory` from a client; choose SKU and eviction policy in Azure and monitor effective memory. → `rules/memory-monitor-and-set-limits.md`
 
 ### Keep Code and Infrastructure Boundaries Clear
@@ -60,7 +60,7 @@ For logical-database, `SELECT`, cluster-policy, multi-key command, transaction, 
 
 ### Keep Module and Cluster-Policy Claims Exact
 
-Do not group Search and RedisJSON under one cluster-policy rule. The Search module is incompatible with `OSSCluster`; use `EnterpriseCluster` or a supported `NoCluster` size for search or vector workloads. RedisJSON is permitted with `OSSCluster`. Active geo-replication supports only the Search and JSON modules. Before provisioning, validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination.
+Do not group Search and RedisJSON under one cluster-policy rule. The Search module requires `EnterpriseCluster` and cannot be used with `OSSCluster`. RedisJSON is permitted with `OSSCluster`. Active geo-replication supports only the Search and JSON modules. Before provisioning, validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination.
 
 ### Choose the Correct Code Path
 

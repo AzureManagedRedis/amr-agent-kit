@@ -7,7 +7,7 @@ tags: azure-managed-redis, redisearch, redisjson, cluster-policy
 
 ## Match Search and JSON Modules to the Cluster Policy
 
-On Azure Managed Redis, the Search module (RediSearch) is incompatible with `OSSCluster`; choose `EnterpriseCluster` or a supported `NoCluster` size for search and vector workloads. RedisJSON does not share that prohibition and can be used with `OSSCluster`, subject to the selected SKU and other feature constraints. Active geo-replication supports only the Search and JSON modules, and Search on flash-optimized SKUs can be availability restricted, so validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination before provisioning.
+On Azure Managed Redis, the Search module (RediSearch) requires the Enterprise cluster policy; it cannot be used with `OSSCluster`. Select `EnterpriseCluster` for search and vector workloads. RedisJSON does not share that restriction and can be used with `OSSCluster`, subject to the selected SKU and other feature constraints. Active geo-replication supports only the Search and JSON modules, and Search on flash-optimized SKUs can be availability restricted, so validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination before provisioning.
 
 **Incorrect (OSS cluster with Search):**
 

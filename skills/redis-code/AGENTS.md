@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Critical module guardrails: Search is incompatible with OSSCluster and requires EnterpriseCluster or a supported NoCluster size; RedisJSON is permitted with OSSCluster; active geo-replication supports only Search and JSON; validate SKU, region, preview or allowlist status, flash restrictions, and geo compatibility before provisioning. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
+Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Critical module guardrails: Search requires EnterpriseCluster and cannot be used with OSSCluster; RedisJSON is permitted with OSSCluster; active geo-replication supports only Search and JSON; validate SKU, region, preview or allowlist status, flash restrictions, and geo compatibility before provisioning. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
 
 ---
 
@@ -2366,7 +2366,7 @@ Retries: bounded Azure Functions retry policy with poison/dead-letter handling
 Replay: Service Bus DLQ/replay tooling or Redis Streams with consumer groups for Redis-native downstream consumers
 ```
 
-Configure the Redis client in the handler with the AMR production checklist: normal Azure Managed Redis host, port `10000`, TLS or `rediss://`, certificate validation, Entra or managed identity where supported, singleton/pool reuse, startup configuration validation, timeouts, and bounded jittered retries.
+Configure the Redis client in the handler with the AMR production checklist: service-returned host and port (`10000` is the default database port), TLS or `rediss://`, certificate validation, Entra or managed identity where supported, singleton/pool reuse, startup configuration validation, timeouts, and bounded jittered retries.
 
 Track event lag, handler failures, retry counts, dead-letter depth, invalidation volume, and Redis latency/errors in Application Insights and Azure Monitor.
 
@@ -3669,7 +3669,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://
 
 **Impact: CRITICAL (avoids unsupported module/cluster combinations)**
 
-On Azure Managed Redis, the Search module (RediSearch) is incompatible with `OSSCluster`; choose `EnterpriseCluster` or a supported `NoCluster` size for search and vector workloads. RedisJSON does not share that prohibition and can be used with `OSSCluster`, subject to the selected SKU and other feature constraints. Active geo-replication supports only the Search and JSON modules, and Search on flash-optimized SKUs can be availability restricted, so validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination before provisioning.
+On Azure Managed Redis, the Search module (RediSearch) requires the Enterprise cluster policy; it cannot be used with `OSSCluster`. Select `EnterpriseCluster` for search and vector workloads. RedisJSON does not share that restriction and can be used with `OSSCluster`, subject to the selected SKU and other feature constraints. Active geo-replication supports only the Search and JSON modules, and Search on flash-optimized SKUs can be availability restricted, so validate the complete SKU, policy, module, region, preview or subscription-allowlist status, flash restrictions, and geo combination before provisioning.
 
 **Incorrect: OSS cluster with Search**
 
