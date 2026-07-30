@@ -546,7 +546,9 @@ Multi-key/Lua: keys use hash tags or avoid cross-slot operations
 
 Prefer `NoCluster` when the workload fits its supported size and needs single-endpoint semantics with the least CROSSSLOT risk, especially when the application is not Redis Cluster-aware. Use `OSSCluster` only when clients handle MOVED/ASK redirects and operational runbooks account for cluster topology. Use `EnterpriseCluster` when module support or client compatibility requires it, while still checking multi-key commands and Lua scripts for cross-slot behavior. For application code, require hash tags such as `cart:{userId}:items` and `cart:{userId}:totals` when related keys must be used together.
 
-Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
+Module support constrains the policy choice, and the modules differ from each other. The Search module (RediSearch) requires the Enterprise cluster policy and cannot be used with `OSSCluster`, so any search or vector workload forces `EnterpriseCluster`. RedisJSON does not carry that restriction and can be used with `OSSCluster`. Active geo-replication supports only the Search and JSON modules. Because module availability also varies by tier, region, and preview or subscription enrollment, confirm the full SKU, policy, module, region, and geo combination against current Azure Managed Redis documentation before provisioning rather than assuming a combination is available.
+
+Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture), [https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication](https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication)
 
 ---
 

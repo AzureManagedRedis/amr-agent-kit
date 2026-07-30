@@ -43,7 +43,7 @@ These are the highest-harm facts to get right. When a task touches one, open the
 - **Gen2 omits zones at create.** Gen2 AMR must not send a `zones` array (placement is service-managed in supported regions); Gen1/ACRE zonal deployments require at least three zones. → `rules/availability-enable-ha-zone-redundancy.md`
 - **Logical databases are policy-dependent.** Clustered and active geo-replicated caches are database 0 only; `NoCluster` must be verified from effective configuration, not from the single `default` resource. → `rules/security-scope-data-access-policies.md`
 - **Managed identity is opt-in.** It is not enabled by default; assign a workload identity and data-access policy explicitly. → `rules/security-use-entra-authentication.md`
-- **Match modules to cluster policy.** Search requires `EnterpriseCluster` or a supported `NoCluster` size; RedisJSON works with `OSSCluster`; active geo-replication supports only Search and JSON. → `rules/performance-choose-cluster-policy.md`
+- **Match modules to cluster policy.** Search requires `EnterpriseCluster` and cannot be used with `OSSCluster`; RedisJSON works with `OSSCluster`; active geo-replication supports only Search and JSON. Confirm the full SKU, region, and preview or enrollment status before provisioning. → `rules/performance-choose-cluster-policy.md`
 - **Geo group size is a documented maximum to verify.** Up to five members; confirm the current limit in the documentation, plan it at provisioning, and do not combine with persistence. → `rules/geo-plan-active-geo-replication.md`
 - **Return the service endpoint and cloud-specific DNS.** Give clients the resource host name and configured port; the private DNS zone suffix is cloud-specific. → `rules/network-configure-private-dns.md`
 
