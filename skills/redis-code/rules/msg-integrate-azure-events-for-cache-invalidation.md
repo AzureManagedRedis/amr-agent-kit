@@ -31,7 +31,7 @@ Retries: bounded Azure Functions retry policy with poison/dead-letter handling
 Replay: Service Bus DLQ/replay tooling or Redis Streams with consumer groups for Redis-native downstream consumers
 ```
 
-Configure the Redis client in the handler with the AMR production checklist: normal Azure Managed Redis host, port `10000`, TLS or `rediss://`, certificate validation, Entra or managed identity where supported, singleton/pool reuse, startup configuration validation, timeouts, and bounded jittered retries.
+Configure the Redis client in the handler with the AMR production checklist: service-returned host and port (`10000` is the default database port), TLS or `rediss://`, certificate validation, Entra or managed identity where supported, singleton/pool reuse, startup configuration validation, timeouts, and bounded jittered retries.
 
 Track event lag, handler failures, retry counts, dead-letter depth, invalidation volume, and Redis latency/errors in Application Insights and Azure Monitor.
 

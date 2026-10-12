@@ -94,9 +94,9 @@ return 0
 
 # Always pass keys via KEYS array for cluster compatibility
 # Use ARGV for values and parameters
-# In OSSCluster, all KEYS must share the same hash tag
+# In any clustered policy (OSSCluster or EnterpriseCluster), all KEYS must share the same hash slot
 ```
 
-Always use the `KEYS` array for Redis keys (required for cluster mode) and `ARGV` for values and parameters. In Azure Managed Redis with OSSCluster, every key passed to a script must share the same hash tag or Redis can return `CROSSSLOT Keys in request don't hash to the same slot`. Do not construct additional Redis key names inside Lua; cluster clients cannot route hidden keys that were not declared in `KEYS`. Keep scripts short and focused. Use `register_script()` to cache scripts and execute with EVALSHA for better performance.
+Always use the `KEYS` array for Redis keys (required for cluster mode) and `ARGV` for values and parameters. Lua scripts run atomically, so in any clustered Azure Managed Redis policy (`OSSCluster` or `EnterpriseCluster`) every key passed to a script must share the same hash slot or Redis can return `CROSSSLOT Keys in request don't hash to the same slot`. Enterprise cross-slot routing for selected non-atomic multi-key commands does not extend to Lua scripts. Do not construct additional Redis key names inside Lua; cluster clients cannot route hidden keys that were not declared in `KEYS`. Keep scripts short and focused. Use `register_script()` to cache scripts and execute with EVALSHA for better performance.
 
 Reference: [Redis Lua Scripting](https://redis.io/docs/latest/develop/interact/programmability/eval-intro/)
