@@ -394,16 +394,17 @@
       "target_skill": "redis-code",
       "skill_path": "skills/redis-code/AGENTS.md",
       "prompt": "Review an Azure Managed Redis design that uses OSSCluster with the RedisJSON module but does not enable Search. One reviewer claims RedisJSON and Search both require EnterpriseCluster. The team may add vector search later and may eventually use active geo-replication. Based only on publicly documented Azure Managed Redis guidance, assess each claim, distinguish documented requirements from assumptions, and explain what must change if Search or geo is added. Do not rely on internal implementation details or cite URLs.",
-      "expected_output": "Public-documentation-grounded guidance that explains RedisJSON has no module-specific clustering-policy requirement, while RediSearch requires EnterpriseCluster and NoEviction; vector search uses RediSearch and therefore needs those settings and module selection at creation; active geo supports only RediSearch and RedisJSON, requires high availability and matching member configuration, and doesn't support Flash Optimized; and EnterpriseCluster is not a universal active-geo requirement.",
+      "expected_output": "Public-documentation-grounded guidance that states the public module documentation requires EnterpriseCluster and NoEviction for RediSearch and does not establish whether RedisJSON alone is compatible with OSSCluster; it neither asserts nor rejects that combination without a public compatibility source. Vector search uses RediSearch and therefore needs those settings and module selection at creation. Active geo supports only RediSearch and RedisJSON, requires high availability and matching member configuration, and does not support Flash Optimized. EnterpriseCluster is not a universal active-geo requirement.",
       "expectations": [
-        "States that public module guidance gives RedisJSON no module-specific clustering-policy requirement, so JSON alone does not require EnterpriseCluster.",
+        "States that public module guidance does not establish RedisJSON compatibility or incompatibility with OSSCluster; does not infer either from the Search restriction and recommends verifying the exact combination against a public service compatibility reference before recommending it.",
         "States that RediSearch requires EnterpriseCluster and NoEviction, and is incompatible with OSSCluster.",
         "States that vector search uses RediSearch and recommends selecting the module and required policy at creation because modules cannot be added to an existing instance.",
         "States that active geo-replication supports only RediSearch and RedisJSON, requires high availability and matching member configuration, and does not support Flash Optimized.",
-        "Does not claim active geo-replication universally requires EnterpriseCluster; the EnterpriseCluster requirement is specific to RediSearch."
+        "Does not claim active geo-replication universally requires EnterpriseCluster; distinguishes the documented Search requirement from the unestablished RedisJSON/OSSCluster combination."
       ],
       "anti_patterns": [
-        "Claims RedisJSON requires EnterpriseCluster.",
+        "States that RedisJSON is confirmed supported with OSSCluster solely from the current public module guidance.",
+        "States that RedisJSON requires EnterpriseCluster as a documented requirement based only on Search's policy restriction.",
         "Claims RediSearch is supported with OSSCluster or recommends Search without NoEviction.",
         "Treats all Redis modules as supported with active geo-replication.",
         "Claims active geo-replication always requires EnterpriseCluster, regardless of module choice.",

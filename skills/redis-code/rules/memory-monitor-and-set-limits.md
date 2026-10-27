@@ -1,22 +1,21 @@
 ---
-title: Monitor Memory and Set Limits
+title: Monitor Memory and Choose Capacity and Eviction
 impact: CRITICAL
 impactDescription: prevents out-of-memory crashes and performance degradation
 tags: memory, monitoring, maxmemory, eviction
 ---
 
-## Monitor Memory and Set Limits
+## Monitor Memory and Choose Capacity and Eviction
 
-Always configure maxmemory and an eviction policy in production. Monitor memory usage to prevent OOM errors and performance issues.
+Azure Managed Redis derives the database memory limit from the selected tier/SKU; clients cannot set `maxmemory` with `CONFIG SET`. Size the cache with headroom, choose the eviction policy through the AMR resource configuration, and monitor memory usage, fragmentation, evictions, and rejected writes.
 
-**Incorrect (no memory limits):**
+**Incorrect (try to manage AMR capacity from a Redis client):**
 
 ```python
-# No maxmemory configured - Redis uses all available memory
-# Application crashes when system runs out of memory
+r.config_set("maxmemory", "20gb")  # Rejected: AMR manages this from the SKU
 ```
 
-**Correct (configure limits and monitor):**
+**Correct (monitor the service-managed limit):**
 
 ```python
 import redis
@@ -42,7 +41,7 @@ def check_memory_health(r, warning_threshold=0.8, critical_threshold=0.95):
     max_mem = info.get("maxmemory", 0)
 
     if max_mem == 0:
-        return {"status": "warning", "message": "maxmemory not configured"}
+        return {"status": "warning", "message": "memory limit was not reported"}
 
     ratio = used / max_mem
 
@@ -71,7 +70,7 @@ def check_eviction_rate(r):
         return {
             "status": "warning",
             "evicted_keys": evicted,
-            "message": "Keys are being evicted - consider increasing memory"
+            "message": "Keys are being evicted - review capacity and eviction policy"
         }
     return {"status": "ok", "evicted_keys": 0}
 
@@ -128,6 +127,6 @@ if health["status"] != "ok":
     print(f"Largest keys: {large}")
 ```
 
-Configure `maxmemory` to leave headroom for OS and other processes. Choose appropriate eviction policy: `volatile-lru` for cache with TTLs, `allkeys-lru` for pure cache, `noeviction` for persistent data.
+Select an AMR SKU whose usable memory covers peak or P95 demand plus fragmentation and replication headroom. Choose an appropriate eviction policy through the service configuration: for example, a TTL-aware policy for cache data or `noeviction` when writes must fail rather than discard keys. Do not issue client-side `CONFIG SET maxmemory` or `CONFIG SET maxmemory-policy`; monitor the effective values and scale through Azure when required.
 
 Reference: [Redis Memory Management](https://redis.io/docs/latest/operate/oss_and_stack/management/optimization/memory-optimization/)

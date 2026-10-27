@@ -7,7 +7,7 @@ tags: keys, naming, namespacing, conventions, db0, tenancy
 
 ## Use Colons for Key Namespacing
 
-Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management. Azure Managed Redis uses the `default` database / database 0 pattern and does not support Redis logical-database multi-tenancy with `SELECT`, numbered DB indexes, or per-tenant `db=N` connection settings. Model tenants, environments, workloads, and schema versions with explicit key prefixes instead.
+Use colon-separated hierarchical key names to organize your keyspace. This convention is widely adopted and enables efficient key scanning and management. For Azure Managed Redis, use database 0 with explicit key prefixes for tenant, environment, workload, and schema-version separation. Public AMR documentation states that instances support a single database and lists `SELECT` as blocked, without a `NoCluster` exception. Do not recommend numbered databases, `db=N` tenancy, or live `SELECT` probes as a workaround. Key prefixes provide logical organization, not an authorization boundary.
 
 **Incorrect (inconsistent or flat naming):**
 
@@ -86,8 +86,10 @@ for key in r.scan_iter(match="prod:tenant:contoso:cart:v1:*", count=1000):
     print(key)
 ```
 
-The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For Azure Managed Redis, keep application data in database 0 and use a prefix template such as `<env>:tenant:<tenantId>:<workload>:v<schemaVersion>:<entity>:<id>` for logical separation. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
+The colon convention is not enforced by Redis but is a widely adopted standard. It makes keys self-documenting and enables pattern-based operations with SCAN. For Azure Managed Redis, keep application data in database 0 and use a prefix template such as `<env>:tenant:<tenantId>:<workload>:v<schemaVersion>:<entity>:<id>` for logical separation. Do not use additional logical databases. For caches, include a version segment such as `v1` or a data-contract version so deploys and schema changes can invalidate safely without broad deletes.
 
-When refactoring an application that used Azure Cache for Redis logical databases, remove `SELECT`, `db=N`, tenant-to-database maps, and `FLUSHDB` cleanup. Add a central key builder that requires environment, tenant, workload, schema version, entity, and identifier; change maintenance jobs to `SCAN MATCH <prefix>:* COUNT ...` with batched `DEL` or `UNLINK`; enforce tenant boundaries with application authorization, Redis ACL/data access key patterns, and metadata filters for search/RAG workloads. Use separate Azure Managed Redis caches when tenants require hard isolation, independent lifecycle, or separate compliance boundaries.
+When refactoring an application that used Azure Cache for Redis logical databases for tenancy, replace `SELECT`, `db=N`, tenant-to-database maps, and `FLUSHDB` cleanup with explicit key prefixes. Add a central key builder that requires environment, tenant, workload, schema version, entity, and identifier; change maintenance jobs to `SCAN MATCH <prefix>:* COUNT ...` with `DEL` or `UNLINK` calls that respect cluster-policy and active-geo hash-slot constraints; enforce tenant boundaries with application authorization, Redis ACL/data access key patterns, and metadata filters for search/RAG workloads. Use separate Azure Managed Redis caches when tenants require hard isolation, independent lifecycle, or separate compliance boundaries.
 
 Reference: [Redis Keys](https://redis.io/docs/latest/develop/use/keyspace/)
+
+Reference: [AMR database and blocked-command guidance](https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information)

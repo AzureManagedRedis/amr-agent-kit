@@ -127,7 +127,7 @@ Each skill contains:
 
 - `SKILL.md` - Agent-facing activation, scope, workflow, and quick-reference guidance.
 - `README.md` - Human-facing usage, structure, and maintenance notes.
-- `AGENTS.md` - Compiled long-form guidance generated from rule files.
+- `AGENTS.md` - Compact generated catalog linking to individual rule files.
 - `rules/` - Individual rule files with examples, impact, and references.
 - `metadata.json` - Version, publication metadata, abstract, and reference links.
 

@@ -28,7 +28,7 @@ The corpus also includes scenarios that test whether AMR guidance composes clean
 - **Native AMR IaC** - verifies ARM/Bicep and Terraform guidance uses the Azure Managed Redis cluster/database/default-database model, service-returned connection data, cloud-specific Private Link DNS, and deployment preflight checks.
 - **Tenant key and cluster design** - verifies Redis application guidance prefers key prefixes for portable tenant separation and explains documented multi-key behavior by cluster policy without asserting unsupported logical-database behavior.
 - **Tenant isolation infrastructure** - verifies infrastructure guidance distinguishes key naming from access control, scopes data permissions, and recommends separate AMR caches when a stronger resource-level isolation boundary is required.
-- **Correctness and no-harm gates** - evals 13–18 use `minimum_uplift: 0`; they check that answers avoid specific harmful or incorrect recommendations and are not, by themselves, evidence of skill uplift. They cover service-returned ports, the `minimumTlsVersion` value, module compatibility, automatic zone redundancy with high availability in supported regions, SKU/eviction/memory monitoring, and the documented five-instance active geo-replication limit.
+- **Correctness and no-harm gates** - evals 13–18 use `minimum_uplift: 0`; they check that answers avoid specific harmful or incorrect recommendations and are not, by themselves, evidence of skill uplift. They cover service-returned ports, the `minimumTlsVersion` value, documented module requirements and explicit compatibility uncertainty, automatic zone redundancy with high availability in supported regions, SKU/eviction/memory monitoring, and the documented five-instance active geo-replication limit.
 
 These scenarios should expose whether the skill adds value beyond standalone Redis advice by requiring the answer to connect AMR practices with surrounding Azure services.
 
@@ -37,7 +37,7 @@ These scenarios should expose whether the skill adds value beyond standalone Red
 Run each prompt twice with the same model:
 
 1. **without_skill** - the prompt only, with no AMR skill file in context.
-2. **with_skill** - the same prompt after force-loading the target skill's `AGENTS.md`.
+2. **with_skill** - the same prompt after loading the target skill's compact `AGENTS.md` index, its `SKILL.md`, and only the linked rules relevant to the task.
 
 Grade both outputs against the same expectations in `evals.json`. For one answer, the expectation score is the number of passed expectations divided by the total expectations. Report anti-patterns separately; a high expectation score does not offset an anti-pattern.
 

@@ -41,6 +41,9 @@ jobs:
       - name: Validate skill package structure
         run: npm run validate
 
+      - name: Run confidentiality regression tests
+        run: npm run test:confidentiality
+
       - name: Prepare release notes
         shell: pwsh
         run: |
@@ -81,19 +84,22 @@ jobs:
           Remove-Item -Path $dist -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path (Join-Path $dist 'skills') -Force | Out-Null
 
-          Get-ChildItem -Path 'skills' -Directory | ForEach-Object {
-            if (Test-Path (Join-Path $_.FullName 'SKILL.md')) {
-              $zipPath = Join-Path $dist (Join-Path 'skills' ("{0}.zip" -f $_.Name))
-              New-ZipFromDirectory -Source $_.FullName -Destination $zipPath -IncludeBaseDirectory $true
-            }
+          $selectionJson = node scripts/distribution-files.mjs --release-inputs
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate release inputs.' }
+          $selection = $selectionJson | ConvertFrom-Json
+
+          foreach ($skill in $selection.skills) {
+            $source = Join-Path $PWD $skill.sourcePath
+            $zipPath = Join-Path $dist $skill.archivePath
+            New-ZipFromDirectory -Source $source -Destination $zipPath -IncludeBaseDirectory $true
           }
 
           $manifestRoot = Join-Path $dist 'amr-agent-kit-manifests'
           New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
-          @('plugin.json', 'gemini-extension.json', 'apm.yml', '.waza.yaml', '.claude-plugin', '.cursor-plugin', '.codex-plugin') |
-            Where-Object { Test-Path $_ } |
-            ForEach-Object { Copy-Item -Path $_ -Destination $manifestRoot -Recurse -Force }
-          New-ZipFromDirectory -Source $manifestRoot -Destination (Join-Path $dist 'amr-agent-kit-manifests.zip') -IncludeBaseDirectory $true
+          foreach ($manifest in $selection.manifests) {
+            Copy-Item -Path (Join-Path $PWD $manifest.sourcePath) -Destination $manifestRoot -Recurse -Force
+          }
+          New-ZipFromDirectory -Source $manifestRoot -Destination (Join-Path $dist $selection.manifestArchivePath) -IncludeBaseDirectory $true
 
           Get-ChildItem -Path $dist -Recurse -File | Select-Object -ExpandProperty FullName
 
@@ -120,4 +126,3 @@ jobs:
           } else {
             gh release create $tag @assets --title $tag --notes-file 'release-notes.md' --verify-tag
           }
-
