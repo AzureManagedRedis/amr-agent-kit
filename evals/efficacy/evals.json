@@ -76,7 +76,7 @@
         "Requires Private Link/private endpoint access and disabled publicNetworkAccess for the production data plane instead of relying on public access or IP allowlists.",
         "Identifies Azure Managed Redis as Microsoft.Cache/redisEnterprise with private endpoint group id redisEnterprise.",
         "Requires applications to connect to the resource-returned normal host name and database port with TLS, and explicitly rejects configuring clients to use a privatelink host name directly.",
-        "Uses the current cloud's AMR private DNS zone, identifies privatelink.redis.azure.net only as the public-Azure Gen2 example, and explains that it must resolve the normal cache hostname to the private endpoint IP.",
+        "Uses the current cloud's AMR private DNS zone, identifies privatelink.redis.azure.net only as the public Azure example, and explains that it must resolve the normal cache hostname to the private endpoint IP.",
         "Explains that VNet peering does not automatically provide DNS resolution; links the private DNS zone to the AKS spoke VNet, management VNet, and any resolver/shared-services VNet, or configures conditional forwarding through Azure DNS Private Resolver/custom DNS.",
         "Calls out private endpoint subnet policy, NSG, UDR, firewall, and /32 route considerations that can block or bypass intended private endpoint traffic.",
         "Includes validation from each participating network: nslookup or dig for the normal cache hostname returns the private endpoint IP, and a TLS Redis client test reaches the service-returned database port."
@@ -291,55 +291,51 @@
     },
     {
       "id": 11,
-      "name": "redis-db0-cluster-key-design",
+      "name": "redis-tenant-key-and-cluster-design",
       "target_skill": "redis-code",
       "skill_path": "skills/redis-code/AGENTS.md",
-      "prompt": "Review this Redis application design for Azure Managed Redis. The app was copied from an Azure Cache for Redis design that put tenants in Redis databases 0-15, uses SELECT to switch databases per request, and runs multi-key Lua scripts and MULTI/EXEC transactions over keys like tenantA:user:1:cart and tenantA:user:1:totals, plus MGET/DEL batches spanning many tenant keys. The infrastructure team is choosing between NoCluster, OSSCluster, and EnterpriseCluster policies. One engineer insists Azure Managed Redis is always single-database (database 0 only) and that hash tags are mandatory for every multi-key command regardless of cluster policy; another insists hash tags are never needed. Provide the corrected key naming, logical separation, per-policy multi-key/transaction/Lua safety, logical-database availability by topology, and client/cluster assumptions.",
-      "expected_output": "A Redis application design for AMR that prefers explicit colon-separated key prefixes over Redis logical databases for tenant separation and explains that logical-database availability is topology-dependent (clustered OSSCluster/EnterpriseCluster and active-geo-replicated CRDB caches are engine-constrained to database 0, while a non-clustered NoCluster cache can allow more than one logical database), so DB0-only must be verified for NoCluster via effective config or a live SELECT rather than assumed and never inferred from the single managed database resource; makes multi-key/transaction/Lua safety policy-specific (NoCluster unsharded with no slot constraint; OSSCluster requires same-slot placement/hash tags for every multi-key command, transaction, and Lua script; EnterpriseCluster can scatter-gather selected non-atomic multi-key commands such as MGET/MSET/DEL/UNLINK/EXISTS/TOUCH across slots while transactions, Lua-with-KEYS, and destination-key commands still require co-located keys); treats hash tags as the portable co-location mechanism rather than a universal requirement; refactors tenant isolation to key builders, scoped scans, access policies/key patterns, metadata filters, or separate caches; and keeps AMR client assumptions (service-returned host and port with TLS, reusable client, cluster-aware client only for OSSCluster).",
+      "prompt": "Review this Redis application design for Azure Managed Redis. The app was copied from a design that uses Redis database indexes with SELECT for tenant separation, and it also runs MGET and DEL batches over keys like tenantA:user:1:cart and tenantA:user:1:totals. The infrastructure team is choosing between NoCluster, OSSCluster, and EnterpriseCluster policies. One engineer says hash tags are required for every multi-key command under every policy; another says they are never needed. Recommend portable tenant key naming and explain the documented cross-slot behavior and client assumptions for these policies.",
+      "expected_output": "A Redis application design that prefers explicit key prefixes and centralized key builders over database indexes as a portable tenant-separation approach; explains that NoCluster is unsharded and has no slot-based restriction, OSSCluster requires every multi-key command's keys to map to the same hash slot, and EnterpriseCluster permits only a documented subset of multi-key commands (DEL, MSET, MGET, EXISTS, UNLINK, TOUCH) across slots; recommends hash tags when related keys must be co-located without claiming they are required for every EnterpriseCluster command; warns about CROSSSLOT where applicable; and selects a Redis Cluster-aware client for OSSCluster while using a single-endpoint client for EnterpriseCluster or NoCluster.",
       "expectations": [
-        "Prefers explicit colon-separated key prefixes over Redis logical databases for tenant, environment, and workload separation, with central key building and safe scoped scans.",
-        "Explains that logical-database availability on AMR is topology-dependent: clustered (OSSCluster/EnterpriseCluster) and active geo-replication (CRDB) are engine-constrained to database 0, while a non-clustered (NoCluster) cache can permit more than one logical database.",
-        "States that DB0-only must be verified for NoCluster via effective configuration or a live SELECT probe, is not inferred from the single managed database resource, and is not assumed to be universal across AMR/ACRE.",
-        "Makes multi-key/transaction/Lua safety policy-specific: NoCluster is unsharded (no slot constraint); OSSCluster requires same-slot placement for every multi-key command, transaction, and Lua script; EnterpriseCluster can scatter-gather selected non-atomic multi-key commands (MGET/MSET/DEL/UNLINK/EXISTS/TOUCH) across slots.",
-        "States that transactions (MULTI/EXEC/WATCH), Lua scripts declaring keys in KEYS, and destination-key commands still require co-located keys under any clustered policy, including EnterpriseCluster.",
-        "Treats hash tags as the portable co-location mechanism that works across policies, not a universal requirement for every clustered multi-key command.",
-        "Explains CROSSSLOT risk when keys used together do not share a hash slot under OSSCluster or for atomic operations.",
-        "Keeps AMR client assumptions aligned with the service-returned host and port, TLS, and reusable clients, and chooses OSSCluster only with a Redis Cluster-aware client.",
-        "Provides refactor guidance for DB-index tenancy such as replacing SELECT/db=N and FLUSHDB cleanup with prefix-scoped SCAN plus batched deletion, using data access policies/key patterns or metadata filters, and recommending separate AMR caches for hard tenant isolation."
+        "Prefers explicit, consistently built key prefixes over Redis database indexes for portable tenant, environment, and workload separation.",
+        "Explains that NoCluster is unsharded and has no slot-based restriction for multi-key commands.",
+        "Explains that OSSCluster requires keys used by a multi-key command to map to the same hash slot.",
+        "Identifies DEL, MSET, MGET, EXISTS, UNLINK, and TOUCH as the documented EnterpriseCluster commands that can operate across slots.",
+        "Recommends hash tags to co-locate related keys when required, without claiming every EnterpriseCluster multi-key command needs them.",
+        "Explains CROSSSLOT risk for commands whose keys must share a slot.",
+        "Uses a Redis Cluster-aware client for OSSCluster and a single-endpoint client for EnterpriseCluster or NoCluster.",
+        "Recommends prefix-scoped key scans and batched deletion for tenant-scoped cleanup."
       ],
       "anti_patterns": [
-        "Claims Azure Managed Redis or ACRE is universally single-database (database 0 only) across all cluster policies without distinguishing clustered/CRDB from non-clustered topologies.",
-        "Infers the number of logical Redis databases from the single managed database resource, or asserts NoCluster is DB0-only without verifying effective config or a live SELECT.",
-        "Claims hash tags are mandatory for every multi-key command under all clustered policies, ignoring that EnterpriseCluster can scatter-gather selected non-atomic multi-key commands.",
-        "Claims hash tags are never needed, or that they are optional for atomic multi-key operations (transactions or Lua) in clustered Redis.",
-        "Uses SELECT or Redis DB indexes as the portable tenant-separation design instead of key prefixes.",
+        "Claims hash tags are mandatory for every multi-key command under EnterpriseCluster, ignoring its documented cross-slot command subset.",
+        "Claims hash tags are never needed for clustered multi-key operations.",
+        "Recommends SELECT or Redis database indexes as the portable tenant-separation design instead of key prefixes.",
         "Chooses OSSCluster while assuming a non-cluster-aware client will work unchanged.",
-        "Ignores CROSSSLOT risk for atomic multi-key operations (transactions or Lua) under clustered policies."
+        "Ignores CROSSSLOT risk when a command's keys must share a slot."
       ],
       "minimum_skill_score": 0.85,
       "minimum_uplift": 0.2
     },
     {
       "id": 12,
-      "name": "amr-db-semantics-by-cluster-policy",
+      "name": "amr-tenant-isolation-infrastructure",
       "target_skill": "azure-redis-infra",
       "skill_path": "skills/azure-redis-infra/AGENTS.md",
-      "prompt": "Review this Azure Managed Redis infrastructure plan. A teammate wrote that 'AMR always exposes only database 0 and never supports SELECT, regardless of cluster policy,' and cited the fact that the deployment provisions a single Microsoft.Cache/redisEnterprise/databases resource named default as proof. The plan targets a NoCluster cache for one service and a separate OSSCluster cache with active geo-replication for another. Correct the logical-database claim, tie it to cluster policy and geo-replication, and give the portable tenant-separation and hard-isolation recommendations.",
-      "expected_output": "Infrastructure guidance that corrects the blanket claim: under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication only database 0 is available and SELECT to another index is not supported, but under NoCluster the logical-database count is not proven by a single default database resource and must be confirmed from the database's effective configuration or a live SELECT capability check before asserting DB0-only or multi-database behavior. Recommends application key prefixes as the portable logical-separation approach and separate AMR caches for hard tenant isolation, plus scoped identities and data access policies.",
+      "prompt": "Review this Azure Managed Redis infrastructure plan. A platform team provisions one Microsoft.Cache/redisEnterprise/databases resource named default and plans to put multiple tenants in it. The team needs strong separation for regulated tenants. Explain what key prefixes can provide, how data access permissions should be scoped, and when separate caches are the appropriate isolation boundary. Do not infer Redis logical-database behavior from the resource layout.",
+      "expected_output": "Infrastructure guidance that distinguishes key prefixes as an application-level naming and organization technique from access control; recommends scoped identities and data access permissions for restricting users or applications; and recommends separate Azure Managed Redis caches when the requirement is a stronger resource-level tenant boundary. It does not infer logical-database behavior from the single default database resource.",
       "expectations": [
-        "Rejects the blanket claim that AMR exposes only database 0 and never supports SELECT regardless of cluster policy.",
-        "States that clustered policies (OSSCluster, EnterpriseCluster) and active geo-replication are database 0 only and do not support SELECT to another index.",
-        "States that under NoCluster the logical-database behavior must be verified from effective configuration or a live SELECT capability check rather than assumed.",
-        "Explains that a single default database resource in ARM/Bicep/Terraform does not prove how many logical databases the endpoint exposes.",
-        "Recommends application key prefixes as the portable logical-separation approach across cluster policies.",
-        "Recommends separate AMR caches for hard tenant isolation, plus scoped identities and data access policies."
+        "Explains that key prefixes provide application-level naming separation, not access control.",
+        "Recommends scoped identities and data access permissions to restrict tenant access.",
+        "Recommends a separate AMR cache when a stronger resource-level tenant isolation boundary is required.",
+        "Does not infer logical-database behavior from the Microsoft.Cache/redisEnterprise/databases/default resource.",
+        "Avoids recommending Redis database indexes as a security boundary."
       ],
       "anti_patterns": [
-        "Repeats the blanket claim that AMR always exposes only database 0 and never supports SELECT regardless of cluster policy.",
-        "Asserts NoCluster is DB0-only or multi-database without confirming from effective configuration or a live SELECT check.",
-        "Treats the single default database resource as proof of the logical database count.",
-        "Recommends mapping tenants to numbered Redis DB indexes on AMR.",
-        "Omits key prefixes and separate caches as the tenant-separation and hard-isolation recommendations."
+        "Treats key prefixes alone as an access-control or hard-isolation boundary.",
+        "Treats the single default database resource as proof of logical-database behavior.",
+        "Recommends Redis database indexes as a security boundary.",
+        "Omits scoped access permissions when discussing tenant access.",
+        "Omits separate caches when the requirement is stronger resource-level isolation."
       ],
       "minimum_skill_score": 0.85,
       "minimum_uplift": 0.2
@@ -350,11 +346,11 @@
       "target_skill": "redis-code",
       "skill_path": "skills/redis-code/AGENTS.md",
       "prompt": "Generate a production Python client configuration for an Azure Managed Redis database whose deployment output is hostName=orders-cache.example.internal and port=13000. A teammate wants to replace the port with 10000 and fail startup whenever REDIS_PORT is not 10000 because that is the usual AMR port. Review that proposal and provide the corrected client setup. Do not connect to Azure.",
-      "expected_output": "A client setup that preserves the service-returned host name and port 13000, enables TLS with certificate validation, validates that configuration is present and well-formed without rejecting a valid non-default port, and explains that 10000 is the default database port rather than a universal constant.",
+      "expected_output": "A client setup that preserves the service-returned host name and port 13000, enables TLS with certificate validation, validates that configuration is present and well-formed without rejecting a valid non-default port, and explains that 10000 is a common AMR database port rather than a universal constant.",
       "expectations": [
         "Uses orders-cache.example.internal and port 13000 from deployment configuration rather than replacing either value.",
         "Does not throw, fail startup, or warn merely because the service-returned port differs from 10000.",
-        "Explains that 10000 is the default AMR database port while configured database ports and cloud-specific host names must be consumed from the resource output.",
+        "Identifies 10000 as a common AMR database port rather than a universal constant.",
         "Enables TLS or rediss with certificate validation and validates required configuration at startup.",
         "Uses a reusable client or pool with explicit timeouts and bounded retry behavior."
       ],
@@ -374,13 +370,13 @@
       "target_skill": "azure-redis-infra",
       "skill_path": "skills/azure-redis-infra/AGENTS.md",
       "prompt": "Review this Azure Managed Redis Bicep proposal: minimumTlsVersion is set to '1.3' and the default database clientProtocol is Plaintext because the team assumes TLS 1.3 is the newest allowed minimum. Provide the corrected production settings and explain the distinction between the control-plane minimum-version property and the TLS protocol a client may negotiate. Do not deploy.",
-      "expected_output": "Infrastructure guidance that sets minimumTlsVersion to 1.2, keeps clientProtocol encrypted, requires client certificate validation, explains that 1.3 is not an accepted minimumTlsVersion value, and treats negotiated wire-protocol support as a separate capability.",
+      "expected_output": "Infrastructure guidance that sets minimumTlsVersion to 1.2, keeps clientProtocol encrypted, requires client certificate validation, explains that 1.3 is not an accepted minimumTlsVersion value, and treats negotiated wire-protocol support as a separate capability without making unsupported claims about when the setting can be changed.",
       "expectations": [
         "Sets or recommends minimumTlsVersion '1.2' as the accepted control-plane value.",
         "Rejects minimumTlsVersion '1.3' rather than presenting it as a stronger valid setting.",
         "Keeps clientProtocol encrypted and requires TLS with certificate validation.",
         "Distinguishes the control-plane minimum-version property from the protocol version a client may negotiate.",
-        "Treats the minimum TLS version as a creation-time decision to confirm against current documentation rather than assuming it can be changed freely later."
+        "Avoids claiming that minimumTlsVersion is immutable or can only be set at creation."
       ],
       "anti_patterns": [
         "Sets minimumTlsVersion to 1.3.",
@@ -397,45 +393,45 @@
       "name": "redisjson-osscluster-policy",
       "target_skill": "redis-code",
       "skill_path": "skills/redis-code/AGENTS.md",
-      "prompt": "Review an Azure Managed Redis design that uses OSSCluster with the RedisJSON module but does not enable Search. One reviewer claims RedisJSON and Search both require EnterpriseCluster. The team may add vector search later and may eventually use active geo-replication. Correct the policy and module claims and identify what must change if Search or geo is added.",
-      "expected_output": "Guidance that permits RedisJSON with OSSCluster, states that Search/RediSearch requires EnterpriseCluster and cannot be used with OSSCluster, notes that only Search and JSON are geo-compatible, and requires validating SKU, region, preview/allowlist, and flash or geo constraints before provisioning.",
+      "prompt": "Review an Azure Managed Redis design that uses OSSCluster with the RedisJSON module but does not enable Search. One reviewer claims RedisJSON and Search both require EnterpriseCluster. The team may add vector search later and may eventually use active geo-replication. Based only on publicly documented Azure Managed Redis guidance, assess each claim, distinguish documented requirements from assumptions, and explain what must change if Search or geo is added. Do not rely on internal implementation details or cite URLs.",
+      "expected_output": "Public-documentation-grounded guidance that explains RedisJSON has no module-specific clustering-policy requirement, while RediSearch requires EnterpriseCluster and NoEviction; vector search uses RediSearch and therefore needs those settings and module selection at creation; active geo supports only RediSearch and RedisJSON, requires high availability and matching member configuration, and doesn't support Flash Optimized; and EnterpriseCluster is not a universal active-geo requirement.",
       "expectations": [
-        "States that RedisJSON is permitted with OSSCluster and does not require EnterpriseCluster solely because JSON is enabled.",
-        "States that Search or RediSearch is incompatible with OSSCluster.",
-        "Recommends EnterpriseCluster if Search or vector search is added.",
-        "States that active geo-replication supports only Search and JSON modules.",
-        "Requires validation of SKU, region, preview/allowlist, and flash or geo constraints before provisioning."
+        "States that public module guidance gives RedisJSON no module-specific clustering-policy requirement, so JSON alone does not require EnterpriseCluster.",
+        "States that RediSearch requires EnterpriseCluster and NoEviction, and is incompatible with OSSCluster.",
+        "States that vector search uses RediSearch and recommends selecting the module and required policy at creation because modules cannot be added to an existing instance.",
+        "States that active geo-replication supports only RediSearch and RedisJSON, requires high availability and matching member configuration, and does not support Flash Optimized.",
+        "Does not claim active geo-replication universally requires EnterpriseCluster; the EnterpriseCluster requirement is specific to RediSearch."
       ],
       "anti_patterns": [
         "Claims RedisJSON requires EnterpriseCluster.",
-        "Claims Search is supported with OSSCluster.",
+        "Claims RediSearch is supported with OSSCluster or recommends Search without NoEviction.",
         "Treats all Redis modules as supported with active geo-replication.",
-        "Recommends OSSCluster or NoCluster as a way to run the Search module.",
-        "Presents module compatibility as independent of SKU, region, or geo settings."
+        "Claims active geo-replication always requires EnterpriseCluster, regardless of module choice.",
+        "Says modules can be added to an existing instance or ignores the documented tier and geo restrictions."
       ],
       "minimum_skill_score": 1,
       "minimum_uplift": 0
     },
     {
       "id": 16,
-      "name": "amr-gen2-zone-shape",
+      "name": "amr-automatic-zone-redundancy",
       "target_skill": "azure-redis-infra",
       "skill_path": "skills/azure-redis-infra/AGENTS.md",
-      "prompt": "Review a Gen2 Azure Managed Redis Bicep template that enables high availability and also sends zones: ['1','2','3'] because the author wants zone redundancy. Explain whether that shape is valid, provide the corrected Gen2 settings, and contrast the Gen1/ACRE zonal requirement. Do not run what-if or deploy.",
-      "expected_output": "Guidance that enables high availability for Gen2 but omits the zones property because explicit zones are rejected and placement is service-managed, while explaining that Gen1/ACRE zonal deployments require at least three valid zones in a supported region.",
+      "prompt": "Review this Azure Managed Redis deployment plan. The team wants zone redundancy, but assumes it must choose and submit specific availability-zone IDs. It is considering disabling high availability if it cannot choose the zones itself. Explain the documented way to get zone redundancy and what the team should verify before deployment. Do not deploy.",
+      "expected_output": "Guidance that enables high availability and deploys the cache in a region that supports availability zones; explains that, in supported regions, Azure Managed Redis automatically distributes cache nodes across zones with no additional zone configuration; and does not promise zone redundancy in regions without availability zones.",
       "expectations": [
-        "Removes or explicitly omits the zones property for a Gen2 AMR create request.",
-        "Keeps high availability enabled for the production Gen2 deployment.",
-        "Explains that Gen2 zone placement is handled by the service in supported regions.",
-        "Explains that explicit zone lists apply to Gen1/ACRE and require at least three valid zones.",
-        "Recommends validating regional availability-zone support before provisioning."
+        "Recommends the high availability configuration for zone redundancy.",
+        "States that in regions with availability zones, Azure Managed Redis automatically distributes nodes across zones without requiring the customer to select zone IDs.",
+        "States that high availability without availability-zone support in the region does not provide cross-zone placement.",
+        "Recommends validating both Azure Managed Redis availability and availability-zone support in the target region.",
+        "Does not recommend disabling high availability merely because explicit zone selection is unavailable."
       ],
       "anti_patterns": [
-        "Emits a zones array for Gen2 AMR creation.",
-        "Claims zones ['1','2','3'] is required for Gen2.",
-        "Disables high availability solely to avoid the invalid zones property.",
-        "Applies the Gen2 omit-zones rule to Gen1/ACRE.",
-        "Ignores regional zone support."
+        "Claims the customer must select and submit explicit zone IDs to obtain AMR zone redundancy.",
+        "Promises zone redundancy in a region that does not support availability zones.",
+        "Recommends disabling high availability because the customer cannot choose specific zones.",
+        "Imports Azure Cache for Redis zone-selection requirements into Azure Managed Redis guidance.",
+        "Ignores regional support for availability zones."
       ],
       "minimum_skill_score": 1,
       "minimum_uplift": 0
@@ -445,21 +441,21 @@
       "name": "redis-amr-service-managed-memory",
       "target_skill": "redis-code",
       "skill_path": "skills/redis-code/AGENTS.md",
-      "prompt": "Review this startup code for an application using Azure Managed Redis: it runs CONFIG SET maxmemory 20gb and CONFIG SET maxmemory-policy allkeys-lru, then assumes the cache can never reject writes. Replace it with the correct AMR capacity, eviction, monitoring, and OOM guidance. Do not connect to a cache.",
-      "expected_output": "Guidance that rejects client-side maxmemory configuration, explains that AMR capacity is service-managed by the selected SKU, configures eviction through the Azure resource, sizes with headroom, monitors memory and evictions, and handles possible OOM or rejected writes.",
+      "prompt": "Review this Azure Managed Redis capacity plan. The team targets 20 GB of data, chooses the allkeys-lru eviction policy, and assumes that eviction means writes can never fail. Explain how to choose capacity, configure eviction, and monitor memory using documented Azure Managed Redis guidance. Do not connect to a cache.",
+      "expected_output": "Guidance that sizes the cache using the workload's dataset and the selected SKU's capacity, chooses an eviction policy that fits the application's key-retention needs, and monitors Used Memory Percentage with alerts and scaling considerations. It accounts for the documented behavior of the Used Memory metric and does not promise that eviction eliminates the need for capacity planning or monitoring.",
       "expectations": [
-        "States that clients cannot configure AMR maxmemory with CONFIG SET and removes that startup action.",
-        "Explains that the effective memory limit is determined by the AMR tier/SKU.",
-        "Moves eviction-policy selection to the AMR control-plane or IaC configuration rather than client CONFIG SET.",
-        "Sizes from peak or P95 memory with fragmentation and replication headroom.",
-        "Monitors effective memory, fragmentation, evictions, and rejected writes and does not claim writes can never fail."
+        "Chooses cache capacity based on the workload's dataset size and the selected SKU's memory capacity, rather than a client-owned fixed memory limit.",
+        "Chooses an eviction policy based on which keys should be eligible for eviction and uses the Azure Managed Redis resource configuration for that setting.",
+        "Explains that Used Memory includes primary and replica shards when high availability is enabled, while the SKU memory limit already accounts for replication.",
+        "Recommends monitoring Used Memory Percentage and alerting before capacity pressure; identifies scaling as an option when usage remains high.",
+        "Does not claim that eviction removes the need to size and monitor the cache."
       ],
       "anti_patterns": [
-        "Recommends CONFIG SET maxmemory on AMR.",
-        "Recommends CONFIG SET maxmemory-policy as the AMR production control surface.",
-        "Treats maxmemory as an application-owned setting.",
-        "Promises that eviction prevents every OOM or rejected write.",
-        "Omits SKU sizing or memory monitoring."
+        "Treats the configured dataset target as a guaranteed amount of available memory independent of SKU.",
+        "Chooses an eviction policy without considering which keys are eligible for eviction.",
+        "Misreads the Used Memory metric as excluding high-availability replicas.",
+        "Promises that an eviction policy eliminates capacity planning or monitoring.",
+        "Omits SKU capacity, Used Memory Percentage monitoring, or alerting."
       ],
       "minimum_skill_score": 1,
       "minimum_uplift": 0
@@ -470,9 +466,9 @@
       "target_skill": "azure-redis-infra",
       "skill_path": "skills/azure-redis-infra/AGENTS.md",
       "prompt": "A team has five caches in a pure Azure Managed Redis active geo-replication group and wants to add a sixth as permanent capacity, citing a six-member group they saw during an ACRE-to-AMR migration. Using only publicly documented behavior, review the proposal: state the documented maximum group size, whether a permanent sixth member is supported, and what must be verified before changing membership. Do not call Azure and do not speculate about internal enforcement mechanisms.",
-      "expected_output": "Public-documentation-grounded guidance that states the documented maximum active geo-replication group size is five (to confirm in current Azure Managed Redis documentation for the target subscription and region), concludes a permanent sixth member is not supported, declines to treat a transient state observed during a migration as supported permanent capacity, and requires a supported, validated membership workflow with compatible member configuration - without asserting internal engine or enforcement details.",
+      "expected_output": "Public-documentation-grounded guidance that states the documented maximum active geo-replication group size is five, concludes a permanent sixth member is not supported, declines to treat a transient state observed during a migration as supported permanent capacity, and recommends checking current public guidance and compatible member configuration before changing membership - without asserting internal engine or enforcement details.",
       "expectations": [
-        "States that the documented maximum active geo-replication group size is five and should be confirmed in current Azure Managed Redis documentation for the target subscription and region.",
+        "States that the documented maximum active geo-replication group size is five.",
         "Concludes that a permanent sixth member is not supported and rejects the proposal.",
         "Declines to treat a one-off or transient state observed during a migration as evidence of supported permanent capacity.",
         "Requires planning any membership change as a supported, validated workflow with compatible member configuration (matching SKU, modules, and policies).",

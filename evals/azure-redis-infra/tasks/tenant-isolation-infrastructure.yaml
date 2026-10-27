@@ -1,0 +1,22 @@
+id: amr-tenant-isolation-infrastructure-009
+name: Tenant isolation infrastructure
+description: |
+  Tests that the skill distinguishes application-level key naming from access
+  control and recommends appropriately scoped permissions or separate Azure
+  Managed Redis caches for stronger tenant isolation. It must not infer
+  logical-database behavior from the managed database resource layout.
+tags:
+  - azure-managed-redis
+  - tenant-isolation
+  - security
+inputs:
+  prompt: |
+    A platform team provisions one Microsoft.Cache/redisEnterprise/databases
+    resource named default and plans to put multiple tenants in it. The team
+    needs strong separation for regulated tenants. Explain what key prefixes
+    can provide, how data access permissions should be scoped, and when separate
+    Azure Managed Redis caches are the appropriate isolation boundary. Do not
+    infer Redis logical-database behavior from the resource layout.
+expected:
+  outcomes:
+    - type: task_completed

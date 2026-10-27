@@ -7,7 +7,7 @@ These evals measure whether AMR Agent Kit adds value when a skill is loaded. The
 
 ## Hardening from Iteration 1
 
-The first paired sample showed that baseline answers were already strong on generic Redis, RAG, Azure networking, and reliability prompts. To make future runs more discriminating, the prompts now use review-style scenarios with plausible but unsafe design choices. The goal is to check whether the loaded AMR skill catches details that a strong general model often misses.
+The first paired sample showed that baseline answers were already strong on generic Redis, RAG, Azure networking, and reliability prompts. That historical sample predates the current definitions for evals 11–18 and does not validate those exact rubrics. To make future runs more discriminating, the prompts use review-style scenarios with plausible but unsafe design choices. The goal is to check whether the loaded AMR skill catches details that a strong general model often misses.
 
 Key changes:
 
@@ -26,9 +26,9 @@ The corpus also includes scenarios that test whether AMR guidance composes clean
 - **Blob Storage + Event Grid + Azure AI + AMR vector search** - verifies idempotent RAG ingestion, Azure AI embedding/version boundaries, citation metadata, semantic-cache scoping, and Azure-native connectivity.
 - **Metric-based AMR sizing** - verifies SKU guidance uses peak/P95 memory, server load, connected clients, bandwidth, module needs, regional availability, and preview status rather than legacy/source SKU labels.
 - **Native AMR IaC** - verifies ARM/Bicep and Terraform guidance uses the Azure Managed Redis cluster/database/default-database model, service-returned connection data, cloud-specific Private Link DNS, and deployment preflight checks.
-- **DB0 and clustered key design** - verifies Redis application guidance prefers key prefixes for logical separation, makes logical-database availability topology-specific (clustered/CRDB are database-0-only; NoCluster may allow more and must be verified), and makes hash-tag requirements policy-specific for clustered multi-key, transaction, and Lua operations.
-- **AMR logical-database semantics by cluster policy** - verifies infrastructure guidance rejects the blanket claim that AMR always exposes only database 0 and never supports SELECT regardless of cluster policy; clustered policies and active geo-replication are database 0 only, while NoCluster must be confirmed from effective configuration or a live SELECT check, and a single `default` database resource does not prove the logical-database count. Key prefixes remain the portable separation approach and separate caches the hard-isolation approach.
-- **Source-truth harm gates** - verify non-default service ports are preserved, `minimumTlsVersion` remains `1.2`, RedisJSON is not incorrectly blocked on OSSCluster, Gen2 templates omit `zones`, AMR memory remains service-managed, and geo cardinality distinguishes the normal effective limit from the mixed-generation migration exception.
+- **Tenant key and cluster design** - verifies Redis application guidance prefers key prefixes for portable tenant separation and explains documented multi-key behavior by cluster policy without asserting unsupported logical-database behavior.
+- **Tenant isolation infrastructure** - verifies infrastructure guidance distinguishes key naming from access control, scopes data permissions, and recommends separate AMR caches when a stronger resource-level isolation boundary is required.
+- **Correctness and no-harm gates** - evals 13–18 use `minimum_uplift: 0`; they check that answers avoid specific harmful or incorrect recommendations and are not, by themselves, evidence of skill uplift. They cover service-returned ports, the `minimumTlsVersion` value, module compatibility, automatic zone redundancy with high availability in supported regions, SKU/eviction/memory monitoring, and the documented five-instance active geo-replication limit.
 
 These scenarios should expose whether the skill adds value beyond standalone Redis advice by requiring the answer to connect AMR practices with surrounding Azure services.
 
@@ -39,16 +39,15 @@ Run each prompt twice with the same model:
 1. **without_skill** - the prompt only, with no AMR skill file in context.
 2. **with_skill** - the same prompt after force-loading the target skill's `AGENTS.md`.
 
-Grade both outputs against the same expectations in `evals.json`. A skill-loaded run should pass the required expectations and show measurable uplift over the baseline.
+Grade both outputs against the same expectations in `evals.json`. For one answer, the expectation score is the number of passed expectations divided by the total expectations. Report anti-patterns separately; a high expectation score does not offset an anti-pattern.
 
 ## Pass Criteria
 
-For this corpus, a useful skill should generally meet both conditions:
+For efficacy cases with a positive `minimum_uplift`, compare paired outputs from the same model and prompt. The with-skill expectation score should meet `minimum_skill_score` and exceed the without-skill score by at least `minimum_uplift`. Anti-patterns in the with-skill answer make the pair fail.
 
-- `with_skill` pass rate is at least `minimum_skill_score`.
-- `with_skill` pass rate beats `without_skill` by at least `minimum_uplift`.
+With only one answer per model and condition, these are descriptive paired results, not statistically conclusive pass-rate estimates. Thresholds also have coarse granularity: for example, five binary expectations and a `minimum_skill_score` of `0.85` require all five expectations to pass.
 
-Also inspect anti-patterns manually. A high-scoring answer that recommends a critical anti-pattern should be treated as a failure.
+Cases 13–18 have `minimum_uplift: 0` and are correctness/no-harm gates. Report their with-skill correctness and anti-pattern results alongside the baseline; do not present their scores as evidence that the skill improves answers over baseline.
 
 ## Suggested Runner Layout
 
