@@ -36,13 +36,21 @@ import os
 from redis import RedisCluster
 from redis_entraid.cred_provider import create_from_default_azure_credential
 
+required = ["REDIS_HOST", "REDIS_PORT"]
+missing = [name for name in required if not os.environ.get(name)]
+if missing:
+    raise RuntimeError(f"Missing Redis configuration: {', '.join(missing)}")
+port = int(os.environ["REDIS_PORT"])
+if not 1 <= port <= 65535:
+    raise RuntimeError("REDIS_PORT must be a valid service-returned TCP port")
+
 credential_provider = create_from_default_azure_credential(
     ("https://redis.azure.com/.default",)
 )
 
 r = RedisCluster(
     host=os.environ["REDIS_HOST"],
-    port=10000,
+    port=port,
     ssl=True,
     ssl_cert_reqs="required",
     credential_provider=credential_provider,
@@ -52,7 +60,7 @@ r = RedisCluster(
 )
 ```
 
-Install `redis-entraid` for redis-py and match `RedisCluster` versus `Redis` to the AMR cluster policy. For clients without a supported credential provider, refresh at least three minutes before expiry, add jitter, and send `AUTH <object-id> <new-token>` on existing connections rather than dropping the pool. Instrument refresh success/failure, refresh lead time, reauthentication attempts, and downstream authentication failures.
+Set `REDIS_HOST` and `REDIS_PORT` from deployment outputs; `10000` is the documented default, not the only valid database port. Install `redis-entraid` for redis-py. This example uses `RedisCluster` for `OSSCluster`; use the standard `Redis` client with the same credential provider for `EnterpriseCluster` or `NoCluster`. For clients without a supported credential provider, refresh at least three minutes before expiry, add jitter, and send `AUTH <object-id> <new-token>` on existing connections rather than dropping the pool. Instrument refresh success/failure, refresh lead time, reauthentication attempts, and downstream authentication failures.
 
 References:
 - [Use Microsoft Entra for Redis authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)

@@ -1,13 +1,13 @@
 ---
 title: Implement Distributed Locks Safely
 impact: CRITICAL
-impactDescription: prevents race conditions in distributed systems
+impactDescription: reduces coordination errors and unsafe unlocks
 tags: use-cases, locking, distributed, concurrency
 ---
 
 ## Implement Distributed Locks Safely
 
-Use Redis for distributed locks with proper safeguards: unique lock values, TTL expiration, and atomic unlock operations to prevent deadlocks and race conditions.
+Use Redis locks for best-effort coordination with unique lock values, TTL expiration, and atomic ownership-checked unlock operations. A lease is not a correctness guarantee: a paused holder can resume after expiry while another client holds the lock. Correctness-critical work needs idempotency or fencing enforced by the protected downstream system, not just a Redis lock.
 
 **Incorrect (unsafe locking patterns):**
 
@@ -30,7 +30,7 @@ if r.get("lock:resource"):
 r.setnx("lock:resource", "1")
 ```
 
-**Correct (safe distributed lock implementation):**
+**Correct (bounded best-effort lease with ownership-checked release):**
 
 ```python
 import redis
@@ -107,20 +107,21 @@ class DistributedLock:
 
 # Usage with context manager
 with DistributedLock(r, "resource:123", timeout=30) as lock:
-    # Critical section - only one process executes this
+    # Best-effort coordination; process_resource must tolerate overlapping work.
     process_resource("123")
 
 # Manual usage with timeout
 lock = DistributedLock(r, "payment:order:456", timeout=60)
 if lock.acquire(blocking_timeout=5):
     try:
-        process_payment("456")
+        # The payment service must enforce this stable key across all retries.
+        process_payment("456", idempotency_key="payment:order:456")
     finally:
         lock.release()
 else:
     raise Exception("Could not acquire lock")
 ```
 
-Always use unique tokens (UUID) to identify lock ownership. Always set TTL to prevent deadlocks. Use Lua scripts for atomic check-and-delete. Size the TTL for the protected operation and use ownership-checked renewal when work can exceed it. Redlock targets multiple independent Redis masters and does not apply to Azure Managed Redis managed HA.
+Always use unique tokens (UUID) to identify lock ownership. Always set TTL to prevent deadlocks. Use Lua scripts for atomic check-and-delete. Fail closed if acquisition times out. Size the TTL for the protected operation and use ownership-checked renewal when work can exceed it; failed renewal means protection is lost and the holder must stop further work. Even successful renewal cannot prevent a later pause past expiry or revoke work already sent downstream. For payments, use a stable, downstream-enforced idempotency key as above; where stale writes must be rejected, require monotonically increasing fencing tokens checked by the protected resource. A UUID ownership token is not a fencing token. Redlock targets multiple independent Redis masters and does not apply to Azure Managed Redis managed HA.
 
 Reference: [Distributed Locks](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)

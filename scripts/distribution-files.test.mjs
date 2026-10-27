@@ -100,7 +100,8 @@ test('release selection matches the files in temporary ZIPs and includes optiona
   const inventory = discoverDistributionFiles(root)
   const dist = mkdtempSync(join(tmpdir(), 'amr-release-zips-'))
   t.after(() => rmSync(dist, { recursive: true, force: true }))
-  const result = spawnSync('powershell.exe', [
+  const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'
+  const result = spawnSync(powershell, [
     '-NoProfile', '-NonInteractive', '-Command', powershellScript({ root, dist, release }),
   ], { encoding: 'utf8', windowsHide: true })
   assert.ifError(result.error)

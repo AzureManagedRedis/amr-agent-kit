@@ -106,7 +106,7 @@
         "Calls out creation-time or difficult-to-change decisions such as tier/SKU, capacity, modules, Enterprise/cluster policy, region support, networking/private endpoints/DNS, HA, and active geo-replication topology.",
         "States that Azure Managed Redis persistence requires high availability and is not supported with active geo-replication.",
         "Explains that persistence is for node recovery and is not point-in-time backup or a way to restore persisted files into another cache; uses scheduled export to Blob storage for backups or migrations.",
-        "Requires checking the current official active geo-replication scope and prerequisites for supported tiers, SKUs, modules, HA, persistence, and matching instance configuration; uses the documented consistency model rather than assuming synchronous zero-data-loss semantics; and requires following the current documented procedure and impact when adding an existing cache.",
+        "States the documented five-instance active geo-replication group limit and checks the current official scope and prerequisites for supported tiers, SKUs, modules, HA, persistence, and matching instance configuration; uses eventual consistency rather than assuming synchronous zero-data-loss semantics; explains that force-linking an existing instance discards its data and makes it temporarily unavailable for several minutes, and verifies the current procedure before linking.",
         "Includes client routing and failover behavior, including endpoint selection, retry deadlines, idempotency for writes, and testing of regional failover.",
         "Includes monitoring and operational readiness checks for persistence/export status, geo-replication health/lag, memory/evictions, private endpoint/DNS health, restore drills, failover drills, and incident runbooks."
       ],
@@ -248,7 +248,7 @@
         "Uses peak and P95 used memory, Server Load or CPU pressure, connected clients, read/write bandwidth, latency targets, and module requirements as sizing inputs.",
         "Compares usable memory and capacity rather than only advertised SKU size, and recommends sizing to cover peak used memory.",
         "Considers Compute Optimized X-series when server load, command complexity, bandwidth, or client count are high relative to memory.",
-        "Compares the currently published AMR tiers and SKUs against measured workload needs and requires checking the current official feature comparison, regional availability, and preview status instead of relying on a historical capability matrix.",
+        "Explains M-series for memory-heavy workloads, B-series for balanced memory/compute, X-series for compute pressure, and Flash for large tiered-storage datasets with performance tradeoffs; compares current AMR tiers and SKUs against measured workload needs and checks the official feature comparison, regional availability, and preview status instead of relying on a historical capability matrix.",
         "Requires validation of region availability, preview SKU status, module support, cluster policy, HA, networking, diagnostics, and active geo needs before provisioning.",
         "Avoids customer-facing AMR shard-count language and describes AMR scale in terms of tier, SKU, capacity, and cluster policy."
       ],

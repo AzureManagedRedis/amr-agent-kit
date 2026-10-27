@@ -16,35 +16,45 @@ if (navToggle && navLinks) {
 }
 
 document.querySelectorAll("[data-copy]").forEach((button) => {
+  const originalText = button.textContent;
+  const originalLabel = button.getAttribute("aria-label");
+  let resetTimer;
+  let attempt = 0;
+
+  const restore = () => {
+    button.textContent = originalText;
+    if (originalLabel !== null) {
+      button.setAttribute("aria-label", originalLabel);
+    } else {
+      button.removeAttribute("aria-label");
+    }
+  };
+
+  const showStatus = (text, label) => {
+    button.textContent = text;
+    button.setAttribute("aria-label", label);
+    resetTimer = window.setTimeout(restore, 1600);
+  };
+
   button.addEventListener("click", async () => {
+    const currentAttempt = ++attempt;
+    window.clearTimeout(resetTimer);
+    restore();
     const value = button.getAttribute("data-copy");
     if (!value || !navigator.clipboard) {
-      button.setAttribute("aria-label", "Clipboard access is unavailable");
+      showStatus("Copy failed", "Clipboard access is unavailable");
       return;
     }
 
-    const originalText = button.textContent;
-    const originalLabel = button.getAttribute("aria-label");
-
     try {
       await navigator.clipboard.writeText(value);
-      button.textContent = "Copied";
-      button.setAttribute("aria-label", "Command copied to clipboard");
-      window.setTimeout(() => {
-        button.textContent = originalText;
-        if (originalLabel) {
-          button.setAttribute("aria-label", originalLabel);
-        }
-      }, 1600);
+      if (currentAttempt === attempt) {
+        showStatus("Copied", "Command copied to clipboard");
+      }
     } catch {
-      button.textContent = "Copy failed";
-      button.setAttribute("aria-label", "Could not copy command to clipboard");
-      window.setTimeout(() => {
-        button.textContent = originalText;
-        if (originalLabel) {
-          button.setAttribute("aria-label", originalLabel);
-        }
-      }, 1600);
+      if (currentAttempt === attempt) {
+        showStatus("Copy failed", "Could not copy command to clipboard");
+      }
     }
   });
 });

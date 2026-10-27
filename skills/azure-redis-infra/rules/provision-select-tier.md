@@ -30,6 +30,8 @@ Active geo-replication: enabled during provisioning if required
 Region: same Azure region as latency-sensitive clients where possible
 ```
 
+Use Memory Optimized (M-series) when dataset size is the main constraint and compute pressure is moderate. Use Balanced (B-series) for general-purpose workloads with mixed memory and compute needs. Use Compute Optimized (X-series) when Server Load, command complexity, bandwidth, or connected-client pressure is high relative to memory. Use Flash Optimized for very large datasets where tiered storage is acceptable and feature support matches the workload; moving less frequently accessed data to NVMe trades performance for lower memory use.
+
 Compare the currently published [AMR tiers and SKUs](https://learn.microsoft.com/en-us/azure/redis/overview#choosing-the-right-tier) using measured memory, compute, bandwidth, connection, and latency needs. Before recommending a tier, verify required capabilities in the current [feature comparison](https://learn.microsoft.com/en-us/azure/redis/overview#feature-comparison), plus regional availability and preview status. Do not infer support from the tier name or a historical matrix. Do not recommend "adding shards" as the customer-facing AMR sizing control; frame scale decisions using the service's current tier, SKU, capacity or usable-memory, and cluster-policy terminology.
 
 Reference: [Create Azure Managed Redis](https://learn.microsoft.com/en-us/azure/redis/quickstart-create-managed-redis), [Azure Managed Redis overview](https://learn.microsoft.com/en-us/azure/redis/overview)
