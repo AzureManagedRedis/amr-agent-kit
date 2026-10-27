@@ -7,7 +7,7 @@ tags: networking, private-link, private-dns, dns, private-endpoint
 
 ## Configure Private DNS for Private Endpoints
 
-Private Link is only reliable when every client network resolves the Azure Managed Redis resource's returned host name to the private endpoint IP. Keep applications configured with that normal host name and the database's returned port, link the current cloud's Private DNS zone to every spoke, AKS, management, and shared-services VNet that needs access, and add DNS forwarding for on-premises or custom DNS resolvers. In public Azure the Gen2 examples are `<cache-name>.<region>.redis.azure.net`, port `10000` by default, and private zone `privatelink.redis.azure.net`; sovereign-cloud suffixes differ. Do not configure clients to use the `privatelink` host name directly.
+Private Link is only reliable when every client network resolves the Azure Managed Redis resource's host name to the private endpoint IP. Configure applications with the normal host name and database port shown for the resource; the public Azure documentation uses `<cache-name>.<region>.redis.azure.net`, port `10000`, and private DNS zone `privatelink.redis.azure.net`. Link the private zone to every spoke, AKS, management, and shared-services VNet that needs access, and add DNS forwarding for on-premises or custom DNS resolvers. Do not configure clients to use the `privatelink` host name directly.
 
 VNet peering does not automatically propagate private DNS resolution. Validate each workload subnet separately, especially AKS node/pod networks, management jumpboxes, and shared resolver VNets.
 
@@ -25,8 +25,8 @@ Validation: no nslookup from workload subnets
 
 ```text
 Application host: service-returned hostName
-Port: service-returned database port (10000 by default)
-Private DNS zone: current-cloud zone (public Azure: privatelink.redis.azure.net)
+Port: service-returned database port (10000 in the public Azure example)
+Private DNS zone: privatelink.redis.azure.net (public Azure documentation)
 VNet links: AKS spoke, app spoke, management VNet, shared resolver VNet
 Custom DNS: conditional forwarding to Azure DNS/private resolver
 Validation: nslookup from each client subnet returns the private endpoint IP

@@ -39,13 +39,13 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 These are the highest-harm facts to get right. When a task touches one, open the linked rule file for the full detail rather than relying on a single scan of `AGENTS.md`.
 
-- **Minimum TLS is 1.2.** `minimumTlsVersion` accepts `1.2` only; do not set `1.3` (a negotiated wire protocol is a separate matter). Decide it at creation time. → `rules/security-enforce-tls.md`
-- **Gen2 omits zones at create.** Gen2 AMR must not send a `zones` array (placement is service-managed in supported regions); Gen1/ACRE zonal deployments require at least three zones. → `rules/availability-enable-ha-zone-redundancy.md`
-- **Logical databases are policy-dependent.** Clustered and active geo-replicated caches are database 0 only; `NoCluster` must be verified from effective configuration, not from the single `default` resource. → `rules/security-scope-data-access-policies.md`
-- **Managed identity is opt-in.** It is not enabled by default; assign a workload identity and data-access policy explicitly. → `rules/security-use-entra-authentication.md`
-- **Match modules to cluster policy.** Search requires `EnterpriseCluster` and cannot be used with `OSSCluster`; RedisJSON works with `OSSCluster`; active geo-replication supports only Search and JSON. Confirm the full SKU, region, and preview or enrollment status before provisioning. → `rules/performance-choose-cluster-policy.md`
-- **Geo group size is a documented maximum to verify.** Up to five members; confirm the current limit in the documentation, plan it at provisioning, and do not combine with persistence. → `rules/geo-plan-active-geo-replication.md`
-- **Return the service endpoint and cloud-specific DNS.** Give clients the resource host name and configured port; the private DNS zone suffix is cloud-specific. → `rules/network-configure-private-dns.md`
+- **Minimum TLS is 1.2.** Set `minimumTlsVersion` to `1.2`; this is separate from the negotiated wire protocol, and Microsoft documents updating the setting after creation. → `rules/security-enforce-tls.md`
+- **HA provides AMR zone redundancy automatically where supported.** Enable high availability; no separate zone selection is needed for AMR. → `rules/availability-enable-ha-zone-redundancy.md`
+- **AMR supports one logical database per instance.** Do not use numbered DB indexes or `SELECT` for tenant separation, regardless of cluster policy. → `rules/security-scope-data-access-policies.md`
+- **Entra authentication and managed identity are enabled by default.** Add each workload principal to the cache's Redis users list; use custom data access permissions to restrict its default access. → `rules/security-use-entra-authentication.md`
+- **Match modules to cluster policy.** RediSearch requires `EnterpriseCluster` and cannot be used with `OSSCluster`; active geo-replication supports only RediSearch and RedisJSON. Check the current module and tier support before provisioning. → `rules/performance-choose-cluster-policy.md`
+- **Active geo-replication supports up to five AMR instances.** Confirm member eligibility, plan it at provisioning, and do not combine it with persistence. → `rules/geo-plan-active-geo-replication.md`
+- **Use the service endpoint and documented private DNS.** Give clients the resource host name and configured port; identify the documented public Azure DNS zone as such. → `rules/network-configure-private-dns.md`
 
 ### Validate Creation-Time Choices Early
 
@@ -65,7 +65,7 @@ For production guidance, prefer Private Link, disabled public network access, TL
 
 ### Design Tenant Boundaries Explicitly
 
-Do not assume Azure Managed Redis preserves Azure Cache for Redis-style numbered-database multi-tenancy. Under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication, only database 0 is available and `SELECT` to another index is not supported. Under `NoCluster`, do not assert either DB0-only or multiple logical databases without evidence; a single managed `default` database resource does not prove the logical database count, so confirm it from the database's effective configuration or a live `SELECT` capability check before relying on more than database 0. Regardless of cluster policy, prefer application key prefixes as the portable logical-separation approach and separate AMR caches for hard tenant isolation or independent lifecycle. Also use scoped identities, data access policies/key patterns, and metadata filters for search/RAG workloads.
+Azure Managed Redis supports one database per instance and blocks `SELECT`. Do not use numbered database indexes for tenant separation. Prefer application key prefixes for portable logical separation and separate AMR caches for hard tenant isolation or independent lifecycle. Use scoped Redis users and custom data access permissions where supported, and metadata filters for search/RAG workloads. See [AMR configuration](https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information).
 
 ### Separate Infrastructure Workflows
 

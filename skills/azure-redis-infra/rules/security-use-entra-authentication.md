@@ -7,7 +7,7 @@ tags: security, entra, authentication, managed-identity
 
 ## Prefer Microsoft Entra Authentication Over Access Keys
 
-Azure Managed Redis supports password-free Microsoft Entra authentication, but identity configuration is explicit rather than automatic. Assign a managed identity or service principal to the workload, create the corresponding AMR data access policy assignment, and refresh Entra tokens before expiry. The cache resource's own managed identity defaults to `None` and is separate from the workload identity used for data-plane authentication. Keep access keys disabled unless a client cannot support Entra.
+Azure Managed Redis uses Microsoft Entra authentication by default, and managed identity is enabled when you create a new cache. To authorize a workload, add its managed identity or service principal to the cache's Redis users list. By default, Redis users receive full access to all commands and keys; use custom data access permissions where supported to restrict access. Refresh Entra tokens before expiry and keep access keys disabled unless a client cannot support Entra. The public documentation does not specify the exact ARM resource identity type when it describes this default.
 
 **Incorrect (access keys only):**
 
@@ -21,10 +21,10 @@ Token refresh: Not implemented
 
 ```text
 Authentication: Microsoft Entra enabled
-Workload identity: explicitly assigned
-AMR data access policy: scoped to the workload identity
+Workload managed identity or service principal: added to Redis users
+Custom data access permissions: restricted to required commands and keys
 Access keys: Disabled
 Client: refreshes token before expiry and re-AUTHs
 ```
 
-Reference: [Use Microsoft Entra for cache authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+Reference: [Use Microsoft Entra for cache authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication), [Configure custom data access permissions](https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions)

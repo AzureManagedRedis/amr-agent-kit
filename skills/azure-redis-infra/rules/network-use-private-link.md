@@ -28,6 +28,6 @@ DNS: Private zone linked to VNet
 NSG/UDR controls: applied around the private endpoint subnet and workload subnets
 ```
 
-Keep application clients on the service-returned normal host name and database port with TLS. Private DNS should make that host name resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name. In IaC, include the private endpoint DNS zone group or private DNS zone links for every client network. In public Azure the Gen2 private zone is `privatelink.redis.azure.net`; use the current cloud's documented/resource-provided suffix rather than hardcoding the public-cloud value.
+Keep application clients on the service-returned normal host name and database port with TLS. Private DNS should make that host name resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name. In IaC, include the private endpoint DNS zone group or private DNS zone links for every client network. The public Azure documentation uses `privatelink.redis.azure.net` as the private DNS zone.
 
 Reference: [Azure Managed Redis Private Link](https://learn.microsoft.com/en-us/azure/redis/private-link)

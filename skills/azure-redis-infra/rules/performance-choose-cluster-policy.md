@@ -9,7 +9,7 @@ tags: performance, cluster-policy, oss, enterprise, modules
 
 Azure Managed Redis supports OSSCluster, EnterpriseCluster, and NoCluster policies. Choose the policy explicitly based on client capabilities, module requirements, cache size, and multi-key command behavior; do not rely on provider defaults. AMR manages partitioning internally, so avoid describing the service in terms of customer-managed shard counts. In customer-facing guidance, say tier, SKU, capacity or usable memory, and cluster policy instead of "number of shards."
 
-Cluster policy also constrains logical-database semantics. Under clustered policies (OSSCluster, EnterpriseCluster) and under active geo-replication, only database 0 is available and `SELECT` to a non-zero index is not supported, so plan for a single logical database. Under `NoCluster`, do not assert either DB0-only or multi-database behavior without evidence; a single managed `default` database resource does not prove the logical database count, so confirm it from the effective server configuration or a live `SELECT` capability check before relying on more than database 0. In all cases, prefer application key prefixes for portable logical separation and separate caches for hard isolation rather than numbered DB indexes.
+Azure Managed Redis supports one database per instance and blocks `SELECT`, regardless of cluster policy. Do not rely on numbered database indexes for logical separation; use application key prefixes, and separate caches when hard isolation is required. See [AMR configuration](https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information).
 
 **Incorrect (select OSS when clients and modules require Enterprise):**
 
@@ -26,13 +26,13 @@ Multi-key/Lua: uses keys across slots
 Cluster policy: NoCluster when supported for simple single-endpoint workloads
 Cluster policy: OSSCluster only for Redis Cluster-aware clients
 Cluster policy: EnterpriseCluster when required by modules or client compatibility
-Logical databases: DB0-only under clustered/active-geo; verify under NoCluster before using more than DB0
+Logical databases: one per instance; do not use SELECT or numbered DB indexes
 Scale language: tier, SKU, capacity, usable memory, and cluster policy
 Multi-key/Lua: keys use hash tags or avoid cross-slot operations
 ```
 
 Prefer `NoCluster` when the workload fits its supported size and needs single-endpoint semantics with the least CROSSSLOT risk, especially when the application is not Redis Cluster-aware. Use `OSSCluster` only when clients handle MOVED/ASK redirects and operational runbooks account for cluster topology. Use `EnterpriseCluster` when module support or client compatibility requires it, while still checking multi-key commands and Lua scripts for cross-slot behavior. For application code, require hash tags such as `cart:{userId}:items` and `cart:{userId}:totals` when related keys must be used together.
 
-Module support constrains the policy choice, and the modules differ from each other. The Search module (RediSearch) requires the Enterprise cluster policy and cannot be used with `OSSCluster`, so any search or vector workload forces `EnterpriseCluster`. RedisJSON does not carry that restriction and can be used with `OSSCluster`. Active geo-replication supports only the Search and JSON modules. Because module availability also varies by tier, region, and preview or subscription enrollment, confirm the full SKU, policy, module, region, and geo combination against current Azure Managed Redis documentation before provisioning rather than assuming a combination is available.
+Module support constrains the policy choice. RediSearch requires the Enterprise cluster policy and cannot be used with `OSSCluster`, so search or vector workloads require `EnterpriseCluster`. Active geo-replication supports only RediSearch and RedisJSON. Module availability varies by tier; confirm the selected module and cluster policy against the current Azure Managed Redis documentation before provisioning.
 
 Reference: [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture), [Active geo-replication for Azure Managed Redis](https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication)
