@@ -23,27 +23,28 @@ r = redis.Redis(
 )
 ```
 
-**Correct (Entra token with refresh):**
+**Correct (credential provider with automatic token refresh):**
 
 ```python
-# Use an Entra token as the password and refresh before expiry.
-# In production, use a client library that manages token refresh.
-import redis
-from azure.identity import DefaultAzureCredential
+from redis import RedisCluster
+from redis_entraid.cred_provider import create_from_default_azure_credential
 
-credential = DefaultAzureCredential()
-token = credential.get_token("https://redis.azure.com/.default")
+credential_provider = create_from_default_azure_credential(
+    ("https://redis.azure.com/.default",)
+)
 
-r = redis.Redis(
+r = RedisCluster(
     host="mycache.eastus.redis.azure.net",
     port=10000,
     ssl=True,
     ssl_cert_reqs="required",
-    username="<object-id>",
-    password=token.token
+    credential_provider=credential_provider,
 )
 ```
 
+Install `redis-entraid` and use its credential provider so the client renews tokens automatically. Match the client type to the configured cluster policy: use a cluster-aware client such as `RedisCluster` for `OSSCluster`, and the standard `Redis` client for `EnterpriseCluster` or `NoCluster`.
+
 References:
 - [Use Microsoft Entra for cache authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+- [Connect redis-py to Azure Managed Redis](https://redis.io/docs/latest/develop/clients/redis-py/amr/)
 - [Azure Managed Redis overview](https://learn.microsoft.com/en-us/azure/redis/overview)

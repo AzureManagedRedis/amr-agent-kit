@@ -62,7 +62,8 @@ class DistributedLock:
     def acquire(self, blocking=True, blocking_timeout=None):
         """Acquire lock with unique token"""
         self.token = str(uuid.uuid4())
-        end_time = time.time() + (blocking_timeout or self.timeout)
+        wait_timeout = self.timeout if blocking_timeout is None else blocking_timeout
+        end_time = time.monotonic() + wait_timeout
 
         while True:
             # SET with NX (only if not exists) and EX (expiration)
@@ -72,7 +73,7 @@ class DistributedLock:
             if not blocking:
                 return False
 
-            if time.time() >= end_time:
+            if time.monotonic() >= end_time:
                 return False
 
             time.sleep(0.1)
@@ -97,7 +98,8 @@ class DistributedLock:
         )
 
     def __enter__(self):
-        self.acquire()
+        if not self.acquire():
+            raise TimeoutError(f"Could not acquire {self.name}")
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -119,6 +121,6 @@ else:
     raise Exception("Could not acquire lock")
 ```
 
-Always use unique tokens (UUID) to identify lock ownership. Always set TTL to prevent deadlocks. Use Lua scripts for atomic check-and-delete. Consider Redlock algorithm for multi-instance Redis.
+Always use unique tokens (UUID) to identify lock ownership. Always set TTL to prevent deadlocks. Use Lua scripts for atomic check-and-delete. Size the TTL for the protected operation and use ownership-checked renewal when work can exceed it. Redlock targets multiple independent Redis masters and does not apply to Azure Managed Redis managed HA.
 
 Reference: [Distributed Locks](https://redis.io/docs/latest/develop/clients/patterns/distributed-locks/)

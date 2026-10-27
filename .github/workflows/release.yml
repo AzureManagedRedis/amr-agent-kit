@@ -44,6 +44,9 @@ jobs:
       - name: Run confidentiality regression tests
         run: npm run test:confidentiality
 
+      - name: Check generated output is current
+        run: git diff --exit-code
+
       - name: Prepare release notes
         shell: pwsh
         run: |

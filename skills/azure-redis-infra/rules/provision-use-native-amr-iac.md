@@ -23,14 +23,16 @@ Private connectivity: no private endpoint or DNS zone group
 
 ```text
 Cluster: Microsoft.Cache/redisEnterprise
-Database: Microsoft.Cache/redisEnterprise/databases named <cacheName>/default
+Database child type: Microsoft.Cache/redisEnterprise/databases
+Database child name: default
+Full ARM resource name when declared at top level: <cacheName>/default
 Cluster properties: minimumTlsVersion, publicNetworkAccess, identity, tags
 Database properties: configured port (10000 by default), clientProtocol, clusteringPolicy, evictionPolicy, modules, persistence
 Networking: private endpoint with group id redisEnterprise and the current cloud's AMR private DNS zone
 Operations: diagnostic settings, alerts, and access policy assignments
 ```
 
-For ARM and Bicep, model the AMR cluster and the `default` database separately. The database resource depends on the cluster and holds data-plane settings such as the configured port (`10000` by default), `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, modules, persistence, and geo-replication settings. Keep applications configured with the host name and port returned by the resource rather than reconstructing them.
+For ARM and Bicep, model the AMR cluster and the `default` database separately. The database resource depends on the cluster and holds data-plane settings such as the configured port (`10000` by default), `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, modules, persistence, and geo-replication settings. Set `publicNetworkAccess` explicitly with an API version that exposes it; older API versions don't support this property, so confirm the version against the current [ARM template reference](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise). Keep applications configured with the host name and port returned by the resource rather than reconstructing them.
 
 For Terraform, use the latest `azurerm` provider documented in the Terraform Registry and model AMR with `azurerm_managed_redis` plus a `default_database` block:
 

@@ -24,6 +24,11 @@ Context:
 **Correct (fail closed and filter retrieval by tenant and ACL):**
 
 ```python
+import numpy as np
+
+# Must match the index schema: VECTOR ... TYPE FLOAT32.
+VECTOR_DTYPE = np.float32
+
 if not tenant_id or not user_acl_tags:
     raise ValueError("tenant and ACL context are required for RAG retrieval")
 
@@ -36,9 +41,11 @@ query_text = (
 )
 
 contexts = redis_client.ft("idx:rag:shared").search(
-    Query(query_text).sort_by("score"),
-    {"vec": question_vector},
+    Query(query_text).sort_by("score").dialect(2),
+    {"vec": np.asarray(question_vector, dtype=VECTOR_DTYPE).tobytes()},
 )
 ```
+
+The query vector's dimensions and binary data type must exactly match the indexed vector field. Change `VECTOR_DTYPE` when the schema uses a type other than `FLOAT32`.
 
 Reference: [Redis RAG patterns](https://redis.io/docs/latest/develop/get-started/rag/)
