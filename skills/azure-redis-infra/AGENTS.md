@@ -14,7 +14,7 @@ February 2026
 
 ## Abstract
 
-Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure. Covers metric-based provisioning and sizing, native ARM/Bicep/Terraform generation, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.
+Patterns and best practices for provisioning, securing, and operating Azure Managed Redis in Azure. Covers metric-based provisioning and sizing, native ARM/Bicep/Terraform generation, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.
 
 ---
 
@@ -51,7 +51,7 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 **Impact: CRITICAL**
 
-Choose the right Azure Managed Redis tier/SKU, region, capacity, and native IaC shape to meet latency, throughput, and cost goals. Covers memory/compute/flash tiers, region placement, sizing from workload metrics, and ARM/Bicep/Terraform generation for Redis Enterprise 7.4.
+Choose the right Azure Managed Redis tier/SKU, region, capacity, and native IaC shape to meet latency, throughput, and cost goals. Covers memory/compute/flash tiers, region placement, sizing from workload metrics, and ARM/Bicep/Terraform generation.
 
 ---
 
@@ -79,7 +79,7 @@ IaC: Bicep/AVM or Terraform module checked into source control
 Parameters: tier, SKU, region, modules, cluster policy, HA, protocol, persistence
 Networking: private endpoint, publicNetworkAccess, DNS links
 Security: Entra users, access policies, TLS, key posture
-Database: default database, port 10000, clientProtocol, evictionPolicy
+Database: default database, configured port (10000 by default), clientProtocol, evictionPolicy
 Preflight: az deployment what-if or terraform validate && terraform plan
 Operations: diagnostic settings and alerts deployed with the cache
 ```
@@ -139,11 +139,11 @@ resource "azurerm_private_endpoint" "redis" {
 }
 ```
 
-For ARM and Bicep, model the AMR cluster and the `default` database separately. The database resource depends on the cluster and holds data-plane settings such as `port: 10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, modules, persistence, and geo-replication settings. Keep applications configured for `<cache-name>.<region>.redis.azure.net`.
+For ARM and Bicep, model the AMR cluster and the `default` database separately. The database resource depends on the cluster and holds data-plane settings such as the configured port (`10000` by default), `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, modules, persistence, and geo-replication settings. Keep applications configured with the host name and port returned by the resource rather than reconstructing them.
 
 For Terraform, use the latest `azurerm` provider documented in the Terraform Registry and model AMR with `azurerm_managed_redis` plus a `default_database` block:
 
-Use the private DNS zone `privatelink.redis.azure.net` for AMR private endpoints. In Terraform, prefer provider-supported attributes and modules for diagnostics, role assignments, private DNS zone links, and private endpoint DNS zone groups rather than shelling out to CLI commands. Validate Terraform with `terraform validate` before `terraform plan`, and validate ARM/Bicep deployments with `what-if`.
+Use the current cloud's AMR private DNS zone for private endpoints (`privatelink.redis.azure.net` in public Azure). In Terraform, prefer provider-supported attributes and modules for diagnostics, role assignments, private DNS zone links, and private endpoint DNS zone groups rather than shelling out to CLI commands. Validate Terraform with `terraform validate` before `terraform plan`, and validate ARM/Bicep deployments with `what-if`.
 
 Reference: [https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise), [https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/managed_redis), [https://learn.microsoft.com/en-us/azure/redis/private-link](https://learn.microsoft.com/en-us/azure/redis/private-link)
 
@@ -216,7 +216,7 @@ Secure connectivity with Private Link, disable public network access, and config
 
 **Impact: CRITICAL (avoids private endpoint connectivity and TLS failures)**
 
-Private Link is only reliable when every client network resolves the Azure Managed Redis host name to the private endpoint IP. Keep applications configured to connect to `<cache-name>.<region>.redis.azure.net` on port `10000`, link the Private DNS zone to every spoke, AKS, management, and shared-services VNet that needs access, and add DNS forwarding for on-premises or custom DNS resolvers. Do not configure clients to use the `privatelink` host name directly.
+Private Link is only reliable when every client network resolves the Azure Managed Redis resource's host name to the private endpoint IP. Configure applications with the normal host name and database port shown for the resource; the public Azure documentation uses `<cache-name>.<region>.redis.azure.net`, port `10000`, and private DNS zone `privatelink.redis.azure.net`. Link the private zone to every spoke, AKS, management, and shared-services VNet that needs access, and add DNS forwarding for on-premises or custom DNS resolvers. Do not configure clients to use the `privatelink` host name directly.
 
 VNet peering does not automatically propagate private DNS resolution. Validate each workload subnet separately, especially AKS node/pod networks, management jumpboxes, and shared resolver VNets.
 
@@ -233,15 +233,15 @@ Validation: no nslookup from workload subnets
 **Correct: private DNS integrated with every client network**
 
 ```text
-Application host: <cache-name>.<region>.redis.azure.net
-Port: 10000
-Private DNS zone: *.privatelink.redis.azure.net
+Application host: service-returned hostName
+Port: service-returned database port (10000 in the public Azure example)
+Private DNS zone: privatelink.redis.azure.net (public Azure documentation)
 VNet links: AKS spoke, app spoke, management VNet, shared resolver VNet
 Custom DNS: conditional forwarding to Azure DNS/private resolver
 Validation: nslookup from each client subnet returns the private endpoint IP
 ```
 
-If name resolution is correct but connections still fail, check private endpoint subnet policies, effective routes, NSGs, UDRs, Azure Firewall rules, and the `/32` private endpoint route that can bypass or override expected paths. Validate with both DNS lookup and a TLS Redis client connection to port `10000` from every participating network.
+If name resolution is correct but connections still fail, check private endpoint subnet policies, effective routes, NSGs, UDRs, Azure Firewall rules, and the `/32` private endpoint route that can bypass or override expected paths. Validate with both DNS lookup and a TLS Redis client connection to the service-returned port from every participating network.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/private-link](https://learn.microsoft.com/en-us/azure/redis/private-link), [https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns](https://learn.microsoft.com/en-us/azure/private-link/private-endpoint-dns)
 
@@ -270,7 +270,7 @@ DNS: Private zone linked to VNet
 NSG/UDR controls: applied around the private endpoint subnet and workload subnets
 ```
 
-Keep application clients on `<cache-name>.<region>.redis.azure.net:10000` with TLS. Private DNS should make that normal hostname resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name. In IaC, include the private endpoint DNS zone group or private DNS zone links so `privatelink.redis.azure.net` is associated with every client network that must resolve AMR privately.
+Keep application clients on the service-returned normal host name and database port with TLS. Private DNS should make that host name resolve to the private endpoint IP; do not point clients directly at a `privatelink` host name. In IaC, include the private endpoint DNS zone group or private DNS zone links for every client network. The public Azure documentation uses `privatelink.redis.azure.net` as the private DNS zone.
 
 Reference: [https://learn.microsoft.com/en-us/azure/redis/private-link](https://learn.microsoft.com/en-us/azure/redis/private-link)
 
@@ -280,7 +280,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/private-link](https://
 
 **Impact: CRITICAL**
 
-Enforce TLS 1.2/1.3, prefer Microsoft Entra authentication, and control access keys and RBAC for Azure Managed Redis.
+Enforce the supported minimum TLS version of 1.2, prefer Microsoft Entra authentication, and control access keys and RBAC for Azure Managed Redis.
 
 ---
 
@@ -288,29 +288,30 @@ Enforce TLS 1.2/1.3, prefer Microsoft Entra authentication, and control access k
 
 **Impact: CRITICAL (protects data in transit)**
 
-Azure Managed Redis only supports TLS 1.2 and 1.3 and requires TLS by default. Do not enable non-TLS access in production; keep TLS enforced to protect data in transit and meet compliance requirements.
+For Azure Managed Redis, set `minimumTlsVersion` to `1.2`. Keep the database client protocol encrypted in production, and configure clients to require TLS 1.2 or later with certificate validation. The minimum-version property is separate from the negotiated wire protocol: TLS 1.2 and 1.3 are supported, but Microsoft documents no option to require clients to negotiate TLS 1.3. The setting can be updated after creation; follow the current management documentation when changing it.
 
 **Incorrect: allow non-TLS access**
 
 ```text
-Advanced settings: Non-TLS access enabled
-Client port: 10000 (plaintext allowed)
+minimumTlsVersion: 1.3
+clientProtocol: Plaintext
 ```
 
 **Correct: TLS enforced**
 
 ```text
-Advanced settings: Non-TLS access disabled
-Client port: 10000 (TLS only)
+minimumTlsVersion: 1.2
+clientProtocol: Encrypted
+Client: TLS with certificate validation
 ```
 
-Reference: [https://learn.microsoft.com/en-us/azure/redis/tls-configuration](https://learn.microsoft.com/en-us/azure/redis/tls-configuration)
+Reference: [https://learn.microsoft.com/en-us/azure/redis/tls-configuration](https://learn.microsoft.com/en-us/azure/redis/tls-configuration), [https://learn.microsoft.com/en-us/azure/redis/how-to-manage-redis-cache-powershell#update-an-azure-managed-redis-cache](https://learn.microsoft.com/en-us/azure/redis/how-to-manage-redis-cache-powershell#update-an-azure-managed-redis-cache)
 
 ### 3.2 Prefer Microsoft Entra Authentication Over Access Keys
 
 **Impact: CRITICAL (reduces key management risk)**
 
-Azure Managed Redis supports password-free Microsoft Entra authentication and enables managed identity by default. Use Entra tokens for authentication and refresh tokens before expiry; keep access keys disabled unless a client can't support Entra.
+Azure Managed Redis uses Microsoft Entra authentication by default, and managed identity is enabled when you create a new cache. To authorize a workload, add its managed identity or service principal to the cache's Redis users list. By default, Redis users receive full access to all commands and keys; use custom data access permissions where supported to restrict access. Refresh Entra tokens before expiry and keep access keys disabled unless a client cannot support Entra. The public documentation does not specify the exact ARM resource identity type when it describes this default.
 
 **Incorrect: access keys only**
 
@@ -324,11 +325,13 @@ Token refresh: Not implemented
 
 ```text
 Authentication: Microsoft Entra enabled
+Workload managed identity or service principal: added to Redis users
+Custom data access permissions: restricted to required commands and keys
 Access keys: Disabled
 Client: refreshes token before expiry and re-AUTHs
 ```
 
-Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication), [https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions](https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions)
 
 ### 3.3 Rotate Access Keys and Keep Secrets Out of Code
 
@@ -362,7 +365,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/entra-for-authenticati
 
 **Impact: CRITICAL (limits blast radius for compromised identities)**
 
-Azure Managed Redis uses Microsoft Entra identities for password-free access, but newly assigned users or service principals can receive broad command and key permissions unless you scope them. AMR does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes, so do not map tenants to Redis databases the way some Azure Cache for Redis designs did. Assign managed identities or service principals per workload, use custom data access policies where available, and express least privilege with Redis ACL syntax such as command categories and key patterns. Track each access policy assignment as infrastructure so reviews and removals are auditable.
+Azure Managed Redis supports one database per instance and blocks the `SELECT` command. Do not build tenant isolation on numbered database indexes. Instead, express tenant and workload boundaries through Redis users, key patterns, and custom data access permissions where supported. Add workload identities or service principals to Redis users, use application key prefixes for portable logical separation, and use separate AMR caches when tenants need hard isolation or independent lifecycle. Track access configuration as infrastructure so reviews and removals are auditable.
 
 **Incorrect: shared identity with full data-plane access**
 
@@ -378,15 +381,15 @@ Review process: manual portal assignment
 
 ```text
 Identity: workload-specific managed identity object ID
-Access policy assignment: managed in IaC
+Redis user and custom data access permissions: managed in IaC
 Access string: +@read +@write ~checkout:* ~session:*
 Admin/destructive commands: not granted unless explicitly required
 Review process: quarterly identity and ACL review
 ```
 
-When you find a migration design that uses database indexes for tenant isolation, refactor the infrastructure plan to key-pattern boundaries and identity boundaries: provision workload-specific managed identities, assign data access policies scoped to prefixes such as `prod:tenant:contoso:*`, and use separate AMR caches for tenants that require hard isolation, independent maintenance windows, or separate compliance controls. Application code still needs tenant-aware key builders and authorization checks; access policies reduce blast radius but do not replace application authorization.
+When you find a migration design that uses database indexes for tenant isolation, refactor the infrastructure plan to key-pattern boundaries and identity boundaries: provision workload-specific managed identities, add them to Redis users, configure custom permissions scoped to prefixes such as `prod:tenant:contoso:*` where supported, and use separate AMR caches for tenants that require hard isolation, independent maintenance windows, or separate compliance controls. Application code still needs tenant-aware key builders and authorization checks; Redis permissions reduce blast radius but do not replace application authorization.
 
-Reference: [https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions](https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions), [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
+Reference: [https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions](https://learn.microsoft.com/en-us/azure/redis/configure-access-permissions), [https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication), [https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information](https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information)
 
 ---
 
@@ -402,7 +405,7 @@ Enable high availability and zone redundancy to survive node and zone failures i
 
 **Impact: HIGH (improves resilience to node and zone failures)**
 
-Azure Managed Redis recommends high availability for production, which deploys multiple nodes and replicates data across them. In regions with availability zones, enable zone redundancy to place nodes in separate zones for better resilience.
+Azure Managed Redis recommends high availability for production, which deploys multiple nodes and replicates data across them. In supported regions, high availability automatically distributes AMR nodes across availability zones; no separate zone selection is needed. In regions without availability zones, high availability still creates multiple nodes, but they are not placed in separate zones.
 
 **Incorrect: single node, no zone redundancy**
 
@@ -411,12 +414,11 @@ High Availability: Disabled
 Zone Redundancy: Not configured
 ```
 
-**Correct: HA with zone redundancy in supported regions**
+**Correct: enable high availability**
 
 ```text
 High Availability: Enabled
-Zone Redundancy: Enabled
-Region: supports availability zones
+Region: supports availability zones for automatic zone redundancy
 ```
 
 Reference: [https://learn.microsoft.com/en-us/azure/reliability/reliability-managed-redis](https://learn.microsoft.com/en-us/azure/reliability/reliability-managed-redis)
@@ -435,7 +437,7 @@ Plan active geo-replication groups, eventual consistency behavior, and DR workfl
 
 **Impact: HIGH (reduces regional outage risk)**
 
-Active geo-replication groups up to five Azure Managed Redis instances across regions in an active-active configuration. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Ensure all linked instances use matching configuration, and verify tier/module support because active geo-replication is not available for every SKU or module combination.
+Active geo-replication groups up to five Azure Managed Redis instances across regions. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Keep required configuration aligned across members and verify tier/module support because active geo-replication is not available for every SKU or module combination.
 
 **Incorrect: assume you can add geo-replication later or mix configs**
 
@@ -512,6 +514,8 @@ Choose OSS vs Enterprise cluster policy, understand port requirements, and align
 
 Azure Managed Redis supports OSSCluster, EnterpriseCluster, and NoCluster policies. Choose the policy explicitly based on client capabilities, module requirements, cache size, and multi-key command behavior; do not rely on provider defaults. AMR manages partitioning internally, so avoid describing the service in terms of customer-managed shard counts. In customer-facing guidance, say tier, SKU, capacity or usable memory, and cluster policy instead of "number of shards."
 
+Azure Managed Redis supports one database per instance and blocks `SELECT`, regardless of cluster policy. Do not rely on numbered database indexes for logical separation; use application key prefixes, and separate caches when hard isolation is required. See [AMR configuration](https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information).
+
 **Incorrect: select OSS when clients and modules require Enterprise**
 
 ```text
@@ -527,13 +531,16 @@ Multi-key/Lua: uses keys across slots
 Cluster policy: NoCluster when supported for simple single-endpoint workloads
 Cluster policy: OSSCluster only for Redis Cluster-aware clients
 Cluster policy: EnterpriseCluster when required by modules or client compatibility
+Logical databases: one per instance; do not use SELECT or numbered DB indexes
 Scale language: tier, SKU, capacity, usable memory, and cluster policy
 Multi-key/Lua: keys use hash tags or avoid cross-slot operations
 ```
 
 Prefer `NoCluster` when the workload fits its supported size and needs single-endpoint semantics with the least CROSSSLOT risk, especially when the application is not Redis Cluster-aware. Use `OSSCluster` only when clients handle MOVED/ASK redirects and operational runbooks account for cluster topology. Use `EnterpriseCluster` when module support or client compatibility requires it, while still checking multi-key commands and Lua scripts for cross-slot behavior. For application code, require hash tags such as `cart:{userId}:items` and `cart:{userId}:totals` when related keys must be used together.
 
-Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
+Module support constrains the policy choice. RediSearch requires the Enterprise cluster policy and cannot be used with `OSSCluster`, so search or vector workloads require `EnterpriseCluster`. Active geo-replication supports only RediSearch and RedisJSON. Module availability varies by tier; confirm the selected module and cluster policy against the current Azure Managed Redis documentation before provisioning.
+
+Reference: [https://learn.microsoft.com/en-us/azure/redis/architecture](https://learn.microsoft.com/en-us/azure/redis/architecture), [https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication](https://learn.microsoft.com/en-us/azure/redis/how-to-active-geo-replication)
 
 ---
 
@@ -547,7 +554,7 @@ Configure Azure Monitor metrics and diagnostic logs, enable connection auditing,
 
 **Impact: MEDIUM (improves operational visibility and auditing)**
 
-Azure Managed Redis emits metrics and diagnostic logs through Azure Monitor. Enable metrics (AllMetrics) and connection logs to capture performance signals and authentication events, and send them to Log Analytics or storage for alerting and auditing. For private deployments, include private endpoint and private DNS health in the operational view so a cache health issue is not confused with name-resolution or network reachability failure.
+Azure Managed Redis exposes the `AllMetrics` cache-metrics category and `ConnectionEvents` connection-log category through Azure Monitor diagnostic settings. Send these signals to Log Analytics or storage for alerting and auditing. The public monitoring reference lists metrics such as `usedmemorypercentage`, `serverLoad`, `percentProcessorTime`, `connectedclients`, `cacheLatency`, `evictedkeys`, and `geoReplicationHealthy` for geo-replicated caches. Check the current Azure Monitor schema for the target resource when configuring diagnostics. For private deployments, include private endpoint and private DNS health in the operational view so a cache health issue is not confused with name-resolution or network reachability failure.
 
 **Incorrect: no diagnostics enabled**
 
@@ -561,8 +568,9 @@ Connection logs: Off
 
 ```text
 Diagnostic settings: Enabled
-Categories: AllMetrics, Connection logs
+Categories: AllMetrics, ConnectionEvents
 Destination: Log Analytics workspace
+Signals: Used Memory Percentage, CPU, Server Load, Cache Latency, Connected Clients, Evicted Keys
 Network checks: private endpoint connection state and private DNS resolution
 ```
 
@@ -572,7 +580,7 @@ Reference: [https://learn.microsoft.com/en-us/azure/redis/monitor-diagnostic-set
 
 **Impact: HIGH (shortens detection and response time)**
 
-Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and geo-replication health/lag where used. Route diagnostic settings to Log Analytics so alerts can be investigated with connection logs and historical metrics.
+Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and replication health where used. The current public metric names include `usedmemorypercentage`, `serverLoad`, `percentProcessorTime`, `connectedclients`, `cacheLatency`, `evictedkeys`, and `geoReplicationHealthy`; check the monitoring reference for current availability and dimensions. Route `AllMetrics` and `ConnectionEvents` to Log Analytics so alerts can be investigated with connection logs and historical metrics.
 
 **Incorrect: dashboards only, no actionable alerts**
 
@@ -588,7 +596,7 @@ Thresholds: not tied to load test or SLO
 **Correct: launch baseline with alert routing**
 
 ```text
-Diagnostic settings: AllMetrics and Connection logs to Log Analytics
+Diagnostic settings: AllMetrics and ConnectionEvents to Log Analytics
 Metric alerts: usedmemorypercentage, serverLoad, percentProcessorTime
 Metric alerts: connectedclients, cacheLatency, evictedkeys
 Geo alerts: geoReplicationHealthy when active geo-replication is enabled

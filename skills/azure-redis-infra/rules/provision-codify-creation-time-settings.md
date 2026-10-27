@@ -27,7 +27,7 @@ IaC: Bicep/AVM or Terraform module checked into source control
 Parameters: tier, SKU, region, modules, cluster policy, HA, protocol, persistence
 Networking: private endpoint, publicNetworkAccess, DNS links
 Security: Entra users, access policies, TLS, key posture
-Database: default database, port 10000, clientProtocol, evictionPolicy
+Database: default database, configured port (10000 by default), clientProtocol, evictionPolicy
 Preflight: az deployment what-if or terraform validate && terraform plan
 Operations: diagnostic settings and alerts deployed with the cache
 ```
