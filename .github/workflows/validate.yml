@@ -37,6 +37,9 @@ jobs:
       - name: Validate skill package structure
         run: npm run validate
 
+      - name: Run confidentiality regression tests
+        run: npm run test:confidentiality
+
       - name: Check generated output is current
         run: git diff --exit-code
 
