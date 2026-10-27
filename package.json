@@ -42,6 +42,7 @@
     "validate": "npm run validate:skill && npm run validate:confidentiality",
     "validate:skill": "cd packages\\amr-agent-skills-build && npx tsx src\\validate.ts",
     "validate:confidentiality": "node scripts\\check-confidentiality.mjs",
+    "test:confidentiality": "node --test scripts\\check-confidentiality.test.mjs scripts\\distribution-files.test.mjs",
     "dev": "cd packages\\amr-agent-skills-build && npm run dev",
     "efficacy:prepare": "node scripts\\prepare-efficacy-workspace.mjs"
   }

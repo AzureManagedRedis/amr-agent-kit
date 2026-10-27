@@ -80,11 +80,26 @@ npm run build
 npm run validate
 ```
 
+## Distribution confidentiality review
+
+The confidentiality check is a lint over the distribution boundary, not the private repository as a whole. It uses npm's dry-run package inventory and the same skill and manifest selection as the release ZIP workflow, including published paths and filenames. Build generated skill output before running it. New packaging inputs must be represented by the shared inventory.
+
+Product-generation shorthand is a blocker; use AMR or ACRE instead. Source filenames and source path-and-line references are warnings for manual review, not automatic failures. The check reports binary artifacts whose paths were inspected but whose contents were not, and it cannot identify arbitrary semantic disclosures. A passing result is not proof that content is safe to publish.
+
+Before distribution, review the content manually:
+
+- State customer-observable behavior using public evidence.
+- Do not expose private implementation explanations merely because internal code confirms them.
+- Use AMR/ACRE product names.
+- Review source-reference warnings and binary artifacts.
+- Confirm every packaging addition appears in the shared distribution inventory.
+
 Useful targeted commands:
 
 ```bash
 npm run build-redis-code
 npm run build-azure-redis-infra
+npm run test:confidentiality
 ```
 
 Before opening a pull request:
