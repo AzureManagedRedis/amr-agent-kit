@@ -1,13 +1,13 @@
 ---
-title: Use TLS and Azure Managed Redis Ports
+title: Use TLS and Service-Returned Azure Managed Redis Endpoints
 impact: CRITICAL
 impactDescription: prevents plaintext traffic and endpoint misconfiguration
 tags: connection, tls, azure, security, configuration
 ---
 
-## Use TLS and Azure Managed Redis Ports
+## Use TLS and Service-Returned Azure Managed Redis Endpoints
 
-Production clients for Azure Managed Redis must connect to the normal managed endpoint, for example `<cache-name>.<region>.redis.azure.net`, on port `10000` with TLS enabled and certificate validation on. Do not copy local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or Azure Cache for Redis port `6380` into production configuration.
+Production clients for Azure Managed Redis must use the host name and port returned for that database, with TLS enabled and certificate validation on. In public Azure the default endpoint resembles `<cache-name>.<region>.redis.azure.net` and the default database port is `10000`, but additional databases can use other immutable ports and DNS suffixes vary by cloud. Do not replace the service-returned values with local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or the legacy Azure Cache for Redis port `6380`.
 
 **Incorrect (local/non-TLS defaults used for AMR):**
 
@@ -37,8 +37,8 @@ if missing:
     raise RuntimeError(f"Missing Redis configuration: {', '.join(missing)}")
 
 port = int(os.environ["REDIS_PORT"])
-if port != 10000:
-    raise RuntimeError("Azure Managed Redis production clients should use port 10000")
+if not 1 <= port <= 65535:
+    raise RuntimeError("REDIS_PORT must be a valid service-returned TCP port")
 
 r = redis.Redis(
     host=os.environ["REDIS_HOST"],
@@ -55,7 +55,7 @@ r = redis.Redis(
 r.set("cache:ready", "true", ex=60)
 ```
 
-Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication. When reviewing production code, explicitly reject port `6380`; it belongs to the legacy Azure Cache for Redis pattern, not Azure Managed Redis.
+Keep local development configuration separate from production configuration. Use `rediss://` URLs or SDK TLS options for Azure Managed Redis, keep certificate validation enabled, and fail startup if required host, port, username, or credential settings are missing. Pair TLS setup with a singleton client or pool, explicit timeouts, bounded retries with jitter, and Entra token refresh when using identity-based authentication. Treat `10000` as the default database port, not a universal constant: consume the service-returned value and follow cluster redirects rather than hardcoding direct-node ports.
 
 References:
 - [Azure Managed Redis architecture](https://learn.microsoft.com/en-us/azure/redis/architecture)
