@@ -1,8 +1,8 @@
 ---
 name: azure-redis-infra
 description: |
-  Azure Managed Redis (Redis Enterprise 7.4) infrastructure patterns and best
-  practices. Use when provisioning AMR, configuring networking/security,
+  Azure Managed Redis infrastructure patterns and best practices. Use when
+  provisioning AMR, configuring networking/security,
   enabling high availability or geo-replication, setting persistence, choosing
   cluster policy, generating native ARM/Bicep/Terraform, sizing from workload
   metrics, or monitoring AMR in Azure. Triggers on tasks involving Azure
@@ -19,7 +19,7 @@ metadata:
 
 # Azure Managed Redis Infrastructure
 
-Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure.
+Patterns and best practices for provisioning, securing, and operating Azure Managed Redis in Azure.
 
 ## Scope
 
@@ -35,6 +35,18 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 ## Agent Guidance
 
+### Critical AMR Guardrails (open the linked rule before answering)
+
+These are the highest-harm facts to get right. When a task touches one, open the linked rule file for the full detail rather than relying on a single scan of `AGENTS.md`.
+
+- **Minimum TLS is 1.2.** Set `minimumTlsVersion` to `1.2`; this is separate from the negotiated wire protocol, and Microsoft documents updating the setting after creation. → `rules/security-enforce-tls.md`
+- **HA provides AMR zone redundancy automatically where supported.** Enable high availability; no separate zone selection is needed for AMR. → `rules/availability-enable-ha-zone-redundancy.md`
+- **AMR supports one logical database per instance.** Do not use numbered DB indexes or `SELECT` for tenant separation, regardless of cluster policy. → `rules/security-scope-data-access-policies.md`
+- **Entra authentication and managed identity are enabled by default.** Add each workload principal to the cache's Redis users list; use custom data access permissions to restrict its default access. → `rules/security-use-entra-authentication.md`
+- **Match modules to cluster policy.** RediSearch requires `EnterpriseCluster` and cannot be used with `OSSCluster`; active geo-replication supports only RediSearch and RedisJSON. Check the current module and tier support before provisioning. → `rules/performance-choose-cluster-policy.md`
+- **Active geo-replication supports up to five AMR instances.** Confirm member eligibility, plan it at provisioning, and do not combine it with persistence. → `rules/geo-plan-active-geo-replication.md`
+- **Use the service endpoint and documented private DNS.** Give clients the resource host name and configured port; identify the documented public Azure DNS zone as such. → `rules/network-configure-private-dns.md`
+
 ### Validate Creation-Time Choices Early
 
 For Azure Managed Redis, several choices should be decided before provisioning, including tier/SKU, modules, cluster policy, high availability, active geo-replication, protocol mode, persistence, and networking model. Surface these early to avoid disruptive reprovisioning.
@@ -45,7 +57,7 @@ When reviewing or generating AMR sizing guidance, explicitly compare Memory Opti
 
 ### Prefer Native AMR IaC Shapes
 
-When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep the data-plane choices such as port `10000`, `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
+When generating infrastructure as code, model Azure Managed Redis directly rather than as generic Redis. For ARM and Bicep, use a `Microsoft.Cache/redisEnterprise` cluster plus a `Microsoft.Cache/redisEnterprise/databases` child named `default`. For Terraform, use `azurerm_managed_redis` with a `default_database` block. Keep data-plane choices such as the configured database port (`10000` by default), `clientProtocol`, `clusteringPolicy`, `evictionPolicy`, persistence, and modules on the database/default database configuration.
 
 ### Prefer Secure Azure Defaults
 
@@ -53,7 +65,7 @@ For production guidance, prefer Private Link, disabled public network access, TL
 
 ### Design Tenant Boundaries Explicitly
 
-Azure Managed Redis does not support Redis logical-database multi-tenancy with `SELECT` or numbered DB indexes. For tenant-aware deployments, use scoped identities, data access policies/key patterns, application key prefixes, metadata filters for search/RAG workloads, and separate AMR caches when tenants need hard isolation or independent lifecycle.
+Azure Managed Redis supports one database per instance and blocks `SELECT`. Do not use numbered database indexes for tenant separation. Prefer application key prefixes for portable logical separation and separate AMR caches for hard tenant isolation or independent lifecycle. Use scoped Redis users and custom data access permissions where supported, and metadata filters for search/RAG workloads. See [AMR configuration](https://learn.microsoft.com/en-us/azure/redis/configure#other-configuration-information).
 
 ### Separate Infrastructure Workflows
 
@@ -116,7 +128,7 @@ Private endpoints, public network access, and DNS integration.
 
 ### 3. Security & Identity (CRITICAL)
 
-TLS 1.2/1.3, Entra ID authentication, and key management.
+Minimum TLS version 1.2, Entra ID authentication, and key management.
 - [Enforce TLS for client connections](rules/security-enforce-tls.md)
 - [Prefer Entra authentication over access keys](rules/security-use-entra-authentication.md)
 - [Scope data access by identity and key pattern](rules/security-scope-data-access-policies.md)

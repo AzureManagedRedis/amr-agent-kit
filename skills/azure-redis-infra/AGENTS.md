@@ -4,7 +4,7 @@
 Microsoft  
 February 2026
 
-Patterns and best practices for provisioning, securing, and operating Azure Managed Redis (Redis Enterprise 7.4) in Azure. Covers metric-based provisioning and sizing, native ARM/Bicep/Terraform generation, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.
+Patterns and best practices for provisioning, securing, and operating Azure Managed Redis in Azure. Covers metric-based provisioning and sizing, native ARM/Bicep/Terraform generation, module selection, networking, security, availability, geo-replication, data durability, performance tuning, and observability.
 
 This generated file is a compact catalog, not a complete instruction bundle. Start with [SKILL.md](SKILL.md), select only the categories relevant to the task, and then read the linked source rules under `rules/`. Do not load every rule unless the task genuinely spans the full skill.
 

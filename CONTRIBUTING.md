@@ -50,7 +50,7 @@ The build uses 32 KiB as a cross-tool compatibility budget for both each generat
 
 - Preserve the rule intent unless the change is explicitly a rename or replacement.
 - Improve correctness first, then clarity, then breadth.
-- Keep Azure Managed Redis assumptions current, especially authentication, TLS, Private Link, Redis Enterprise 7.4 modules, and cluster policy behavior.
+- Keep Azure Managed Redis assumptions current, especially authentication, TLS, Private Link, module/runtime versions, and cluster policy behavior.
 - Avoid unrelated formatting churn.
 - If a rule changes behavior or guidance materially, update the skill `README.md` or `SKILL.md` if the summary becomes stale.
 - Do not edit generated `AGENTS.md` directly. Regenerate it with the build command.
