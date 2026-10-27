@@ -80,6 +80,6 @@ def increment_multiple(keys):
     return pipe.execute()
 ```
 
-WATCH monitors keys and aborts the transaction if they change before EXEC. This provides optimistic locking for read-modify-write patterns. Use Lua scripts for complex atomic logic. On Azure Managed Redis with OSSCluster, every key in a transaction must share the same hash slot or Redis can return `CROSSSLOT`; use intentional hash tags, refactor related fields into one hash, or choose `NoCluster` when supported for workloads that require cross-key atomicity with non-cluster-aware clients.
+WATCH monitors keys and aborts the transaction if they change before EXEC. This provides optimistic locking for read-modify-write patterns. Use Lua scripts for complex atomic logic. MULTI/EXEC and WATCH are atomic multi-key operations, so in any clustered Azure Managed Redis policy — `OSSCluster` and `EnterpriseCluster` alike — every key in the transaction (including watched keys) must map to the same hash slot, or Redis can return `CROSSSLOT`. Enterprise cross-slot routing applies only to selected non-atomic multi-key commands and does not cover transactions. Use intentional hash tags to co-locate the keys, refactor related fields into one hash, or choose `NoCluster` when supported for workloads that require cross-key atomicity with non-cluster-aware clients.
 
 Reference: [Redis Transactions](https://redis.io/docs/latest/develop/interact/transactions/)

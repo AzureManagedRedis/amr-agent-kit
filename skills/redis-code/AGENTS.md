@@ -4,7 +4,7 @@
 Microsoft  
 February 2026
 
-Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
+Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Critical module guardrails: Search requires EnterpriseCluster and cannot be used with OSSCluster; RedisJSON is permitted with OSSCluster; active geo-replication supports only Search and JSON; validate SKU, region, preview or allowlist status, flash restrictions, and geo compatibility before provisioning. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.
 
 This generated file is a compact catalog, not a complete instruction bundle. Start with [SKILL.md](SKILL.md), select only the categories relevant to the task, and then read the linked source rules under `rules/`. Do not load every rule unless the task genuinely spans the full skill.
 
@@ -47,7 +47,7 @@ This generated file is a compact catalog, not a complete instruction bundle. Sta
 - **4.3** [Reuse SDK Clients and Pools](rules/conn-reuse-sdk-clients.md) — CRITICAL
 - **4.4** [Use Connection Pooling](rules/conn-use-connection-pooling.md) — CRITICAL
 - **4.5** [Use Microsoft Entra Authentication for Azure Managed Redis](rules/conn-use-entra-authentication.md) — HIGH
-- **4.6** [Use TLS and Azure Managed Redis Ports](rules/conn-require-tls-amr-endpoints.md) — CRITICAL
+- **4.6** [Use TLS and Service-Returned Azure Managed Redis Endpoints](rules/conn-require-tls-amr-endpoints.md) — CRITICAL
 
 ## 5. Caching Strategies
 
@@ -83,7 +83,7 @@ This generated file is a compact catalog, not a complete instruction bundle. Sta
 
 **Category impact: MEDIUM**
 
-- **9.1** [Monitor Memory and Set Limits](rules/memory-monitor-and-set-limits.md) — CRITICAL
+- **9.1** [Monitor Memory and Choose Capacity and Eviction](rules/memory-monitor-and-set-limits.md) — CRITICAL
 - **9.2** [Use Memory-Efficient Data Structures](rules/memory-use-efficient-encodings.md) — HIGH
 
 ## 10. Error Handling & Resilience
@@ -108,7 +108,7 @@ This generated file is a compact catalog, not a complete instruction bundle. Sta
 **Category impact: HIGH**
 
 - **12.1** [Limit K and Returned Fields for AI Retrieval](rules/search-limit-k-and-returned-fields.md) — HIGH
-- **12.2** [Use Enterprise Cluster Policy for RediSearch and RedisJSON](rules/search-use-enterprise-policy-for-modules.md) — CRITICAL
+- **12.2** [Match Search and JSON Modules to the Cluster Policy](rules/search-use-enterprise-policy-for-modules.md) — CRITICAL
 - **12.3** [Use Hybrid Vector Search with Metadata Filters](rules/search-use-hybrid-vector-and-metadata-filters.md) — CRITICAL
 
 ## 13. Retrieval-Augmented Generation
