@@ -5,7 +5,7 @@
 
 import { readdir, readFile, writeFile } from 'fs/promises'
 import { join, relative } from 'path'
-import { Rule, Section, GuidelinesDocument, ImpactLevel } from './types.js'
+import { Rule, Section, ImpactLevel } from './types.js'
 import { parseRuleFile, RuleFile } from './parser.js'
 import { SKILLS, SkillConfig, DEFAULT_SKILL } from './config.js'
 
@@ -66,7 +66,7 @@ function incrementVersion(version: string): string {
 }
 
 /**
- * Generate markdown from rules
+ * Generate a compact rule index for progressive disclosure.
  */
 function generateMarkdown(
   sections: Section[],
@@ -79,87 +79,27 @@ function generateMarkdown(
   },
   skillConfig: SkillConfig
 ): string {
-  let md = `# ${skillConfig.title}\n\n`
+  let md = `# ${skillConfig.title} Rule Index\n\n`
   md += `**Version ${metadata.version}**  \n`
   md += `${metadata.organization}  \n`
   md += `${metadata.date}\n\n`
-  md += `> **Note:**  \n`
-  md += `> This document is mainly for agents and LLMs to follow when maintaining,  \n`
-  md += `> generating, or refactoring ${skillConfig.description}. Humans  \n`
-  md += `> may also find it useful, but guidance here is optimized for automation  \n`
-  md += `> and consistency by AI-assisted workflows.\n\n`
-  md += `---\n\n`
-  md += `## Abstract\n\n`
   md += `${metadata.abstract}\n\n`
-  md += `---\n\n`
-  md += `## Table of Contents\n\n`
+  md += `This generated file is a compact catalog, not a complete instruction bundle. Start with [SKILL.md](SKILL.md), select only the categories relevant to the task, and then read the linked source rules under \`rules/\`. Do not load every rule unless the task genuinely spans the full skill.\n\n`
 
-  // Generate TOC
-  sections.forEach((section) => {
-    md += `${section.number}. [${section.title}](#${
-      section.number
-    }-${section.title.toLowerCase().replace(/\s+/g, '-').replace(/&/g, '')}) — **${
-      section.impact
-    }**\n`
-    section.rules.forEach((rule) => {
-      // GitHub generates anchors from the full heading text: "1.1 Title" -> "#11-title"
-      const anchor = `${rule.id} ${rule.title}`
-        .toLowerCase()
-        .replace(/\s+/g, '-')
-        .replace(/[^\w-]/g, '') // Remove special characters except hyphens
-      md += `   - ${rule.id} [${rule.title}](#${anchor})\n`
-    })
-  })
-
-  md += `\n---\n\n`
-
-  // Generate sections
   sections.forEach((section) => {
     md += `## ${section.number}. ${section.title}\n\n`
-    md += `**Impact: ${section.impact}${
-      section.impactDescription ? ` (${section.impactDescription})` : ''
-    }**\n\n`
-    if (section.introduction) {
-      md += `${section.introduction}\n\n`
-    }
+    md += `**Category impact: ${section.impact}**\n\n`
 
     section.rules.forEach((rule) => {
-      md += `### ${rule.id} ${rule.title}\n\n`
-      md += `**Impact: ${rule.impact}${
-        rule.impactDescription ? ` (${rule.impactDescription})` : ''
-      }**\n\n`
-      md += `${rule.explanation}\n\n`
-
-      rule.examples.forEach((example) => {
-        if (example.description) {
-          md += `**${example.label}: ${example.description}**\n\n`
-        } else {
-          md += `**${example.label}:**\n\n`
-        }
-        // Only generate code block if there's actual code
-        if (example.code && example.code.trim()) {
-          md += `\`\`\`${example.language || 'python'}\n`
-          md += `${example.code}\n`
-          md += `\`\`\`\n\n`
-        }
-        if (example.additionalText) {
-          md += `${example.additionalText}\n\n`
-        }
-      })
-
-      if (rule.references && rule.references.length > 0) {
-        md += `Reference: ${rule.references
-          .map((ref) => `[${ref}](${ref})`)
-          .join(', ')}\n\n`
-      }
+      const sourceFile = rule.sourceFile || 'rules/'
+      md += `- **${rule.id}** [${rule.title}](${sourceFile}) — ${rule.impact}\n`
     })
 
-    md += `---\n\n`
+    md += '\n'
   })
 
-  // Add references section
   if (metadata.references && metadata.references.length > 0) {
-    md += `## References\n\n`
+    md += `## Product References\n\n`
     metadata.references.forEach((ref, i) => {
       md += `${i + 1}. [${ref}](${ref})\n`
     })
@@ -320,24 +260,19 @@ async function buildSkill(skillConfig: SkillConfig) {
   const ruleInputs = await collectRuleInputs(skillConfig)
 
   if (ruleInputs.length === 0) {
-    console.log(`  No rule files found. Creating empty AGENTS.md...`)
-    const metadata = await readSkillMetadata(skillConfig)
-    const emptyMd = `# ${skillConfig.title}\n\n**Version ${metadata.version}**  \n${metadata.organization}  \n${metadata.date}\n\n> **Note:**  \n> This document is mainly for agents and LLMs to follow when maintaining,  \n> generating, or refactoring ${skillConfig.description}.\n\n---\n\n## Abstract\n\n${metadata.abstract}\n\n---\n\n*No rules have been added yet. Add rule files to the rules/ directory and rebuild.*\n`
-    await writeTextFileIfChanged(skillConfig.outputFile, emptyMd)
-    console.log(`  ✓ Built empty AGENTS.md`)
-    return
+    throw new Error(`No rule files found for ${skillConfig.name}`)
   }
 
   const ruleData: RuleFile[] = []
   const parsedRuleInputs: ParsedRuleInput[] = []
   for (const input of ruleInputs) {
-    try {
-      const parsed = await parseRuleFile(input.filePath, input.sectionMap)
-      ruleData.push(parsed)
-      parsedRuleInputs.push({ input, parsed })
-    } catch (error) {
-      console.error(`  Error parsing ${input.displayFile}:`, error)
-    }
+    const parsed = await parseRuleFile(input.filePath, input.sectionMap)
+    parsed.rule.sourceFile = relative(skillConfig.skillDir, input.filePath).replace(
+      /\\/g,
+      '/'
+    )
+    ruleData.push(parsed)
+    parsedRuleInputs.push({ input, parsed })
   }
   await writeRuleManifestIfConfigured(skillConfig, ruleInputs, parsedRuleInputs)
 
@@ -451,7 +386,7 @@ async function buildSkill(skillConfig: SkillConfig) {
   await writeTextFileIfChanged(skillConfig.outputFile, markdown)
 
   console.log(
-    `  ✓ Built AGENTS.md with ${sections.length} sections and ${ruleData.length} rules`
+    `  ✓ Built compact AGENTS.md index with ${sections.length} sections and ${ruleData.length} rule links`
   )
 }
 

@@ -127,4 +127,4 @@ def get_with_background_refresh(cache_key, ttl, stale_threshold, fetch_func):
 
 For high-traffic cache keys, use namespaced and versioned keys such as `cache:catalog:v1:product:{sku}`. Use distributed locking so only one request regenerates the cache, and release locks only when the stored token matches the holder. Probabilistic early expiration and TTL jitter spread regeneration over time instead of at exact expiration.
 
-Reference: [Cache Stampede Prevention](https://redis.io/glossary/cache-stampede/)
+Reference: [Redis-py stampede protection with a Lua lock](https://redis.io/docs/latest/develop/use-cases/cache-aside/redis-py/#stampede-protection-with-a-lua-lock)
