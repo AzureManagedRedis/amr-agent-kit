@@ -18,7 +18,7 @@ Use this skill for:
 ## Scope
 
 - Azure Managed Redis (AMR)
-- Redis Enterprise 7.4 capabilities on Azure
+- Azure Managed Redis capabilities and current service constraints
 - Azure-native controls for networking, identity, reliability, durability, performance, and observability
 
 ## Usage
@@ -106,7 +106,7 @@ azure-redis-infra/
 2. Choose the prefix that matches the category in the table above.
 3. Fill in frontmatter and content.
 4. Include Azure-specific implementation notes and examples.
-5. Run the build to regenerate `AGENTS.md`.
+5. Run the build to regenerate the compact `AGENTS.md` rule index.
 
 ## Building and Validation
 

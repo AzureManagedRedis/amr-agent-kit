@@ -7,7 +7,7 @@ tags: observability, azure-monitor, alerts, metrics, runbooks
 
 ## Set Azure Monitor Alert Baselines Before Launch
 
-Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and geo-replication health/lag where used. Route diagnostic settings to Log Analytics so alerts can be investigated with connection logs and historical metrics.
+Azure Managed Redis platform metrics are collected automatically, but production readiness requires alert rules, action groups, dashboards, and runbook links before traffic arrives. Baseline thresholds from load tests and expected traffic, then alert on saturation, client pressure, latency, evictions, CPU/server load, connection anomalies, persistence/export status, private endpoint/DNS health, and replication health where used. The current public metric names include `usedmemorypercentage`, `serverLoad`, `percentProcessorTime`, `connectedclients`, `cacheLatency`, `evictedkeys`, and `geoReplicationHealthy`; check the monitoring reference for current availability and dimensions. Route `AllMetrics` and `ConnectionEvents` to Log Analytics so alerts can be investigated with connection logs and historical metrics.
 
 **Incorrect (dashboards only, no actionable alerts):**
 
@@ -23,7 +23,7 @@ Thresholds: not tied to load test or SLO
 **Correct (launch baseline with alert routing):**
 
 ```text
-Diagnostic settings: AllMetrics and Connection logs to Log Analytics
+Diagnostic settings: AllMetrics and ConnectionEvents to Log Analytics
 Metric alerts: usedmemorypercentage, serverLoad, percentProcessorTime
 Metric alerts: connectedclients, cacheLatency, evictedkeys
 Geo alerts: geoReplicationHealthy when active geo-replication is enabled

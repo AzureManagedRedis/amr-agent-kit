@@ -80,7 +80,7 @@ Skill path: ${evalCase.skill_path}
 Task:
 ${evalCase.prompt}
 
-Before answering, read the skill file above and apply its guidance. Save the final answer to outputs/answer.md.
+Before answering, read the compact rule index above, the adjacent SKILL.md, and only the linked rule files relevant to the task. Apply that guidance and save the final answer to outputs/answer.md.
 
 The answer should be concise but complete enough for grading. Do not mention that this is an eval unless it helps explain assumptions.`
 }

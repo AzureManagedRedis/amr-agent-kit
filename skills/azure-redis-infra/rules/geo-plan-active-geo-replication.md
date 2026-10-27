@@ -7,7 +7,7 @@ tags: geo-replication, dr, active-active, consistency
 
 ## Plan Active Geo-Replication for Multi-Region DR
 
-Active geo-replication groups up to five Azure Managed Redis instances across regions in an active-active configuration. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Ensure all linked instances use matching configuration, and verify tier/module support because active geo-replication is not available for every SKU or module combination.
+Active geo-replication groups up to five Azure Managed Redis instances across regions. Plan for eventual consistency, application-level conflict behavior, and client endpoint selection before provisioning. Keep required configuration aligned across members and verify tier/module support because active geo-replication is not available for every SKU or module combination.
 
 **Incorrect (assume you can add geo-replication later or mix configs):**
 

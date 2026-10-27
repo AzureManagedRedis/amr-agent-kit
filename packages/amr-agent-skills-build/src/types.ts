@@ -14,6 +14,7 @@ export interface CodeExample {
 
 export interface Rule {
   id: string // e.g., "1.1", "2.3"
+  sourceFile?: string // Skill-relative source file for progressive disclosure
   title: string
   section: number // Main section number (1-10)
   subsection?: number // Subsection number within section

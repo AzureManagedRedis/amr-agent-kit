@@ -9,6 +9,8 @@ tags: keyspace, notifications, reliability, pubsub
 
 Keyspace notifications are best-effort Pub/Sub events and can be missed under load or during failover. Do not use them as the sole trigger for critical workflows; use Streams or a durable queue for guaranteed processing.
 
+On Azure Managed Redis, configure notifications through the database resource's `notifyKeyspaceEvents` property rather than application startup code. Verify the property against the current AMR database resource documentation.
+
 **Incorrect (critical processing based on keyspace notifications):**
 
 ```text
@@ -23,4 +25,6 @@ Publish workflow events to a Redis Stream
 Consume with consumer groups and retry pending entries
 ```
 
-Reference: [Redis keyspace notifications](https://redis.io/docs/latest/develop/notify/keyspace-events/)
+References:
+- [Redis keyspace notification delivery semantics](https://redis.io/docs/latest/develop/pubsub/keyspace-notifications/)
+- [AMR `notifyKeyspaceEvents` property](https://learn.microsoft.com/en-us/azure/templates/microsoft.cache/redisenterprise/databases)

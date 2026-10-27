@@ -3,7 +3,7 @@
  * Validate rule files follow the correct structure
  */
 
-import { readdir } from 'fs/promises'
+import { readFile, readdir } from 'fs/promises'
 import { join } from 'path'
 import { Rule } from './types.js'
 import { parseRuleFile } from './parser.js'
@@ -34,6 +34,18 @@ interface RuleInput {
   rulesDir: string
   sectionMap: Record<string, number>
 }
+
+// Cross-tool compatibility budget for the combined AGENTS.md instruction chain.
+// Codex has the lowest published relevant bound: project_doc_max_bytes defaults
+// to 32 KiB and is configurable. Copilot CLI, Claude Code, and Gemini CLI do not
+// currently publish a lower hard limit for this mechanism.
+// Source: https://learn.chatgpt.com/docs/agent-configuration/agents-md
+const MAX_AGENTS_INSTRUCTION_CHAIN_BYTES = 32 * 1024
+// Agent Skills recommends keeping SKILL.md below 5,000 tokens and 500 lines.
+// The byte budget is a conservative, tokenizer-independent approximation.
+// Source: https://agentskills.io/specification
+const MAX_SKILL_BYTES = 24 * 1024
+const MAX_SKILL_LINES = 500
 
 async function collectRuleInputs(skillConfig: SkillConfig): Promise<RuleInput[]> {
   const sources =
@@ -197,14 +209,16 @@ async function validateSkill(skillConfig: SkillConfig): Promise<{
   }
 
   const ruleInputs = await collectRuleInputs(skillConfig)
-
-  if (ruleInputs.length === 0) {
-    console.log('  No rule files found. Nothing to validate.')
-    return { errors: [], ruleCount: 0 }
-  }
-
   const errors: ValidationError[] = []
 
+  if (ruleInputs.length === 0) {
+    errors.push({
+      file: `${skillConfig.name}/rules`,
+      message: 'No rule files found',
+    })
+  }
+
+  // Keep only repository-specific rule semantics here; Lychee owns link validation.
   for (const input of ruleInputs) {
     try {
       const { rule } = await parseRuleFile(input.filePath, input.sectionMap)
@@ -215,6 +229,59 @@ async function validateSkill(skillConfig: SkillConfig): Promise<{
         message: `Failed to parse: ${error instanceof Error ? error.message : String(error)}`,
       })
     }
+  }
+
+  // Check the index alone because some tools may consume it directly.
+  try {
+    const agentsContent = await readFile(skillConfig.outputFile, 'utf-8')
+    const agentsBytes = Buffer.byteLength(agentsContent, 'utf-8')
+    if (agentsBytes > MAX_AGENTS_INSTRUCTION_CHAIN_BYTES) {
+      errors.push({
+        file: `${skillConfig.name}/AGENTS.md`,
+        message: `Generated index is ${agentsBytes} bytes; cross-tool compatibility budget is ${MAX_AGENTS_INSTRUCTION_CHAIN_BYTES} bytes`,
+      })
+    }
+
+    // Codex combines root and nested AGENTS.md files during instruction discovery.
+    const repositoryAgentsPath = join(skillConfig.skillDir, '..', '..', 'AGENTS.md')
+    const repositoryAgentsContent = await readFile(repositoryAgentsPath, 'utf-8')
+    const repositoryInstructionBytes =
+      Buffer.byteLength(repositoryAgentsContent, 'utf-8') + agentsBytes
+    if (repositoryInstructionBytes > MAX_AGENTS_INSTRUCTION_CHAIN_BYTES) {
+      errors.push({
+        file: `${skillConfig.name}/AGENTS.md`,
+        message: `Repository and skill AGENTS.md files total ${repositoryInstructionBytes} bytes; cross-tool compatibility budget is ${MAX_AGENTS_INSTRUCTION_CHAIN_BYTES} bytes`,
+      })
+    }
+  } catch (error) {
+    errors.push({
+      file: `${skillConfig.name}/AGENTS.md`,
+      message: `Unable to validate generated index: ${error instanceof Error ? error.message : String(error)}`,
+    })
+  }
+
+  // Keep the always-loaded router compact; detailed content belongs in linked rules.
+  try {
+    const skillContent = await readFile(join(skillConfig.skillDir, 'SKILL.md'), 'utf-8')
+    const skillBytes = Buffer.byteLength(skillContent, 'utf-8')
+    const skillLines = skillContent.split(/\r?\n/).length
+    if (skillBytes > MAX_SKILL_BYTES) {
+      errors.push({
+        file: `${skillConfig.name}/SKILL.md`,
+        message: `Skill router is ${skillBytes} bytes; maximum is ${MAX_SKILL_BYTES} bytes`,
+      })
+    }
+    if (skillLines > MAX_SKILL_LINES) {
+      errors.push({
+        file: `${skillConfig.name}/SKILL.md`,
+        message: `Skill router has ${skillLines} lines; maximum is ${MAX_SKILL_LINES}`,
+      })
+    }
+  } catch (error) {
+    errors.push({
+      file: `${skillConfig.name}/SKILL.md`,
+      message: `Unable to validate skill router: ${error instanceof Error ? error.message : String(error)}`,
+    })
   }
 
   if (errors.length === 0) {

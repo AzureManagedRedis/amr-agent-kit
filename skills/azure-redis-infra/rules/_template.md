@@ -9,7 +9,7 @@ tags: tag1, tag2, tag3
 
 Brief explanation of the rule and why it matters for Azure Managed Redis.
 
-**Applies to:** Azure Managed Redis (Redis Enterprise 7.4)
+**Applies to:** Azure Managed Redis
 
 **Incorrect (description of what's wrong):**
 
