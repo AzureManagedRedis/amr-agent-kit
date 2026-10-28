@@ -39,7 +39,7 @@ Patterns and best practices for provisioning, securing, and operating Azure Mana
 
 These are the highest-harm facts to get right. When a task touches one, open the linked rule file for the full detail rather than relying on a single scan of `AGENTS.md`.
 
-- **Minimum TLS is 1.2.** Set `minimumTlsVersion` to `1.2`; this is separate from the negotiated wire protocol, and Microsoft documents updating the setting after creation. → `rules/security-enforce-tls.md`
+- **Minimum TLS is 1.2.** Set `minimumTlsVersion` to `1.2`; it is the only usable value and is separate from the negotiated wire protocol. → `rules/security-enforce-tls.md`
 - **HA provides AMR zone redundancy automatically where supported.** Enable high availability; no separate zone selection is needed for AMR. → `rules/availability-enable-ha-zone-redundancy.md`
 - **AMR supports one logical database per instance.** Do not use numbered DB indexes or `SELECT` for tenant separation, regardless of cluster policy. → `rules/security-scope-data-access-policies.md`
 - **Entra authentication and managed identity are enabled by default.** Add each workload principal to the cache's Redis users list; use custom data access permissions to restrict its default access. → `rules/security-use-entra-authentication.md`
