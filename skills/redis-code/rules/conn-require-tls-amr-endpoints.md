@@ -7,7 +7,7 @@ tags: connection, tls, azure, security, configuration
 
 ## Use TLS and Service-Returned Azure Managed Redis Endpoints
 
-Production clients for Azure Managed Redis must use the host name and port returned for that database, with TLS enabled and certificate validation on. In public Azure the default endpoint resembles `<cache-name>.<region>.redis.azure.net` and the default database port is `10000`, but additional databases can use other immutable ports and DNS suffixes vary by cloud. Do not replace the service-returned values with local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or the legacy Azure Cache for Redis port `6380`.
+Production clients for Azure Managed Redis must use the host name and port returned for that database, with TLS enabled and certificate validation on. In public Azure the default endpoint resembles `<cache-name>.<region>.redis.azure.net` and the default database port is `10000`, but additional databases can use other immutable ports and DNS suffixes vary by cloud. With `OSSCluster`, the cluster-aware client then connects directly to nodes on ports in the documented `85xx` range, which can change over time; network controls must permit them, and code must never hardcode them. Do not replace the service-returned values with local Redis defaults such as `localhost:6379`, `redis://`, `ssl=False`, disabled certificate checks, direct `privatelink` host names, or the legacy Azure Cache for Redis port `6380`.
 
 **Incorrect (local/non-TLS defaults used for AMR):**
 

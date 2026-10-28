@@ -26,9 +26,15 @@ allowed = [
 **Correct (hybrid filter and vector search in one query):**
 
 ```python
+import numpy as np
+
+# Must match the index schema: VECTOR ... TYPE FLOAT32.
+VECTOR_DTYPE = np.float32
+
 tenant = escape_tag(tenant_id)
 locale_tag = escape_tag(locale)
 access = "|".join(escape_tag(tier) for tier in user_access_tiers)
+query_vector_bytes = np.asarray(query_vector, dtype=VECTOR_DTYPE).tobytes()
 
 filter_expr = (
     f"(@tenant_id:{{{tenant}}} @locale:{{{locale_tag}}} "
@@ -38,9 +44,12 @@ query = (
     Query(f"{filter_expr}=>[KNN 8 @embedding $vec AS score]")
     .sort_by("score")
     .return_fields("chunk_id", "title", "source_url", "score")
+    .dialect(2)
 )
 
-results = redis_client.ft("idx:kb").search(query, {"vec": query_vector})
+results = redis_client.ft("idx:kb").search(query, {"vec": query_vector_bytes})
 ```
+
+The query vector's dimensions and binary data type must exactly match the indexed vector field. Change `VECTOR_DTYPE` when the schema uses a type other than `FLOAT32`.
 
 Reference: [Redis vector search](https://redis.io/docs/latest/develop/ai/search-and-query/vectors/)

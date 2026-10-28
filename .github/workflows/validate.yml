@@ -12,8 +12,13 @@ permissions:
 
 jobs:
   validate:
-    name: Build and validate skills
-    runs-on: windows-latest
+    name: Build and validate skills (${{ matrix.os }})
+    strategy:
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Check out repository
@@ -37,11 +42,11 @@ jobs:
       - name: Validate skill package structure
         run: npm run validate
 
-      - name: Run confidentiality regression tests
-        run: npm run test:confidentiality
+      - name: Run regression tests
+        run: npm test
 
       - name: Check generated output is current
-        run: git diff --exit-code
+        run: git ls-files --error-unmatch -- skills/redis-code/AGENTS.md skills/azure-redis-infra/AGENTS.md && git diff --exit-code HEAD
 
   links:
     name: Check Markdown links

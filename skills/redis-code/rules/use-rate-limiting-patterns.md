@@ -41,11 +41,18 @@ r = redis.Redis(
     decode_responses=True
 )
 # Fixed Window Rate Limiter
+FIXED_WINDOW_SCRIPT = """
+local current = redis.call('INCR', KEYS[1])
+if current == 1 then
+    redis.call('EXPIRE', KEYS[1], ARGV[1])
+end
+return current
+"""
+fixed_window = r.register_script(FIXED_WINDOW_SCRIPT)
+
 def fixed_window_limit(key, limit, window_seconds):
-    """Simple fixed window - resets at window boundary"""
-    current = r.incr(key)
-    if current == 1:
-        r.expire(key, window_seconds)
+    """Atomic fixed window - resets at window boundary"""
+    current = fixed_window(keys=[key], args=[window_seconds])
     return current <= limit
 
 # Usage: 100 requests per minute

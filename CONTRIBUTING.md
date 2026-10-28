@@ -85,6 +85,8 @@ lychee --config .lychee.toml .
 
 The link check requires [Lychee](https://github.com/lycheeverse/lychee) on `PATH`. Install it with the supported package manager for your platform, such as `winget install --id lycheeverse.lychee` on Windows. CI installs Lychee through `lycheeverse/lychee-action` and uses [.lychee.toml](.lychee.toml) for repository-wide Markdown link and fragment checks.
 
+From the repository root, run `npm run validate` for both skill structure and distribution confidentiality, and `npm test` for confidentiality/distribution, copy-button, and generated-output regressions. The ZIP inventory test requires Windows PowerShell (`powershell.exe`) on Windows or PowerShell 7 (`pwsh`) on Linux; both CI runners provide the appropriate executable. Build and validation must leave both generated `skills/*/AGENTS.md` indexes tracked and unchanged from `HEAD`, including staged changes. Unrelated untracked files do not fail this freshness gate.
+
 ## Distribution confidentiality review
 
 The confidentiality check is a lint over the distribution boundary, not the private repository as a whole. It uses npm's dry-run package inventory and the same skill and manifest selection as the release ZIP workflow, including published paths and filenames. Build generated skill output before running it. New packaging inputs must be represented by the shared inventory.
