@@ -8,6 +8,8 @@ description: |
   metrics, or monitoring AMR in Azure. Triggers on tasks involving Azure
   Managed Redis, private endpoints, Entra ID auth, TLS, active geo-replication,
   zone redundancy, Azure Monitor diagnostics, persistence, or AMR SKU selection.
+  For migration from Azure Cache for Redis (any tier) to AMR, use only to route
+  to the separate migration skills.
   Do NOT use for: Redis application code patterns, vector/RAG application design,
   semantic caching, LLM memory, or Azure infrastructure unrelated to Azure Managed
   Redis.
@@ -46,6 +48,19 @@ These are the highest-harm facts to get right. When a task touches one, open the
 - **Match modules to cluster policy.** RediSearch requires `EnterpriseCluster` and cannot be used with `OSSCluster`; active geo-replication supports only RediSearch and RedisJSON. Check the current module and tier support before provisioning. → `rules/performance-choose-cluster-policy.md`
 - **Active geo-replication supports up to five AMR instances.** Confirm member eligibility, plan it at provisioning, and do not combine it with persistence. → `rules/geo-plan-active-geo-replication.md`
 - **Use the service endpoint and documented private DNS.** Give clients the resource host name and configured port; identify the documented public Azure DNS zone as such. → `rules/network-configure-private-dns.md`
+
+### Route Migration Requests
+
+For migration from Azure Cache for Redis or Azure Cache for Redis Enterprise to AMR, including assessment, IaC conversion, client changes, cutover, or rollback, hand off before using this kit's ordinary workflows:
+
+| Source service/tier | Migration skill |
+|---|---|
+| Azure Cache for Redis Basic, Standard, or Premium (ACR/OSS) | [amr-migration-skill](https://github.com/AzureManagedRedis/amr-migration-skill) |
+| Azure Cache for Redis Enterprise or Enterprise Flash (ACRE) | [acre-to-amr-migration-skill](https://github.com/AzureManagedRedis/acre-to-amr-migration-skill) |
+
+If the source service/tier is unclear, ask before choosing a skill; do not infer it from the target AMR tier or cluster policy. These skills are distributed separately, not bundled with this kit. If the matching skill is installed, invoke it; otherwise, give the user that skill's repository link and point them to its installation instructions.
+
+Continue using this kit for standalone AMR infrastructure or application work.
 
 ### Validate Creation-Time Choices Early
 

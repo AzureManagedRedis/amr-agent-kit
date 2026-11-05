@@ -12,6 +12,9 @@ with local credentials if a real model-based classifier is added later.
 - Broad cross-domain prompts should choose one of those two skills based on whether
   the requested action is primarily code or infrastructure.
 - Unrelated prompts should route to `none` so skills do not over-trigger.
+- Migration prompts should route to `amr-migration-skill` for Basic, Standard,
+  and Premium, or `acre-to-amr-migration-skill` for Enterprise and Enterprise
+  Flash. If the source tier is unclear, the agent should ask.
 
 The labeled corpus lives in
 [`prompts/labeled-prompts.yaml`](prompts/labeled-prompts.yaml). Prompts avoid

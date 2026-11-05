@@ -6,6 +6,8 @@ description: |
   queues, pub/sub, streams, data structures, key design, connection handling,
   vector search, RAG, semantic caching, LLM memory, embeddings, or AI agent
   state on Azure Managed Redis.
+  For client changes when migrating from Azure Cache for Redis (any tier) to AMR,
+  use only to route to the separate migration skills.
   Do NOT use for: Azure Managed Redis infrastructure provisioning, Private Link,
   SKU selection, high availability, geo-replication, persistence, diagnostics,
   or Azure resources unrelated to Redis application code.
@@ -39,6 +41,19 @@ These are the highest-harm facts to get right. When a task touches one, open the
 - **Use the service-returned endpoint and port.** `10000` is the default database port, not a universal constant; do not reject a valid non-default port or hardcode public-cloud DNS. → `rules/conn-require-tls-amr-endpoints.md`
 - **Match modules to cluster policy.** Search (RediSearch) requires `EnterpriseCluster` and `NoEviction`; do not infer RedisJSON policy compatibility from Search's restriction. Verify the selected combination in current public service documentation; active geo-replication supports only Search and JSON. → `rules/search-use-enterprise-policy-for-modules.md`
 - **Memory is service-managed.** Do not `CONFIG SET maxmemory` from a client; choose SKU and eviction policy in Azure and monitor effective memory. → `rules/memory-monitor-and-set-limits.md`
+
+### Route Migration Requests
+
+For migration from Azure Cache for Redis or Azure Cache for Redis Enterprise to AMR, including assessment, IaC conversion, client changes, cutover, or rollback, hand off before using this kit's ordinary workflows:
+
+| Source service/tier | Migration skill |
+|---|---|
+| Azure Cache for Redis Basic, Standard, or Premium (ACR/OSS) | [amr-migration-skill](https://github.com/AzureManagedRedis/amr-migration-skill) |
+| Azure Cache for Redis Enterprise or Enterprise Flash (ACRE) | [acre-to-amr-migration-skill](https://github.com/AzureManagedRedis/acre-to-amr-migration-skill) |
+
+If the source service/tier is unclear, ask before choosing a skill; do not infer it from the target AMR tier or cluster policy. These skills are distributed separately, not bundled with this kit. If the matching skill is installed, invoke it; otherwise, give the user that skill's repository link and point them to its installation instructions.
+
+Continue using this kit for standalone AMR infrastructure or application work.
 
 ### Keep Code and Infrastructure Boundaries Clear
 
