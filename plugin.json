@@ -1,5 +1,5 @@
 {
-  "name": "amr-agent-kit",
+  "name": "amr",
   "displayName": "AMR Agent Kit",
   "description": "Redis and Azure Managed Redis skills for AI coding agents. Covers Redis application and AI coding patterns plus Azure Managed Redis infrastructure guidance.",
   "version": "1.0.0",
