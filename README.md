@@ -9,6 +9,17 @@ This repository helps AI agents provide Azure Managed Redis guidance through two
 - Use `redis-code` for Redis application and AI coding patterns: data structures, key design, caching, messaging, vector search, RAG, semantic caching, LLM memory, and agent state.
 - Use `azure-redis-infra` for Azure Managed Redis infrastructure: provisioning, Private Link, security, availability, geo-replication, durability, performance, and observability.
 
+### Migration to Azure Managed Redis
+
+Migration guidance is maintained in separate skills, not bundled with this kit:
+
+| Source service/tier | Migration skill and installation instructions |
+|---|---|
+| Azure Cache for Redis Basic, Standard, or Premium (ACR/OSS) | [amr-migration-skill](https://github.com/AzureManagedRedis/amr-migration-skill#usage) |
+| Azure Cache for Redis Enterprise or Enterprise Flash (ACRE) | [acre-to-amr-migration-skill](https://github.com/AzureManagedRedis/acre-to-amr-migration-skill#usage) |
+
+For migration help, use the skill matching your source service/tier. If the source is unclear, the agent should ask before choosing a skill.
+
 ## Usage
 
 Load this repository into an AI agent that supports Open Agent Skills. Skills are activated on demand based on the task.

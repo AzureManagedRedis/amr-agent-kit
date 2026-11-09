@@ -96,6 +96,51 @@ prompts:
       How do I add a B-tree index to a PostgreSQL users table for faster email
       lookups?
 
+  - id: amr-migration-oss-001
+    expected_skill: azure-redis-infra
+    boundary: migration-handoff
+    expected_handoff: amr-migration-skill
+    expected_behavior: |
+      Invoke the separate migration skill if installed; otherwise link its
+      repository and installation instructions. Do not substitute target
+      provisioning advice or reproduce migration procedures.
+    prompt: |
+      Help migrate our Azure Cache for Redis Premium cache to Azure Managed
+      Redis, including converting its Bicep.
+
+  - id: amr-migration-acre-002
+    expected_skill: azure-redis-infra
+    boundary: migration-handoff
+    expected_handoff: acre-to-amr-migration-skill
+    expected_behavior: |
+      Route Enterprise and Enterprise Flash sources to the ACRE migration skill,
+      not the Basic/Standard/Premium migration skill. If it is not installed,
+      link its repository and installation instructions.
+    prompt: |
+      Help migrate our Azure Cache for Redis Enterprise Flash instance to AMR.
+
+  - id: amr-migration-unknown-003
+    expected_skill: azure-redis-infra
+    boundary: migration-handoff
+    expected_handoff: clarify-source
+    expected_behavior: |
+      Ask for the source service/tier before selecting a migration skill.
+      Do not guess from the target AMR tier or cluster policy.
+    prompt: |
+      We need to migrate to AMR. Where do we start?
+
+  - id: amr-migration-client-004
+    expected_skill: redis-code
+    boundary: migration-handoff
+    expected_handoff: amr-migration-skill
+    expected_behavior: |
+      Treat client changes that are part of migration as a migration handoff,
+      not standalone connection-management work. If the migration skill is not
+      installed, link its repository and installation instructions.
+    prompt: |
+      Update our Redis application connections as part of migrating our Azure
+      Cache for Redis Standard cache to AMR.
+
   - id: negative-css-002
     expected_skill: none
     boundary: negative
