@@ -2,97 +2,86 @@
 
 A collection of [Open Agent Skills](https://agentskills.io/) for AI coding agents working with Redis and Azure Managed Redis (AMR).
 
-## Overview
+[Available Skills](#available-skills) | [Installation](#installation) | [Usage](#usage) | [Support and Feedback](#support-and-feedback)
+
+
+## Available Skills
 
 This repository helps AI agents provide Azure Managed Redis guidance through two focused skills:
 
-- Use `redis-code` for Redis application and AI coding patterns: data structures, key design, caching, messaging, vector search, RAG, semantic caching, LLM memory, and agent state.
-- Use `azure-redis-infra` for Azure Managed Redis infrastructure: provisioning, Private Link, security, availability, geo-replication, durability, performance, and observability.
-
-### Migration to Azure Managed Redis
-
-Migration guidance is maintained in separate skills, not bundled with this kit:
-
-| Source service/tier | Migration skill and installation instructions |
+| Skill | Use for |
 |---|---|
-| Azure Cache for Redis Basic, Standard, or Premium (ACR/OSS) | [amr-migration-skill](https://github.com/AzureManagedRedis/amr-migration-skill#usage) |
-| Azure Cache for Redis Enterprise or Enterprise Flash (ACRE) | [acre-to-amr-migration-skill](https://github.com/AzureManagedRedis/acre-to-amr-migration-skill#usage) |
+| [redis-code](skills/redis-code/) | Write, review, or refactor Redis application code on AMR, from client integration to caching and AI application patterns. |
+| [azure-redis-infra](skills/azure-redis-infra/) | Provision, configure, and operate AMR, with guidance for infrastructure as code and secure, reliable deployments. |
 
-For migration help, use the skill matching your source service/tier. If the source is unclear, the agent should ask before choosing a skill.
+Together, these skills cover the following areas:
 
-## Usage
+| Area | What the kit helps with |
+| --- | --- |
+| Application and client code | Review connection reuse, authentication, token refresh, timeouts, retries, and error handling. |
+| Data and application patterns | Choose data structures, design keys and expiration, and implement caching, sessions, rate limiting, distributed locks, queues, Pub/Sub, and Streams. |
+| Performance and efficiency | Review batching, pipelining, memory use, and latency-sensitive code paths. |
+| AI applications | Design vector search, retrieval-augmented generation (RAG), semantic caching, embedding pipelines, conversation memory, and AI agent state. |
+| Infrastructure and security | Generate or review ARM templates, Bicep, and Terraform; private connectivity, DNS, identity, and cluster configuration. |
+| Reliability and operations | Plan high availability, geo-replication, persistence, backups, monitoring, diagnostic logs, and alerts. |
 
-Load this repository into an AI agent that supports Open Agent Skills. Skills are activated on demand based on the task.
+## Installation
 
-### With GitHub Copilot CLI
+Load this repository into an AI agent that supports Open Agent Skills. Skills are activated on demand based on the task. Choose one installation route per host and scope to avoid loading duplicate copies.
 
-#### Option A: Using the Skills CLI
+An Azure subscription isn't required to install the skills or review code. Accessing a cache or changing Azure resources requires separately configured tools, authentication, and permissions. Follow your organization's policies for AI assistants and data handling.
+
+### With Skills CLI
+
+With [Node.js](https://nodejs.org/) installed, run the [Skills CLI](https://github.com/vercel-labs/skills) from your target project:
 
 ```bash
-npx skills add AzureManagedRedis/amr-agent-kit -g -a github-copilot
+npx skills add AzureManagedRedis/amr-agent-kit
 ```
 
-- `-g` installs the skills globally so they are available across projects.
-- `-a github-copilot` targets the GitHub Copilot CLI skills directory.
+The CLI detects available agents, fetches the skills from GitHub and prompts you to choose. You do not need to clone or download this repository first. By default, installation is project-local; add `-g` to make skills available across projects.
 
-Then reload and verify:
+### With GitHub Copilot: VS Code Chat and CLI
+
+To target Copilot directly:
+
+```bash
+npx skills add AzureManagedRedis/amr-agent-kit -a github-copilot
+```
+
+Select either or both skills when prompted. Add `-g` to install globally across projects.
+
+#### Verify in VS Code
+
+1. Open your target project in a current version of VS Code with GitHub Copilot enabled.
+2. Run **Chat: Open Customizations** from the Command Palette and check the **Skills** section.
+3. Start a fresh Copilot chat. Select **Agent** for tasks that need code changes or tools.
+4. Try a [usage prompt](#usage) and inspect skill-loading activity to confirm the relevant instructions are used.
+
+If a skill is missing, check its installation location and that the complete skill folder is present. Reload the VS Code window and start a fresh chat if needed. Available customization controls can vary by VS Code version and organization policy.
+
+#### Verify in Copilot CLI
 
 ```text
 /skills reload
 /skills list
 ```
 
-#### Option B: Clone and Copy
-
-```bash
-git clone https://github.com/AzureManagedRedis/amr-agent-kit
-```
-
-**Windows (PowerShell):**
-
-```powershell
-New-Item -ItemType Directory -Path "$env:USERPROFILE\.copilot\skills" -Force
-Copy-Item -Path ".\amr-agent-kit\skills\*" -Destination "$env:USERPROFILE\.copilot\skills\" -Recurse
-```
-
-**macOS / Linux:**
-
-```bash
-mkdir -p ~/.copilot/skills
-cp -r ./amr-agent-kit/skills/* ~/.copilot/skills/
-```
-
-Then reload:
-
-```text
-/skills reload
-```
-
 ### With Claude Code
 
-Clone the repo and copy the skill folders into Claude Code's skills directory:
-
 ```bash
-git clone https://github.com/AzureManagedRedis/amr-agent-kit
-mkdir -p ~/.claude/skills
-cp -r ./amr-agent-kit/skills/* ~/.claude/skills/
+npx skills add AzureManagedRedis/amr-agent-kit -a claude-code
 ```
 
-## Available Skills
+Select the skills to install, then start a fresh Claude Code session in your target project and ask it to use the relevant skill. Add `-g` for a global installation.
 
-### redis-code
+### Other Skills-Compatible Agents
 
-Redis application and AI coding best practices optimized for Azure Managed Redis.
+Use the universal Skills CLI command to select another agent. Installation locations and discovery controls vary by host. Verify the skills in your target agent.
 
-Use when writing, reviewing, or refactoring Redis code on AMR, including caching, session storage, pub/sub, queues, leaderboards, rate limiting, data structures, key design, vector search, RAG, semantic caching, LLM memory, embeddings, and AI agent state.
+## Usage
 
-### azure-redis-infra
-
-Azure Managed Redis infrastructure patterns and best practices.
-
-Use when provisioning AMR, configuring private endpoints, enforcing Entra ID authentication and TLS, enabling high availability or geo-replication, setting persistence, and monitoring AMR with Azure Monitor diagnostics.
-
-## Example Prompts
+Open your project in your coding assistant and describe what you want to review or build. Skills can load automatically when relevant. Name `redis-code` or `azure-redis-infra` to make your intent explicit. Review generated changes and test before production use.
 
 ### Redis Application Development
 
@@ -111,6 +100,17 @@ Use when provisioning AMR, configuring private endpoints, enforcing Entra ID aut
 - **"Help me set up Azure Managed Redis with private endpoints."**
 - **"Plan AMR high availability, zone redundancy, and active geo-replication."**
 - **"Review my AMR diagnostics, persistence, and security configuration."**
+
+### Migration to Azure Managed Redis
+
+Migration guidance is maintained in separate skills, not bundled with this kit:
+
+| Source service/tier | Migration skill and installation instructions |
+|---|---|
+| Azure Cache for Redis Basic, Standard, or Premium (ACR/OSS) | [amr-migration-skill](https://github.com/AzureManagedRedis/amr-migration-skill#usage) |
+| Azure Cache for Redis Enterprise or Enterprise Flash (ACRE) | [acre-to-amr-migration-skill](https://github.com/AzureManagedRedis/acre-to-amr-migration-skill#usage) |
+
+For migration help, use the skill matching your source service/tier. If the source is unclear, the agent should ask before choosing a skill.
 
 ## Skill Structure
 
@@ -142,16 +142,21 @@ Each skill contains:
 - `rules/` - Individual rule files with examples, impact, and references.
 - `metadata.json` - Version, publication metadata, abstract, and reference links.
 
-## Building and Validation
+## Support and Feedback
 
-```bash
-cd packages/amr-agent-skills-build
-npm install
-npm run build
-npm run build-redis-code
-npm run build-azure-redis-infra
-npm run validate
-```
+| Issue | Where to report it |
+|---|---|
+| Kit installation, loading or execution failures, incorrect output, missing guidance, or feature requests | Open an issue in [this repository](https://github.com/AzureManagedRedis/amr-agent-kit/issues). |
+| Problems with the underlying Redis service or Azure infrastructure | Use [normal Azure support channels](https://learn.microsoft.com/azure/azure-portal/supportability/how-to-create-azure-support-request). Microsoft Customer Service and Support (CSS) supports these underlying scenarios. |
+
+For kit issues, include:
+
+- The coding assistant and version, operating system, and installation method.
+- The kit version or source commit, if known.
+- Reproduction steps and the prompt, expected behavior, and actual behavior.
+- Relevant error messages or skill-loading evidence.
+
+Use a minimal, sanitized example. Don't include credentials, customer data, confidential code, or sensitive logs in public issues.
 
 ## External Resources
 
@@ -163,20 +168,21 @@ These skills reference Azure Managed Redis and Redis documentation, including:
 - [Microsoft Entra authentication for Azure Managed Redis](https://learn.microsoft.com/en-us/azure/redis/entra-for-authentication)
 - [Redis developer documentation](https://redis.io/docs/latest/develop/)
 
-## Feedback and Issues
-
-Open an issue in this repository for bugs, missing rules, outdated Azure Managed Redis guidance, or new skill requests.
-
 ## Contributing
 
-1. Keep skill content aligned with Azure Managed Redis and Redis documentation.
-2. Add or update rule files under the appropriate skill's `rules/` directory.
-3. Rebuild generated `AGENTS.md` files after changing rules.
-4. Run validation before opening a pull request.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for repository structure, rule authoring, build, and validation instructions. These steps aren't required to install or use the kit.
+
+Evaluation resources cover [routing](routing-eval/README.md), content tasks for [application code](evals/redis-code/) and [infrastructure](evals/azure-redis-infra/), and [answer efficacy](evals/efficacy/README.md). Mock runs do not establish real-model answer quality or validate deployments.
+
+The static website source is under [docs/](docs/).
 
 ## Compatibility
 
 Works with GitHub Copilot CLI, Claude Code, Gemini CLI, and other Open Agent Skills-compatible tools.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a dated history of updates to the agent kit.
 
 ## License
 
