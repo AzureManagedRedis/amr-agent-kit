@@ -113,6 +113,12 @@ cp -r skills/redis-code ~/.claude/skills/
 cp -r skills/redis-code ~/.copilot/skills/
 ```
 
+**GitHub Copilot CLI plugin:**
+```text
+/plugin marketplace add AzureManagedRedis/amr-agent-kit
+/plugin install amr@amr-agent-kit
+```
+
 **Using skills CLI:**
 ```bash
 npx skills add AzureManagedRedis/amr-agent-kit

@@ -42,7 +42,35 @@ Then reload and verify:
 /skills list
 ```
 
-#### Option B: Clone and Copy
+#### Option B: Install the Copilot CLI plugin
+
+In a Copilot CLI session, add the marketplace and install the plugin:
+
+```text
+/plugin marketplace add AzureManagedRedis/amr-agent-kit
+/plugin install amr@amr-agent-kit
+```
+
+Or run the same steps from your terminal:
+
+```bash
+copilot plugin marketplace add AzureManagedRedis/amr-agent-kit
+copilot plugin install amr@amr-agent-kit
+```
+
+The `amr` plugin bundles both skills: `redis-code` and `azure-redis-infra`. Check that it's installed with `/plugin list`, then start a new session and run `/skills list`.
+
+To update or remove it:
+
+```bash
+copilot plugin update amr@amr-agent-kit
+copilot plugin uninstall amr@amr-agent-kit
+copilot plugin marketplace remove amr-agent-kit
+```
+
+Pick one install option per agent. Using more than one gives you duplicate copies of the same skills.
+
+#### Option C: Clone and Copy
 
 ```bash
 git clone https://github.com/AzureManagedRedis/amr-agent-kit

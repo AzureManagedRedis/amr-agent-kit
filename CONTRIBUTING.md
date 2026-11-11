@@ -27,6 +27,7 @@ The build uses 32 KiB as a cross-tool compatibility budget for both each generat
 
 - The root `package.json` is the canonical repository identity for the AMR Agent Kit bundle: package name `amr-agent-kit`, display name `AMR Agent Kit`, and current version `1.0.0`.
 - Keep plugin manifests aligned with the root package for `name`, display name, `version`, `author`, `license`, `repository`, `homepage`, and Redis/Azure Managed Redis keywords where each plugin schema supports them.
+- The GitHub Copilot plugin is the exception to the naming rule. It's named `amr` in the root `plugin.json` and in `.github/plugin/marketplace.json`, and the marketplace is named `amr-agent-kit`. Customers install `amr@amr-agent-kit`, so don't rename either one. Keep the catalog entry `version` equal to `plugin.json`; `npm test` checks this.
 - `packages/amr-agent-skills-build/package.json` is the independently named build-tool package. Keep its version aligned with the root package for repo-level releases, but allow it to diverge for tooling-only releases.
 - Skill `metadata.json` versions are per-skill content versions. They may advance independently when a skill's rules, `SKILL.md`, README, or generated `AGENTS.md` changes materially. The existing skills are aligned at `1.0.0` for the initial stable bundle.
 - Follow SemVer: patch for corrections and clarifications, minor for backward-compatible new or expanded guidance, and major for breaking packaging, activation, or rule-organization changes.
@@ -89,7 +90,7 @@ From the repository root, run `npm run validate` for both skill structure and di
 
 ## Distribution confidentiality review
 
-The confidentiality check is a lint over the distribution boundary, not the private repository as a whole. It uses npm's dry-run package inventory and the same skill and manifest selection as the release ZIP workflow, including published paths and filenames. Build generated skill output before running it. New packaging inputs must be represented by the shared inventory.
+The confidentiality check is a lint over the distribution boundary, not the private repository as a whole. It uses npm's dry-run package inventory and the same skill and manifest selection as the release ZIP workflow, including published paths and filenames. Build generated skill output before running it. New packaging inputs must be represented by the shared inventory. The Copilot plugin marketplace installs from the repository root, so it publishes the repository itself rather than a separate artifact and isn't part of this inventory.
 
 Product-generation shorthand is a blocker; use AMR or ACRE instead. Source filenames and source path-and-line references are warnings for manual review, not automatic failures. The check reports binary artifacts whose paths were inspected but whose contents were not, and it cannot identify arbitrary semantic disclosures. A passing result is not proof that content is safe to publish.
 
