@@ -1,6 +1,6 @@
 {
   "name": "amr-agent-skills-build",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Build tooling for AMR Agent Skills",
   "type": "module",
   "scripts": {

@@ -67,6 +67,44 @@ test('catalog version matches plugin.json and package.json', () => {
   assert.equal(pluginEntry().version, rootPackage.version)
 })
 
+test('host manifests retain their documented identities and share the bundle version', () => {
+  for (const path of [
+    'plugin.json',
+    '.claude-plugin/plugin.json',
+    '.cursor-plugin/plugin.json',
+    '.codex-plugin/plugin.json',
+    'gemini-extension.json',
+  ]) {
+    const manifest = readJson(join(REPO_ROOT, path))
+    const expectedName = path === 'plugin.json' ? 'amr' : 'amr-agent-kit'
+    assert.equal(manifest.name, expectedName, `${path} plugin name`)
+    assert.equal(manifest.version, rootPackage.version, `${path} version`)
+  }
+  assert.equal(rootPackage.name, 'amr-agent-kit')
+  assert.equal(catalog.metadata.version, rootPackage.version)
+  const apm = readFileSync(join(REPO_ROOT, 'apm.yml'), 'utf8')
+  assert.match(apm, /^name: amr-agent-kit$/m)
+  assert.match(apm, /^\s+- name: amr-agent-kit$/m)
+  assert.equal(apm.match(/^version: (.+)$/m)?.[1], rootPackage.version)
+})
+
+test('skill metadata versions match activation files and generated indexes', () => {
+  for (const skill of BUNDLED_SKILLS) {
+    const root = join(REPO_ROOT, 'skills', skill)
+    const metadata = readJson(join(root, 'metadata.json'))
+    const activation = readFileSync(join(root, 'SKILL.md'), 'utf8')
+    const frontmatter = activation.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+    assert.ok(frontmatter, `${skill} must have frontmatter`)
+    assert.equal(
+      frontmatter[1].match(/^\s+version: "([^"]+)"$/m)?.[1],
+      metadata.version,
+      `${skill} activation version`,
+    )
+    const index = readFileSync(join(root, 'AGENTS.md'), 'utf8')
+    assert.ok(index.includes(`**Version ${metadata.version}**`), `${skill} index version`)
+  }
+})
+
 test('no .plugin/plugin.json shadows the root plugin manifest', () => {
   assert.equal(existsSync(join(pluginRoot(), '.plugin', 'plugin.json')), false)
 })

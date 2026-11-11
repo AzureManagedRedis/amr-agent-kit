@@ -1,7 +1,7 @@
 {
   "name": "amr-agent-kit",
-  "version": "1.0.0",
-  "description": "Official Codex plugin for AMR Agent Kit. Provides Redis application and AI coding patterns plus Azure Managed Redis infrastructure guidance.",
+  "version": "0.1.0",
+  "description": "Public preview Codex plugin for AMR Agent Kit. Provides Redis application and AI coding patterns plus Azure Managed Redis infrastructure guidance.",
   "author": {
     "name": "Microsoft",
     "url": "https://learn.microsoft.com/azure/redis/"

@@ -1,5 +1,5 @@
 name: amr-agent-kit
-version: 1.0.0
+version: 0.1.0
 description: >-
   Redis and Azure Managed Redis skills for AI coding agents. Covers Redis application
   and AI coding patterns plus Azure Managed Redis infrastructure guidance.

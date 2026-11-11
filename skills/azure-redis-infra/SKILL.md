@@ -14,7 +14,7 @@ description: |
 license: MIT
 metadata:
   author: Microsoft
-  version: "1.0.0"
+  version: "0.1.0"
 ---
 
 # Azure Managed Redis Infrastructure

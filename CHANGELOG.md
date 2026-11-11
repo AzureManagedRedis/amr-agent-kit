@@ -4,6 +4,14 @@ All notable user-facing changes to AMR Agent Kit should be recorded here.
 
 Use dated entries for future pull requests. Keep entries short, specific, and grouped by skill or repository surface when possible.
 
+## Public preview versions and distribution identities (2026-11-10)
+
+### Changed
+
+- Set the bundle, build tooling, distribution manifests, and initial skill content versions to `0.1.0` for public preview.
+- Documented the root/Copilot plugin identity `amr@amr-agent-kit` while retaining `amr-agent-kit` for standalone host manifests, the Gemini extension, APM, and the repository/bundle.
+- Clarified preview versioning and identity policy, including explicit reinstall guidance for earlier development installations. Metadata alignment does not imply marketplace publication or automatic downgrade/rename migration.
+
 ## 2026-11-09
 
 ### Added

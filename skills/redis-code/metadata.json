@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "0.1.0",
   "organization": "Microsoft",
   "date": "February 2026",
   "abstract": "Comprehensive Redis application and AI coding patterns for Azure Managed Redis, designed for AI agents and LLMs. Contains 62 rules across 19 categories, spanning data structures, key design, DB0/key-prefix separation, commands, connection handling, caching, messaging, resilience, vector search, RAG, semantic caching, LLM memory, embedding pipelines, and agent state. Critical guardrails: use database 0 and key prefixes, not SELECT or numbered databases; EnterpriseCluster cross-slot DEL/MSET/UNLINK exceptions do not apply with active geo-replication; Search requires EnterpriseCluster and NoEviction; verify RedisJSON policy compatibility against public service documentation rather than inferring support or incompatibility; active geo-replication supports only Search and JSON. Validate SKU, region, preview status, flash restrictions, and geo compatibility before provisioning. Each rule includes detailed explanations, incorrect vs. correct examples, and links to official Azure, Redis, and Redis AI documentation.",
