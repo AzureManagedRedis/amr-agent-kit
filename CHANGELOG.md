@@ -14,6 +14,13 @@ Use dated entries for future pull requests. Keep entries short, specific, and gr
 
 - Changed the GitHub Copilot plugin name in the root `plugin.json` from `amr-agent-kit` to `amr`.
 
+## 2026-11-03
+
+### Added
+
+- Added ACR/ACRE to AMR migration handoff guidance, to both kit skills and README links to the separate ACR/OSS and ACRE migration skills.
+- Added routing fixtures for source-tier selection, unknown-source clarification, and migration-related client changes.
+
 ## 2026-06-22
 
 ### Added
