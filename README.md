@@ -1,6 +1,6 @@
 # AMR Agent Kit Public Preview
 
-A collection of [Open Agent Skills](https://agentskills.io/) for AI coding agents working with Redis and Azure Managed Redis (AMR), available in public preview.
+A collection of [Open Agent Skills](https://agentskills.io/) for AI coding agents working with Azure Managed Redis (AMR). The kit is available in public preview.
 
 [Available Skills](#available-skills) | [Installation](#installation) | [Usage](#usage) | [Support and Feedback](#support-and-feedback)
 
