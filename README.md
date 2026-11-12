@@ -39,7 +39,7 @@ With [Node.js](https://nodejs.org/) installed, run the [Skills CLI](https://gith
 npx skills add AzureManagedRedis/amr-agent-kit
 ```
 
-The CLI detects available agents, fetches the skills from GitHub and prompts you to choose. You do not need to clone or download this repository first. By default, installation is project-local; add `-g` to make skills available across projects.
+The CLI detects available agents and may prompt you to choose a target. It fetches the skills from GitHub, so you do not need to clone or download this repository first. By default, installation is project-local; add `-g` to make skills available across projects.
 
 ### With GitHub Copilot: VS Code Chat and CLI
 
@@ -66,6 +66,24 @@ If a skill is missing, check its installation location and that the complete ski
 /skills reload
 /skills list
 ```
+
+### With the Copilot CLI plugin
+
+In a Copilot CLI session, add the marketplace and install the plugin:
+
+```text
+/plugin marketplace add AzureManagedRedis/amr-agent-kit
+/plugin install amr@amr-agent-kit
+```
+
+Or run the same steps from your terminal:
+
+```bash
+copilot plugin marketplace add AzureManagedRedis/amr-agent-kit
+copilot plugin install amr@amr-agent-kit
+```
+
+The `amr` plugin bundles both skills: `redis-code` and `azure-redis-infra`. Check that it's installed with `/plugin list`, then start a new session and run `/skills list`.
 
 ### With Claude Code
 
@@ -178,7 +196,7 @@ The static website source is under [docs/](docs/).
 
 ## Compatibility
 
-Works with GitHub Copilot CLI, Claude Code, Gemini CLI, and other Open Agent Skills-compatible tools.
+Skills CLI supports installation into multiple coding agents. Verify skill loading and behavior in your target host; installer support does not establish tested kit compatibility.
 
 ## Changelog
 
