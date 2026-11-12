@@ -93,25 +93,9 @@ npm run build
 - Ensure rule prefix matches a configured section prefix
 - Ensure `metadata.json` exists and is valid JSON
 
-### Creating a Zip Package
-
-```bash
-cd skills
-zip -r redis-code.zip redis-code/
-zip -r azure-redis-infra.zip azure-redis-infra/
-```
-
 ### End-User Installation
 
-**Claude Code:**
-```bash
-cp -r skills/redis-code ~/.claude/skills/
-```
-
-**GitHub Copilot / VS Code:**
-```bash
-cp -r skills/redis-code ~/.copilot/skills/
-```
+Use Skills CLI or the Copilot CLI marketplace. Custom ZIP downloads and additional native-host packages are not distributed for preview. Keep generic Skills CLI compatibility separate from native plugin support.
 
 **GitHub Copilot CLI plugin:**
 ```text
