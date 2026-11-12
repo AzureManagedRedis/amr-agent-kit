@@ -4,6 +4,13 @@ All notable user-facing changes to AMR Agent Kit should be recorded here.
 
 Use dated entries for future pull requests. Keep entries short, specific, and grouped by skill or repository surface when possible.
 
+## 2026-11-11
+
+### Fixed
+
+- Corrected semantic-cache isolation guidance: require indexed tenant, entitlement, model, and version scope on every lookup and write, rather than relying on key names.
+- Decode knowledge/policy version markers explicitly and reject missing scope before cache access; expanded semantic-cache eval prompts for isolation and invalidation edge cases.
+
 ## 2026-11-09
 
 ### Added

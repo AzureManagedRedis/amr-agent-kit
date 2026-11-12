@@ -1,8 +1,9 @@
 id: redis-ai-semantic-cache-invalidation-008
 name: Semantic cache invalidation
 description: |
-  Tests that the skill covers invalidating or versioning semantic cache entries
-  when knowledge, policy, prompt, or model contracts change.
+  Tests that current knowledge and policy versions are stored as indexed scope
+  and required in semantic lookups, with explicit bytes decoding and no fallback
+  when version markers are absent.
 tags:
   - redis-ai
   - semantic-cache
@@ -11,8 +12,12 @@ tags:
 inputs:
   prompt: |
     We use Redis semantic caching for LLM support answers, but source articles,
-    safety policy, and customer entitlement rules can change. How should cache
-    keys or invalidation work so old answers are not reused incorrectly?
+    safety policy, and customer entitlement rules can change. Entries for multiple
+    tenants share one vector index. Our redis-py GET returns b'17' for the corpus
+    version, and sometimes None for the policy version. Show safe cache read/write
+    code that handles these values without defaulting missing versions. Explain how
+    an old cached answer stops matching after a version or entitlement change,
+    and what happens if a version changes while an answer is being generated.
 expected:
   outcomes:
     - type: task_completed
