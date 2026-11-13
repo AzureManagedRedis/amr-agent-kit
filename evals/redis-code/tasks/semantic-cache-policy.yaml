@@ -1,8 +1,9 @@
 id: redis-ai-semantic-cache-policy-003
 name: Semantic cache policy
 description: |
-  Tests that the skill covers semantic cache threshold, TTL, prompt/model
-  versioning, and safety boundaries for LLM response reuse.
+  Tests semantic cache threshold, TTL, and mandatory scope prefilters for
+  cross-tenant and cross-entitlement LLM response reuse. Key prefixes alone
+  must not be treated as isolation.
 tags:
   - redis-ai
   - semantic-cache
@@ -10,9 +11,14 @@ tags:
   - ttl
 inputs:
   prompt: |
-    We want to cache LLM answers for repeated customer support questions with Redis.
-    How should we choose the semantic similarity threshold, TTL, and cache key
-    versioning so answers do not leak across model or prompt-template changes?
+    We cache LLM support answers for two tenants in a shared Redis vector index.
+    Both tenants ask the same question, and keys already include the tenant, model,
+    and prompt version. Is that enough to prevent the second tenant from receiving
+    the first tenant's answer? Show the index fields, store operation, and filtered
+    lookup for the complete tenant/ACL/model/embedding/prompt/knowledge/policy scope.
+    Include a two-tenant no-cross-hit check, missing-scope behavior for both reads
+    and writes, and identifiers containing hyphens, commas, or query metacharacters.
+    Also explain threshold and TTL choices without using them as isolation controls.
 expected:
   outcomes:
     - type: task_completed
