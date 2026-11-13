@@ -174,7 +174,7 @@ For kit issues, include:
 - Reproduction steps and the prompt, expected behavior, and actual behavior.
 - Relevant error messages or skill-loading evidence.
 
-Use a minimal, sanitized example. Don't include credentials, customer data, confidential code, or sensitive logs in public issues.
+Use a minimal, sanitized example. Don't include credentials, customer data, confidential code, or sensitive logs in public issues. Don't report security vulnerabilities in public issues; follow [SECURITY.md](SECURITY.md).
 
 ## External Resources
 
@@ -190,9 +190,23 @@ These skills reference Azure Managed Redis and Redis documentation, including:
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for repository structure, rule authoring, build, and validation instructions. These steps aren't required to install or use the kit.
 
-Evaluation resources cover [routing](routing-eval/README.md), content tasks for [application code](evals/redis-code/) and [infrastructure](evals/azure-redis-infra/), and [answer efficacy](evals/efficacy/README.md). Mock runs do not establish real-model answer quality or validate deployments.
+Evaluation resources cover [routing](routing-eval/README.md), content tasks for [application code](evals/redis-code/) and [infrastructure](evals/azure-redis-infra/), and [answer efficacy](evals/efficacy/README.md). Mock runs do not establish real-model answer quality or validate deployments. 
 
 The static website source is under [docs/](docs/).
+
+### Contributor License Agreement and code of conduct
+
+This project welcomes contributions and suggestions.  Most contributions require you to agree to a
+Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us
+the rights to use your contribution. For details, visit [Contributor License Agreements](https://cla.opensource.microsoft.com).
+
+When you submit a pull request, a CLA bot will automatically determine whether you need to provide
+a CLA and decorate the PR appropriately (e.g., status check, comment). Simply follow the instructions
+provided by the bot. You will only need to do this once across all repos using our CLA.
+
+This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/).
+For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or
+contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
 ## Compatibility
 
