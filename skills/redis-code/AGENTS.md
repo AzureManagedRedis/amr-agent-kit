@@ -1,6 +1,6 @@
 # Redis Code Best Practices Rule Index
 
-**Version 1.0.0**  
+**Version 0.1.0**  
 Microsoft  
 February 2026
 
@@ -124,8 +124,8 @@ This generated file is a compact catalog, not a complete instruction bundle. Sta
 **Category impact: HIGH**
 
 - **14.1** [Invalidate Semantic Cache on Knowledge and Policy Changes](rules/semcache-invalidate-on-knowledge-and-policy-changes.md) — HIGH
-- **14.2** [Tune Semantic Cache Threshold and TTL by Use Case](rules/semcache-set-threshold-and-ttl-by-use-case.md) — HIGH
-- **14.3** [Version Semantic Cache Keys by Model and Prompt](rules/semcache-version-keys-by-model-and-prompt.md) — HIGH
+- **14.2** [Scope Semantic Cache Reuse by Tenant, Model, and Version](rules/semcache-version-keys-by-model-and-prompt.md) — HIGH
+- **14.3** [Tune Semantic Cache Threshold and TTL by Use Case](rules/semcache-set-threshold-and-ttl-by-use-case.md) — HIGH
 
 ## 15. LLM Memory
 

@@ -51,17 +51,7 @@ test('product-generation shorthand is a blocker while approved names are allowed
   write(root, 'skills/example/SKILL.md', 'Use AMR or ACRE, not gen1, GEN 2, Gen 1, or gen-2 terminology.\n')
 
   const result = scanDistribution(root, {
-    inventory: () => ({
-      files: [{
-        sourcePath: 'skills/example/SKILL.md',
-        publishedPaths: [{ channel: 'release', path: 'skills/example.zip/example/SKILL.md' }],
-      }],
-      publishedPaths: [{
-        channel: 'release',
-        path: 'skills/example.zip/example/SKILL.md',
-        sourcePath: 'skills/example/SKILL.md',
-      }],
-    }),
+    inventory: () => inventory('skills/example/SKILL.md'),
   })
 
   assert.equal(result.findings.filter(({ rule }) => rule === 'product-terminology').length, 4)
@@ -139,7 +129,7 @@ test('distributed text surfaces and published filenames are scanned independentl
     { sourcePath: 'docs/index.html', publishedPaths: [{ channel: 'npm', path: 'docs/index.html' }] },
     { sourcePath: 'plugin.json', publishedPaths: [{ channel: 'npm', path: 'plugin.json' }] },
     { sourcePath: 'packages/build-tool/example.py', publishedPaths: [{ channel: 'npm', path: 'packages/build-tool/example.py' }] },
-    { sourcePath: 'skills/example/SKILL.md', publishedPaths: [{ channel: 'release', path: 'skills/SYNTHETIC_BLOCK.zip/example/SKILL.md' }] },
+    { sourcePath: 'skills/example/SKILL.md', publishedPaths: [{ channel: 'npm', path: 'skills/SYNTHETIC_BLOCK/SKILL.md' }] },
   ]
 
   const result = scanDistribution(root, {
@@ -152,7 +142,7 @@ test('distributed text surfaces and published filenames are scanned independentl
 
   assert.equal(result.findings.filter(({ rule }) => rule === 'synthetic-blocker').length, 4)
   const pathFinding = result.findings.find(({ locationKind }) => locationKind === 'path')
-  assert.equal(pathFinding.file, 'skills/SYNTHETIC_BLOCK.zip/example/SKILL.md')
+  assert.equal(pathFinding.file, 'skills/SYNTHETIC_BLOCK/SKILL.md')
   assert.equal(pathFinding.line, undefined)
 })
 

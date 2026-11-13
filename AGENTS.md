@@ -47,7 +47,7 @@ description: {One sentence describing when to use this skill. Include trigger ph
 license: MIT
 metadata:
   author: Microsoft
-  version: "1.0.0"
+  version: "0.1.0"
 ---
 
 # {Skill Title}
@@ -93,24 +93,14 @@ npm run build
 - Ensure rule prefix matches a configured section prefix
 - Ensure `metadata.json` exists and is valid JSON
 
-### Creating a Zip Package
-
-```bash
-cd skills
-zip -r redis-code.zip redis-code/
-zip -r azure-redis-infra.zip azure-redis-infra/
-```
-
 ### End-User Installation
 
-**Claude Code:**
-```bash
-cp -r skills/redis-code ~/.claude/skills/
-```
+Use Skills CLI or the Copilot CLI marketplace. Custom ZIP downloads and additional native-host packages are not distributed for preview. Keep generic Skills CLI compatibility separate from native plugin support.
 
-**GitHub Copilot / VS Code:**
-```bash
-cp -r skills/redis-code ~/.copilot/skills/
+**GitHub Copilot CLI plugin:**
+```text
+/plugin marketplace add AzureManagedRedis/amr-agent-kit
+/plugin install amr@amr-agent-kit
 ```
 
 **Using skills CLI:**

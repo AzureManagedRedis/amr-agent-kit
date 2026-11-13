@@ -39,11 +39,13 @@ The build uses 32 KiB as a cross-tool compatibility budget for both each generat
 
 ## Versioning and metadata
 
-- The root `package.json` is the canonical repository identity for the AMR Agent Kit bundle: package name `amr-agent-kit`, display name `AMR Agent Kit`, and current version `1.0.0`.
-- Keep plugin manifests aligned with the root package for `name`, display name, `version`, `author`, `license`, `repository`, `homepage`, and Redis/Azure Managed Redis keywords where each plugin schema supports them.
+- The root `package.json` is the canonical repository identity for the AMR Agent Kit bundle: package name `amr-agent-kit`, display name `AMR Agent Kit`, and public preview version `0.1.0`.
+- The root `plugin.json` and Copilot catalog entry use `amr`, with the catalog named `amr-agent-kit`, giving Copilot customers `amr@amr-agent-kit`. The repository and bundle retain `amr-agent-kit`. Preview distribution uses Skills CLI and the Copilot CLI marketplace; additional native-host packaging is deferred until it has an owner and end-to-end installation evidence. Removing native-host packaging does not remove Skills CLI compatibility with those agents.
+- Keep distribution manifests aligned with the root package for `version`, display name, `author`, `license`, `repository`, `homepage`, and Redis/Azure Managed Redis keywords where each schema supports them. Keep the Copilot catalog entry version equal to `plugin.json`; `npm test` checks distribution identities and version alignment. Matching metadata does not establish tested host compatibility or a marketplace listing.
 - `packages/amr-agent-skills-build/package.json` is the independently named build-tool package. Keep its version aligned with the root package for repo-level releases, but allow it to diverge for tooling-only releases.
-- Skill `metadata.json` versions are per-skill content versions. They may advance independently when a skill's rules, `SKILL.md`, README, or generated `AGENTS.md` changes materially. The existing skills are aligned at `1.0.0` for the initial stable bundle.
-- Follow SemVer: patch for corrections and clarifications, minor for backward-compatible new or expanded guidance, and major for breaking packaging, activation, or rule-organization changes.
+- Skill `metadata.json` versions are per-skill content versions. They may advance independently when a skill's rules, `SKILL.md`, README, or generated `AGENTS.md` changes materially. Keep each skill's `SKILL.md` metadata version and generated index aligned with its `metadata.json`. The existing skills start at `0.1.0` for public preview.
+- Follow SemVer. During the `0.x` preview, use patch increments for backward-compatible corrections and minor increments for new guidance or breaking changes; document breaking changes explicitly. Reserve `1.0.0` for an explicitly agreed stable compatibility contract. After `1.0.0`, use major increments for breaking packaging, activation, or rule-organization changes.
+- Do not overwrite published versions; publish changes under a new version.
 - Do not add a separate `VERSION` file unless a downstream distribution channel cannot read `package.json`; avoid maintaining duplicate version sources.
 
 ## Adding a rule
@@ -99,11 +101,13 @@ lychee --config .lychee.toml .
 
 The link check requires [Lychee](https://github.com/lycheeverse/lychee) on `PATH`. Install it with the supported package manager for your platform, such as `winget install --id lycheeverse.lychee` on Windows. CI installs Lychee through `lycheeverse/lychee-action` and uses [.lychee.toml](.lychee.toml) for repository-wide Markdown link and fragment checks.
 
-From the repository root, run `npm run validate` for both skill structure and distribution confidentiality, and `npm test` for confidentiality/distribution, copy-button, and generated-output regressions. The ZIP inventory test requires Windows PowerShell (`powershell.exe`) on Windows or PowerShell 7 (`pwsh`) on Linux; both CI runners provide the appropriate executable. Build and validation must leave both generated `skills/*/AGENTS.md` indexes tracked and unchanged from `HEAD`, including staged changes. Unrelated untracked files do not fail this freshness gate.
+From the repository root, run `npm run validate` for both skill structure and distribution confidentiality, and `npm test` for confidentiality/distribution, copy-button, and generated-output regressions. Build and validation must leave both generated `skills/*/AGENTS.md` indexes tracked and unchanged from `HEAD`, including staged changes. Unrelated untracked files do not fail this freshness gate.
 
 ## Distribution confidentiality review
 
-The confidentiality check is a lint over the distribution boundary, not the private repository as a whole. It uses npm's dry-run package inventory and the same skill and manifest selection as the release ZIP workflow, including published paths and filenames. Build generated skill output before running it. New packaging inputs must be represented by the shared inventory.
+The confidentiality check is a lint over the declared package inventory, not the private repository as a whole. It uses npm's dry-run package inventory, including paths and filenames, without publishing an npm package. Build generated skill output before running it. New package inputs must be represented in `package.json`'s `files` list. Repository-based installation can expose files outside this inventory, so a passing lint is not public-source clearance.
+
+The release workflow validates the candidate and creates GitHub release notes for a version tag; it does not generate or upload custom ZIP assets. Customers install from the repository through Skills CLI or the Copilot CLI marketplace, not from release downloads. GitHub's automatically provided source archives are not a separately supported installation package.
 
 Product-generation shorthand is a blocker; use AMR or ACRE instead. Source filenames and source path-and-line references are warnings for manual review, not automatic failures. The check reports binary artifacts whose paths were inspected but whose contents were not, and it cannot identify arbitrary semantic disclosures. A passing result is not proof that content is safe to publish.
 

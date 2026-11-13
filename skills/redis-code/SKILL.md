@@ -14,7 +14,7 @@ description: |
 license: MIT
 metadata:
   author: Microsoft
-  version: "1.0.0"
+  version: "0.1.0"
 ---
 
 # Redis Code Best Practices
@@ -41,6 +41,7 @@ These are the highest-harm facts to get right. When a task touches one, open the
 - **Use the service-returned endpoint and port.** `10000` is the default database port, not a universal constant; do not reject a valid non-default port or hardcode public-cloud DNS. → `rules/conn-require-tls-amr-endpoints.md`
 - **Match modules to cluster policy.** Search (RediSearch) requires `EnterpriseCluster` and `NoEviction`; do not infer RedisJSON policy compatibility from Search's restriction. Verify the selected combination in current public service documentation; active geo-replication supports only Search and JSON. → `rules/search-use-enterprise-policy-for-modules.md`
 - **Memory is service-managed.** Do not `CONFIG SET maxmemory` from a client; choose SKU and eviction policy in Azure and monitor effective memory. → `rules/memory-monitor-and-set-limits.md`
+- **Semantic-cache keys are not tenant isolation.** Store tenant, effective ACL hash, model/embedding IDs, prompt, knowledge, and policy versions as filterable TAG fields; require all as prefilters on every lookup and fail closed before reads or writes when scope is missing. → `rules/semcache-version-keys-by-model-and-prompt.md` and `rules/semcache-invalidate-on-knowledge-and-policy-changes.md`
 
 ### Route Migration Requests
 
