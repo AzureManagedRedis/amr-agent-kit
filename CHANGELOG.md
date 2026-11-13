@@ -11,6 +11,16 @@ Use dated entries for future pull requests. Keep entries short, specific, and gr
 - Corrected semantic-cache isolation guidance: require indexed tenant, entitlement, model, and version scope on every lookup and write, rather than relying on key names.
 - Decode knowledge/policy version markers explicitly and reject missing scope before cache access; expanded semantic-cache eval prompts for isolation and invalidation edge cases.
 
+## Public preview versions and distribution scope (2026-11-11)
+
+### Changed
+
+- Set the bundle, build tooling, distribution manifests, and initial skill content versions to `0.1.0` for public preview.
+- Retained the root/Copilot plugin identity `amr@amr-agent-kit` and the `amr-agent-kit` repository/bundle identity.
+- Removed untested Claude, Cursor, Codex, Gemini and APM native packaging while retaining Skills CLI and Copilot CLI marketplace installation.
+- Removed custom skill/manifest ZIP generation and upload. The release workflow retains validation and release notes without custom download assets.
+- Clarified preview versioning and identity policy, including explicit reinstall guidance for earlier development installations. Metadata alignment does not imply marketplace publication or automatic downgrade/rename migration.
+
 ## 2026-11-09
 
 ### Added

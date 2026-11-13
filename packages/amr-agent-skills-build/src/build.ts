@@ -128,7 +128,7 @@ async function readSkillMetadata(skillConfig: SkillConfig) {
     return JSON.parse(metadataContent)
   } catch {
     return {
-      version: '1.0.0',
+      version: '0.1.0',
       organization: 'Microsoft',
       date: new Date().toLocaleDateString('en-US', {
         month: 'long',
