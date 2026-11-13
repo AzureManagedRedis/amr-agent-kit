@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   release:
-    name: Package release artifacts
+    name: Validate release and publish notes
     runs-on: windows-latest
 
     steps:
@@ -69,63 +69,17 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($text)) { $text = "Release $tag" }
           Set-Content -Path 'release-notes.md' -Value $text -Encoding UTF8
 
-      - name: Package skills and manifests
-        shell: pwsh
-        run: |
-          Add-Type -AssemblyName System.IO.Compression.FileSystem
-          function New-ZipFromDirectory {
-            param(
-              [string] $Source,
-              [string] $Destination,
-              [bool] $IncludeBaseDirectory = $true
-            )
-            if (Test-Path $Destination) { Remove-Item -Path $Destination -Force }
-            [System.IO.Compression.ZipFile]::CreateFromDirectory($Source, $Destination, [System.IO.Compression.CompressionLevel]::Optimal, $IncludeBaseDirectory)
-          }
-
-          $dist = Join-Path $PWD 'dist'
-          Remove-Item -Path $dist -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path (Join-Path $dist 'skills') -Force | Out-Null
-
-          $selectionJson = node scripts/distribution-files.mjs --release-inputs
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to enumerate release inputs.' }
-          $selection = $selectionJson | ConvertFrom-Json
-
-          foreach ($skill in $selection.skills) {
-            $source = Join-Path $PWD $skill.sourcePath
-            $zipPath = Join-Path $dist $skill.archivePath
-            New-ZipFromDirectory -Source $source -Destination $zipPath -IncludeBaseDirectory $true
-          }
-
-          $manifestRoot = Join-Path $dist 'amr-agent-kit-manifests'
-          New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
-          foreach ($manifest in $selection.manifests) {
-            Copy-Item -Path (Join-Path $PWD $manifest.sourcePath) -Destination $manifestRoot -Recurse -Force
-          }
-          New-ZipFromDirectory -Source $manifestRoot -Destination (Join-Path $dist $selection.manifestArchivePath) -IncludeBaseDirectory $true
-
-          Get-ChildItem -Path $dist -Recurse -File | Select-Object -ExpandProperty FullName
-
-      - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: amr-agent-kit-release-artifacts
-          path: dist/**/*.zip
-          if-no-files-found: error
-
-      - name: Publish GitHub release assets
+      - name: Create GitHub release
         if: github.event_name == 'push' || github.event_name == 'release'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = if ('${{ github.event_name }}' -eq 'release') { '${{ github.event.release.tag_name }}' } else { '${{ github.ref_name }}' }
-          $assets = @(Get-ChildItem -Path 'dist' -Filter '*.zip' -Recurse | ForEach-Object { $_.FullName })
-          if ($assets.Count -eq 0) { throw 'No release assets generated.' }
-
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag @assets --clobber
-          } else {
-            gh release create $tag @assets --title $tag --notes-file 'release-notes.md' --verify-tag
+          $releasesJson = gh release list --json tagName --limit 1000
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to check existing releases.' }
+          $releases = $releasesJson | ConvertFrom-Json
+          if ($tag -notin @($releases | ForEach-Object { $_.tagName })) {
+            gh release create $tag --title $tag --notes-file 'release-notes.md' --verify-tag
+            if ($LASTEXITCODE -ne 0) { throw "Unable to create release $tag." }
           }

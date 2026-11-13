@@ -1,6 +1,6 @@
 # Redis Code Best Practices Rule Index
 
-**Version 1.0.0**  
+**Version 0.1.0**  
 Microsoft  
 February 2026
 

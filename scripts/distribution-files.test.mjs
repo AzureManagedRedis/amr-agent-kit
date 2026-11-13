@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { scanDistribution } from './check-confidentiality.mjs'
-import { discoverDistributionFiles, discoverNpmFiles, discoverReleaseInputs } from './distribution-files.mjs'
+import { discoverDistributionFiles, discoverNpmFiles } from './distribution-files.mjs'
 
 function createFixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'amr-distribution-'))
@@ -43,36 +42,6 @@ function runNpmPack(root) {
   return JSON.parse(result.stdout)
 }
 
-function powershellScript(config) {
-  const encoded = Buffer.from(JSON.stringify(config)).toString('base64')
-  return `
-$ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.IO.Compression.FileSystem
-$config = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}')) | ConvertFrom-Json
-$entries = [System.Collections.Generic.List[string]]::new()
-foreach ($skill in $config.release.skills) {
-  $source = Join-Path $config.root $skill.sourcePath
-  $destination = Join-Path $config.dist $skill.archivePath
-  New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-  [System.IO.Compression.ZipFile]::CreateFromDirectory($source, $destination, [System.IO.Compression.CompressionLevel]::Optimal, $true)
-  $zip = [System.IO.Compression.ZipFile]::OpenRead($destination)
-  try { foreach ($entry in $zip.Entries) { $entries.Add("$($skill.archivePath)/$($entry.FullName.Replace('\\','/'))") } }
-  finally { $zip.Dispose() }
-}
-$manifestRoot = Join-Path $config.dist 'amr-agent-kit-manifests'
-New-Item -ItemType Directory -Path $manifestRoot -Force | Out-Null
-foreach ($manifest in $config.release.manifests) {
-  Copy-Item -Path (Join-Path $config.root $manifest.sourcePath) -Destination $manifestRoot -Recurse -Force
-}
-$manifestZip = Join-Path $config.dist $config.release.manifestArchivePath
-[System.IO.Compression.ZipFile]::CreateFromDirectory($manifestRoot, $manifestZip, [System.IO.Compression.CompressionLevel]::Optimal, $true)
-$zip = [System.IO.Compression.ZipFile]::OpenRead($manifestZip)
-try { foreach ($entry in $zip.Entries) { $entries.Add("$($config.release.manifestArchivePath)/$($entry.FullName.Replace('\\','/'))") } }
-finally { $zip.Dispose() }
-ConvertTo-Json -Compress @($entries)
-`
-}
-
 test('npm pack dry-run inventory matches the independently enumerated package files', (t) => {
   const root = createFixture(t)
   const npmRecords = runNpmPack(root)
@@ -87,56 +56,7 @@ test('npm pack dry-run inventory matches the independently enumerated package fi
   assert.ok(actualPaths.includes('packages/build-tool/index.ts'))
 })
 
-test('release selection matches the files in temporary ZIPs and includes optional manifests', (t) => {
-  const root = createFixture(t)
-  write(root, 'skills/example/nested/rule.py', 'print("text")\n')
-  mkdirSync(join(root, '.claude-plugin'), { recursive: true })
-  write(root, '.claude-plugin/manifest.json', '{"releaseOnly":true}\n')
-  mkdirSync(join(root, 'skills/example/Gen1/EmptyNested'), { recursive: true })
-  mkdirSync(join(root, '.claude-plugin/empty-folder'), { recursive: true })
-  write(root, '.waza.yaml', 'releaseOnly: true\n')
-
-  const release = discoverReleaseInputs(root)
-  const inventory = discoverDistributionFiles(root)
-  const dist = mkdtempSync(join(tmpdir(), 'amr-release-zips-'))
-  t.after(() => rmSync(dist, { recursive: true, force: true }))
-  const powershell = process.platform === 'win32' ? 'powershell.exe' : 'pwsh'
-  const result = spawnSync(powershell, [
-    '-NoProfile', '-NonInteractive', '-Command', powershellScript({ root, dist, release }),
-  ], { encoding: 'utf8', windowsHide: true })
-  assert.ifError(result.error)
-  assert.equal(result.status, 0, result.stderr)
-  const actualMembers = JSON.parse(result.stdout.trim()).map((path) => path.replace(/\/+$/, '')).sort()
-  const expectedMembers = inventory.publishedPaths
-    .filter(({ channel, path }) => channel === 'release' && !path.endsWith('.zip'))
-    .map(({ path }) => path)
-    .sort()
-
-  assert.deepEqual(actualMembers, expectedMembers)
-  assert.ok(inventory.publishedPaths.some(({ channel, path }) => channel === 'release' && path.endsWith('/EmptyNested')))
-  assert.ok(inventory.publishedPaths.some(({ channel, path }) => channel === 'release' && path.endsWith('/empty-folder')))
-  assert.ok(release.manifests.some(({ sourcePath }) => sourcePath === '.claude-plugin'))
-  assert.ok(release.manifests.some(({ sourcePath }) => sourcePath === '.waza.yaml'))
-})
-
-test('empty release directory names are published paths even without content files', (t) => {
-  const root = createFixture(t)
-  mkdirSync(join(root, 'skills/example/Gen1'), { recursive: true })
-
-  const inventory = discoverDistributionFiles(root)
-
-  assert.ok(inventory.publishedPaths.some(({ channel, path }) =>
-    channel === 'release' && path === 'skills/example.zip/example/Gen1'))
-  assert.ok(!inventory.files.some(({ sourcePath }) => sourcePath === 'skills/example/Gen1'))
-
-  const result = scanDistribution(root)
-  assert.ok(result.findings.some(({ rule, file, locationKind }) =>
-    rule === 'product-terminology'
-      && file === 'skills/example.zip/example/Gen1'
-      && locationKind === 'path'))
-})
-
-test('distribution union includes new shipped files but excludes private development files', (t) => {
+test('distribution inventory includes declared files without generating release ZIP paths', (t) => {
   const root = createFixture(t)
   const inventory = discoverDistributionFiles(root)
   const sourcePaths = inventory.files.map(({ sourcePath }) => sourcePath)
@@ -146,13 +66,12 @@ test('distribution union includes new shipped files but excludes private develop
   assert.ok(sourcePaths.includes('packages/build-tool/index.ts'))
   assert.ok(npmPaths.includes('plugin.json'))
   assert.ok(!sourcePaths.includes('evals/private.md'))
+  assert.ok(inventory.publishedPaths.every(({ channel, path }) =>
+    channel === 'npm' && !path.endsWith('.zip')))
 })
 
-test('missing optional release manifests are allowed but missing required package roots fail', (t) => {
+test('missing required package roots fail', (t) => {
   const root = createFixture(t)
-  const release = discoverReleaseInputs(root)
-  assert.ok(!release.manifests.some(({ sourcePath }) => sourcePath === '.waza.yaml'))
-
   const missingRoot = join(root, 'packages/build-tool')
   rmSync(missingRoot, { recursive: true, force: true })
   assert.throws(() => discoverNpmFiles(root), /Required package input/)
@@ -174,14 +93,30 @@ test('npm inventory failures and malformed output are explicit errors', (t) => {
   }), /empty files array/)
 })
 
-test('release-input CLI emits JSON and resolves its repository root from the script', (t) => {
-  const cwd = mkdtempSync(join(tmpdir(), 'amr-release-cli-cwd-'))
-  t.after(() => rmSync(cwd, { recursive: true, force: true }))
-  const script = resolve(dirname(fileURLToPath(import.meta.url)), 'distribution-files.mjs')
-  const result = spawnSync(process.execPath, [script, '--release-inputs'], { cwd, encoding: 'utf8' })
-  const root = resolve(dirname(script), '..')
-
-  assert.ifError(result.error)
-  assert.equal(result.status, 0, result.stderr)
-  assert.deepEqual(JSON.parse(result.stdout), discoverReleaseInputs(root))
+test('preview inventory retains skills and Copilot catalog without deferred host packaging', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const inventory = discoverDistributionFiles(root)
+  const paths = inventory.files.map(({ sourcePath }) => sourcePath)
+  for (const required of [
+    'skills/redis-code/SKILL.md',
+    'skills/azure-redis-infra/SKILL.md',
+    'plugin.json',
+    '.github/plugin/marketplace.json',
+  ]) {
+    assert.ok(paths.includes(required), `${required} must remain in the inventory`)
+  }
+  for (const removed of [
+    '.claude-plugin/plugin.json',
+    '.cursor-plugin/plugin.json',
+    '.codex-plugin/plugin.json',
+    'gemini-extension.json',
+    'GEMINI.md',
+    'apm.yml',
+  ]) {
+    assert.equal(existsSync(join(root, removed)), false, `${removed} must not ship`)
+    assert.ok(!paths.includes(removed), `${removed} must not remain in the inventory`)
+  }
+  const workflow = readFileSync(join(root, '.github/workflows/release.yml'), 'utf8')
+  assert.doesNotMatch(workflow, /CreateFromDirectory|upload-artifact|gh release upload|--release-inputs/)
+  assert.match(workflow, /gh release create \$tag --title/)
 })

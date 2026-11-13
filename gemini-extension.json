@@ -1,6 +1,0 @@
-{
-  "name": "amr-agent-kit",
-  "version": "1.0.0",
-  "description": "Official Gemini extension for AMR Agent Kit. Provides Redis application and AI coding patterns plus Azure Managed Redis infrastructure guidance.",
-  "skills": "./skills/"
-}

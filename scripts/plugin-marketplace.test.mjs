@@ -67,6 +67,28 @@ test('catalog version matches plugin.json and package.json', () => {
   assert.equal(pluginEntry().version, rootPackage.version)
 })
 
+test('Copilot catalog metadata shares the bundle version and descriptive package identity', () => {
+  assert.equal(rootPackage.name, 'amr-agent-kit')
+  assert.equal(catalog.metadata.version, rootPackage.version)
+})
+
+test('skill metadata versions match activation files and generated indexes', () => {
+  for (const skill of BUNDLED_SKILLS) {
+    const root = join(REPO_ROOT, 'skills', skill)
+    const metadata = readJson(join(root, 'metadata.json'))
+    const activation = readFileSync(join(root, 'SKILL.md'), 'utf8')
+    const frontmatter = activation.match(/^---\r?\n([\s\S]*?)\r?\n---/)
+    assert.ok(frontmatter, `${skill} must have frontmatter`)
+    assert.equal(
+      frontmatter[1].match(/^\s+version: "([^"]+)"$/m)?.[1],
+      metadata.version,
+      `${skill} activation version`,
+    )
+    const index = readFileSync(join(root, 'AGENTS.md'), 'utf8')
+    assert.ok(index.includes(`**Version ${metadata.version}**`), `${skill} index version`)
+  }
+})
+
 test('no .plugin/plugin.json shadows the root plugin manifest', () => {
   assert.equal(existsSync(join(pluginRoot(), '.plugin', 'plugin.json')), false)
 })
